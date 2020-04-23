@@ -1,0 +1,10 @@
+# Licenses
+include LICENSE
+include GPL
+include MIT
+
+# Include readme manually (because it has md extension)
+include README.md
+
+# Force test subdirectories
+recursive-include test *.py
