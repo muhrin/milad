@@ -24,6 +24,8 @@ setup(name='milad',
       ],
       keywords='machine learning, atomic descriptor, moment invariants',
       install_requires=[
+          'numpy',
+          'scipy'
       ],
       extras_require={
           'dev': [
