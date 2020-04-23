@@ -17,7 +17,6 @@ setup(name='milad',
       author_email='martin.uhrin.10@ucl.ac.uk',
       license=__license__,
       classifiers=[
-          'License :: OSI Approved :: MIT License',
           'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
           'Programming Language :: Python :: 3.6',
           'Programming Language :: Python :: 3.7',
