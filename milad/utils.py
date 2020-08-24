@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import numpy
 
 __all__ = 'generate_all_pair_distances'

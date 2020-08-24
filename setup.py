@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 from setuptools import setup
 
-__author__ = "Martin Uhrin"
-__license__ = "GPLv3"
+__author__ = 'Martin Uhrin'
+__license__ = 'GPLv3'
 
 about = {}
 with open('milad/version.py') as f:
@@ -10,7 +10,7 @@ with open('milad/version.py') as f:
 
 setup(name='milad',
       version=about['__version__'],
-      description="Moment Invariants Local Atomic Descriptor",
+      description='Moment Invariants Local Atomic Descriptor',
       long_description=open('README.rst').read(),
       url='https://github.com/muhrin/milad.git',
       author='Martin Uhrin',
@@ -23,19 +23,16 @@ setup(name='milad',
           'Programming Language :: Python :: 3.8',
       ],
       keywords='machine learning, atomic descriptor, moment invariants',
-      install_requires=[
-          'numpy',
-          'scipy'
-      ],
+      install_requires=['dscribe', 'matplotlib', 'numpy', 'scipy'],
       extras_require={
           'dev': [
               'ipython',
               'pip',
-              'pytest>4',
+              'pytest~=5.4',
               'pytest-cov',
-              'pre-commit',
+              'pre-commit~=2.2',
               'prospector',
-              'pylint',
+              'pylint==2.5.2',
               'twine',
               'yapf',
           ],
@@ -44,5 +41,6 @@ setup(name='milad',
       include_package_data=True,
       test_suite='test',
       entry_points={
-          'milad.plugins.types': ['milad_types = milad.provides:get_mince_types'],
+          'milad.plugins.types':
+          ['milad_types = milad.provides:get_mince_types'],
       })

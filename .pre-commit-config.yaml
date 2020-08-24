@@ -1,0 +1,37 @@
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v2.5.0
+    hooks:
+    -   id: double-quote-string-fixer
+    -   id: end-of-file-fixer
+    -   id: fix-encoding-pragma
+        exclude: &exclude_files >
+            (?x)^(
+                docs/.*|
+            )$
+    -   id: mixed-line-ending
+    -   id: trailing-whitespace
+
+-   repo: https://github.com/PyCQA/pylint
+    rev: pylint-2.5.2
+    hooks:
+    -   id: pylint
+        language: system
+        args: [
+            '--max-line-length=120',
+            '--disable=duplicate-code',
+            '--disable=import-outside-toplevel',
+            '--disable=missing-docstring',
+            '--disable=bad-continuation',
+            '--disable=locally-disabled',
+            '--disable=too-few-public-methods',
+            '--disable=too-many-arguments',
+            '--disable=too-many-instance-attributes',
+        ]
+        exclude: *exclude_files
+
+-   repo: https://github.com/pre-commit/mirrors-yapf
+    rev: v0.30.0
+    hooks:
+    -   id: yapf
+        types: [python]
