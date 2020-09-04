@@ -9,51 +9,33 @@ def test_multidim_norm_moments():
     sigma = 2.
     mass = 5.
 
-    moms = milad.moments.gaussian_moments(0,
-                                          numpy.zeros((3, 1)),
-                                          sigmas=sigma,
-                                          weight=mass)
+    moms = milad.moments.gaussian_moments(0, numpy.zeros((3, 1)), sigmas=sigma, weight=mass)
     expected = numpy.empty((3, 1))
     expected.fill(mass)
     assert pytest.approx((moms - expected).max(), 0)
 
     # Do the odds first
     for order in (1, 3, 5, 7):
-        moms = milad.moments.gaussian_moments(order,
-                                              numpy.zeros((3, 1)),
-                                              sigmas=sigma,
-                                              weight=mass)
+        moms = milad.moments.gaussian_moments(order, numpy.zeros((3, 1)), sigmas=sigma, weight=mass)
         expected = numpy.zeros((3, 1))
         assert pytest.approx((moms - expected).max(), 0)
 
-    moms = milad.moments.gaussian_moments(2,
-                                          numpy.zeros((3, 1)),
-                                          sigmas=sigma,
-                                          weight=mass)
+    moms = milad.moments.gaussian_moments(2, numpy.zeros((3, 1)), sigmas=sigma, weight=mass)
     expected = numpy.empty((3, 1))
     expected.fill(sigma**2)
     assert pytest.approx((moms - expected).max(), 0)
 
-    moms = milad.moments.gaussian_moments(4,
-                                          numpy.zeros((3, 1)),
-                                          sigmas=sigma,
-                                          weight=mass)
+    moms = milad.moments.gaussian_moments(4, numpy.zeros((3, 1)), sigmas=sigma, weight=mass)
     expected = numpy.empty((3, 1))
     expected.fill(3 * sigma**4)
     assert pytest.approx((moms - expected).max(), 0)
 
-    moms = milad.moments.gaussian_moments(6,
-                                          numpy.zeros((3, 1)),
-                                          sigmas=sigma,
-                                          weight=mass)
+    moms = milad.moments.gaussian_moments(6, numpy.zeros((3, 1)), sigmas=sigma, weight=mass)
     expected = numpy.empty((3, 1))
     expected.fill(15 * sigma**6)
     assert pytest.approx((moms - expected).max(), 0)
 
-    moms = milad.moments.gaussian_moments(8,
-                                          numpy.zeros((3, 1)),
-                                          sigmas=sigma,
-                                          weight=mass)
+    moms = milad.moments.gaussian_moments(8, numpy.zeros((3, 1)), sigmas=sigma, weight=mass)
     expected = numpy.empty((3, 1))
     expected.fill(105 * sigma**8)
     assert pytest.approx((moms - expected).max(), 0)
@@ -65,7 +47,7 @@ def test_moment_tensor3d():
     mass = 1.
     max_order = 4
 
-    tensor = milad.moments.calc_raw_moments3d(max_order, [pos], sigma, mass)
+    tensor = milad.moments.geometric_moments_of_gaussians(max_order, [pos], sigma, mass)
     assert tensor[0, 0, 0] == mass
 
     assert tensor[1, 0, 0] == pos[0]
@@ -83,9 +65,7 @@ def test_moment_tensor3d():
     for i in range(max_order + 1):
         for j in range(max_order + 1):
             for k in range(max_order + 1):
-                assert tensor[
-                    i, j,
-                    k] == tensor[i, 0, 0] * tensor[0, j, 0] * tensor[0, 0, k]
+                assert tensor[i, j, k] == tensor[i, 0, 0] * tensor[0, j, 0] * tensor[0, 0, k]
 
 
 def test_moments_symmetric():
@@ -95,8 +75,7 @@ def test_moments_symmetric():
     mass = 1.5
     max_order = 4
 
-    tensor = milad.moments.calc_raw_moments3d(max_order, positions, sigma,
-                                              mass)
+    tensor = milad.moments.geometric_moments_of_gaussians(max_order, positions, sigma, mass)
     assert tensor[0, 0, 0] == mass * len(positions)
     assert tensor[1, 0, 0] == 0.
     assert tensor[2, 0, 0] == 2 * mass * (x**2 + sigma**2)

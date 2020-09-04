@@ -4,5 +4,6 @@ from . import moments
 from . import utils
 from . import play
 from . import plot
+from .zernike import *
 
-__all__ = 'invariants', 'moments', 'utils', 'play', 'plot'
+__all__ = 'invariants', 'moments', 'utils', 'play', 'plot', zernike.__all__

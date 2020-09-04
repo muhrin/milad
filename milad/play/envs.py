@@ -7,9 +7,10 @@ import numpy
 
 import milad
 
-__all__ = ('CutoffFunction', 'Distribution', 'Gaussian3D',
-           'GaussianEnvironment', 'SmoothGaussianEnvironment', 'cos_cutoff',
-           'make_cutoff_params')
+__all__ = (
+    'CutoffFunction', 'Distribution', 'Gaussian3D', 'GaussianEnvironment', 'SmoothGaussianEnvironment', 'cos_cutoff',
+    'make_cutoff_params'
+)
 
 CutoffFunction = Callable[[float], float]
 
@@ -18,12 +19,8 @@ def cos_cutoff(cutoff: float, x: float):
     return 0.5 * (numpy.cos(numpy.pi * x / cutoff) + 1)
 
 
-def make_cutoff_params(cutoff_fn: Callable[[float, float], float],
-                       cutoff: float):
-    return {
-        'cutoff': cutoff,
-        'cutoff_function': functools.partial(cutoff_fn, cutoff)
-    }
+def make_cutoff_params(cutoff_fn: Callable[[float, float], float], cutoff: float):
+    return {'cutoff': cutoff, 'cutoff_function': functools.partial(cutoff_fn, cutoff)}
 
 
 def make_cutoff_function(name: str, cutoff: float = 6.):
@@ -34,15 +31,15 @@ def make_cutoff_function(name: str, cutoff: float = 6.):
 
 
 class Distribution(metaclass=abc.ABCMeta):
+
     @abc.abstractmethod
     def moment_tensor(self, max_order: int, normalise=False) -> numpy.array:
         """Calculate the moment tensor up to the given maximum order, optionally normalising.
         This will result in a numpy.array which has dimensions max_order * max_order * max_order"""
 
-    def calc_moment_invariants(self,
-                               invariants: Sequence[
-                                   milad.invariants.MomentInvariant],
-                               normalise=True) -> numpy.array:
+    def calc_moment_invariants(
+        self, invariants: Sequence[milad.invariants.MomentInvariant], normalise=True
+    ) -> numpy.array:
         """Given a sequence of invariants, calculate their values using the moments of this
         distribution"""
         # Figure out the maximum order of moment we will need for this set of invariants
@@ -51,28 +48,27 @@ class Distribution(metaclass=abc.ABCMeta):
             max_order = max(max_order, inv.max_order)
 
         raw_moments = self.moment_tensor(max_order, normalise)
-        return numpy.fromiter(
-            (invariant.apply(raw_moments, normalise=normalise)
-             for invariant in invariants),
-            dtype=numpy.float64)
+        return numpy.fromiter((invariant.apply(raw_moments, normalise=normalise) for invariant in invariants),
+                              dtype=numpy.float64)
 
 
 class Gaussian3D(Distribution):
     """A simple 3D gaussian"""
+
     def __init__(self, pos: numpy.array, sigma: float, volume=1.):
         self.pos = pos
         self.sigma = sigma
         self.volume = volume
 
     def moment_tensor(self, max_order: int, normalise=False) -> numpy.array:
-        return milad.moments.moment_tensor3d(max_order=max_order,
-                                             mu=self.pos,
-                                             sigma=self.sigma,
-                                             weight=self.volume)
+        return milad.moments.gaussian_geometric_moments(
+            max_order=max_order, mu=self.pos, sigma=self.sigma, weight=self.volume
+        )
 
 
 class GaussianEnvironment(Distribution):
     """An environment made up of Gaussians"""
+
     def __init__(self):
         self._gaussians: List[Gaussian3D] = []
 
@@ -90,10 +86,13 @@ class GaussianEnvironment(Distribution):
 class SmoothGaussianEnvironment(Distribution):
     """An environment with some spatial position and a cutoff sphere around it.  There can,
     optionally be a cutoff function applied"""
-    def __init__(self,
-                 pos: numpy.array = numpy.zeros(3),
-                 cutoff: float = 6.,
-                 cutoff_function: Union[CutoffFunction, str] = None):
+
+    def __init__(
+        self,
+        pos: numpy.array = numpy.zeros(3),
+        cutoff: float = 6.,
+        cutoff_function: Union[CutoffFunction, str] = None
+    ):
         self._pos = pos
         self._cutoff_sq = cutoff * cutoff
         if isinstance(cutoff_function, str):
@@ -102,10 +101,7 @@ class SmoothGaussianEnvironment(Distribution):
             self._cutoff_function = cutoff_function
         self._gaussians = GaussianEnvironment()
 
-    def add_gaussian(self,
-                     pos: numpy.array,
-                     sigma: float,
-                     weight=1.) -> Union[bool, float]:
+    def add_gaussian(self, pos: numpy.array, sigma: float, weight=1.) -> Union[bool, float]:
         dr = pos - self._pos
         dist_sq = numpy.square(dr).sum()
         if dist_sq > self._cutoff_sq:
@@ -117,10 +113,7 @@ class SmoothGaussianEnvironment(Distribution):
         self._gaussians.append(Gaussian3D(dr, sigma, weight))
         return weight
 
-    def add_gaussians(self,
-                      positions: numpy.array,
-                      sigma: float,
-                      mass=1.) -> Sequence[Union[bool, float]]:
+    def add_gaussians(self, positions: numpy.array, sigma: float, mass=1.) -> Sequence[Union[bool, float]]:
         results = []
         for position in positions:
             results.append(self.add_gaussian(position, sigma, mass))

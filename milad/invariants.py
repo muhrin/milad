@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """Module that is concerned with the calculation of moment invariants"""
 import ast
+import collections
 import pathlib
-from typing import Sequence, Union, List
+from typing import Sequence, Union, List, Set, Tuple, Dict, Iterator
 
 import numpy
 
@@ -24,50 +25,87 @@ def prod(iterable):
 
 
 class MomentInvariant:
-    """Class for calculating a moment invariant based"""
+    """Class storing moment invariants.
+
+    The invariants consist of a sum of terms where each term has a prefactor multiplied by a product
+    of moments labelled by three indices e.g. p * c_20^0 * c_20^0
+    """
+
     def __init__(self, weight):
         self._weight = weight
         self._terms = []
-        self._max_order = 0
+        self._max_order = -1
 
-        self._farray = None
-        self._indarray = None
+        self._farray = None  # The prefactors array
+        self._indarray = None  # The index array
         self._norm_power = None
+        self._derivatives = None  # A cache for the derivatives
+
+    def __str__(self):
+        sum_parts = []
+        for prefactor, product in self._terms:
+            powers = self._collect_powers(product)
+            product_parts = [str(prefactor)]
+            product_parts.extend(
+                "m{},{},{}^{}".format(indices[0], indices[1], indices[2], power)
+                for indices, power in powers.items())
+
+            string = " ".join(product_parts)
+            sum_parts.append(string)
+
+        return " + ".join(sum_parts)
 
     @property
     def weight(self):
+        """The number of terms in each product of the invariant.  This gives the units"""
         return self._weight
 
     @property
-    def terms(self):
+    def terms(self) -> List:
         return self._terms
 
     @property
     def max_order(self) -> int:
         return self._max_order
 
-    def insert(self, prefactor, indices: Sequence):
+    @property
+    def variables(self) -> Set[Tuple]:
+        """Get the indexes of all the unique moments used in this invariant e.g. if the invariant
+        was:
+
+            m_200 * m_200 * m_020 m_020 + m_002 m_002 + 2 m_110 m_110 + 2 m_101 m_101 + 2 m_011 m_011
+
+        then this function would return
+
+            {(2, 0, 0), (0, 2, 0), (0, 0, 2), (1, 1, 0), (1, 0, 0), (0, 1, 1)}
+
+        as these are the all the moments (or variables) involved in calculating this invariant
+        """
+        variables = set()
+        for _prefactor, product in self._terms:
+            for part in product:
+                variables.add(part)
+        return variables
+
+    def insert(self, prefactor, indices: Sequence[Tuple]):
         """
         :param prefactor: the prefactor for this term in the invariant
         :param indices: the indices of the moments involved in this invariant
         """
         if not all(len(entry) == 3 for entry in indices):
-            raise ValueError(
-                'There have to be three indices per entry, got: {}'.format(
-                    indices))
+            raise ValueError('There have to be three indices per entry, got: {}'.format(indices))
         self._terms.append((prefactor, tuple(indices)))
-        self._max_order = max(self._max_order, numpy.max(indices))
+        if indices:
+            self._max_order = max(self._max_order, numpy.max(indices))
 
     def build(self):
         factors, arr = zip(*self._terms)
-        # self._farray = numpy.array([term[0] for term in self._terms])
-        # self._indarray = numpy.array([term[1] for term in self._terms])
         self._farray = numpy.asarray(factors)
         self._indarray = numpy.asarray(arr)
         term = self._terms[0][1]
         self._norm_power = numpy.sum(term) / 3. + len(term)
 
-    def apply(self, raw_moments: numpy.ndarray, normalise=True) -> float:
+    def apply(self, raw_moments: numpy.ndarray, normalise=False) -> float:
         """Compute this invariant from the given moments optionally normalising"""
 
         if isinstance(raw_moments, numpy.ndarray):
@@ -75,9 +113,9 @@ class MomentInvariant:
             indices = self._indarray
             total = numpy.dot(
                 self._farray,
-                numpy.product(raw_moments[indices[:, :, 0], indices[:, :, 1],
-                                          indices[:, :, 2]],
-                              axis=1))
+                numpy.product(raw_moments[indices[:, :, 0], indices[:, :, 1], indices[:, :, 2]],
+                              axis=1)
+            )
         else:
             # This is slower version of above but compatible with moments that aren't numpy arrays
             total = 0.
@@ -88,13 +126,95 @@ class MomentInvariant:
                 total += factor * product
 
         if normalise:
-            return total / raw_moments[0, 0, 0]**self._norm_power
+            return total / raw_moments[0, 0, 0] ** self._norm_power
 
         return total
 
+    def derivatives(self) -> Dict[Tuple, 'MomentInvariant']:
+        """Get analytical derivatives for this invariant wrt each of its variables
 
-def apply_invariants(invariants: List[MomentInvariant],
-                     moms: numpy.array,
+        Returns a dictionary whose key is the variable (the index tuple) and the value the
+        corresponding MomentInvariant
+        """
+        if not self._derivatives:
+            # Have to calculate first time
+            deriv_terms = {}  # type: Dict[Tuple, MomentInvariant]
+            for prefactor, product in self._terms:
+                powers = collections.defaultdict(int)
+                for indices in product:
+                    powers[indices] += 1
+
+                # Now carry out the analytical derivative wrt each of our variables
+                for variable in self.variables:
+                    if variable not in powers:
+                        continue
+
+                    derivative = deriv_terms.setdefault(variable, MomentInvariant(self._weight - 1))
+                    new_product = []
+
+                    # Multiply the prefactor by the current power of the variable
+                    power = powers[variable]
+                    # Calculate the new prefactor
+                    new_prefactor = prefactor * power
+
+                    # And add in the correct multiple of this variable
+                    if power != 1:
+                        new_product.extend((variable,) * (power - 1))
+
+                    for var, power in powers.items():
+                        if var == variable:
+                            # Skip this, we've dealt with it above
+                            continue
+
+                        # The other terms keep their exponent unchanged
+                        new_product.extend((var,) * power)
+
+                    derivative.insert(new_prefactor, new_product)
+
+            for entry in deriv_terms.values():
+                entry.build()
+
+            self._derivatives = deriv_terms
+
+        return self._derivatives
+
+    @staticmethod
+    def _collect_powers(product: List[Tuple]) -> Dict[Tuple, int]:
+        powers = collections.defaultdict(int)
+        for indices in product:
+            powers[indices] += 1
+        return powers
+
+
+class MomentInvariants:
+    """A container for moment invariants"""
+
+    def __init__(self):
+        self._invariants = []
+        self._max_order = -1
+
+    def __len__(self):
+        return len(self._invariants)
+
+    def __iter__(self) -> Iterator[MomentInvariant]:
+        return self._invariants.__iter__()
+
+    @property
+    def max_order(self) -> int:
+        """Get the maximum order of all the invariants"""
+        return self._max_order
+
+    def apply(self, moms: numpy.array, normalise=False) -> numpy.array:
+        """Calculate the invariants from the given moments"""
+        return apply_invariants(self._invariants, moms, normalise=normalise)
+
+    def append(self, invariant: MomentInvariant):
+        """Add an invariant"""
+        self._invariants.append(invariant)
+        self._max_order = max(self._max_order, invariant.max_order)
+
+
+def apply_invariants(invariants: List[MomentInvariant], moms: numpy.array,
                      normalise=False) -> numpy.array:
     """Calculate the moment invariants for a given set of moments
 
@@ -102,14 +222,14 @@ def apply_invariants(invariants: List[MomentInvariant],
     :param moms: the moments to use
     :param normalise: if True fill normalise the moments using the 0th moment
     """
-    result = numpy.empty(len(invariants))
+    result = numpy.empty(len(invariants), dtype=moms.dtype)
     for idx, invariant in enumerate(invariants):
         result[idx] = invariant.apply(moms, normalise=normalise)
     return result
 
 
-def read_invariants(filename: str = GEOMETRIC_INVARIANTS,
-                    read_max: int = None) -> List[MomentInvariant]:
+def read_invariants(filename: str = GEOMETRIC_INVARIANTS, read_max: int = None) -> \
+        List[MomentInvariant]:
     """Read the Flusser, Suk and Zitová invariants.
 
     :param filename: the filename to read from, default to geometric moments invariants
@@ -135,8 +255,7 @@ def read_invariants(filename: str = GEOMETRIC_INVARIANTS,
 
                     indices = []
                     for idx in range(num_terms):
-                        indices.append(
-                            tuple(terms[idx * 3 + 1:(idx + 1) * 3 + 1]))
+                        indices.append(tuple(terms[idx * 3 + 1:(idx + 1) * 3 + 1]))
                     invariant.insert(prefactor, indices)
 
                     line = file.readline().rstrip()
@@ -149,11 +268,23 @@ def read_invariants(filename: str = GEOMETRIC_INVARIANTS,
     return invariants
 
 
-def calc_moment_invariants(invariants: Sequence[MomentInvariant],
-                           positions: numpy.array,
-                           sigma: Union[float, numpy.array] = 0.4,
-                           masses: Union[float, numpy.array] = 1.,
-                           normalise=False) -> Sequence[float]:
+def read(filename: str = GEOMETRIC_INVARIANTS, read_max: int = None, max_order=None) -> \
+        MomentInvariants:
+    """Read the invariants from file"""
+    invariants = MomentInvariants()
+    for inv in read_invariants(filename, read_max):
+        if max_order is None or inv.max_order <= max_order:
+            invariants.append(inv)
+    return invariants
+
+
+def calc_moment_invariants(
+        invariants: Sequence[MomentInvariant],
+        positions: numpy.array,
+        sigma: Union[float, numpy.array] = 0.4,
+        masses: Union[float, numpy.array] = 1.,
+        normalise=False
+) -> Sequence[float]:
     """Calculate the moment invariants for a set of Gaussians at the given positions."""
     max_order = 0
 
@@ -161,7 +292,5 @@ def calc_moment_invariants(invariants: Sequence[MomentInvariant],
     for inv in invariants:
         max_order = max(max_order, inv.max_order)
 
-    raw_moments = moments.calc_raw_moments3d(max_order, positions, sigma,
-                                             masses)
-    return tuple(
-        invariant.apply(raw_moments, normalise) for invariant in invariants)
+    raw_moments = moments.geometric_moments_of_gaussians(max_order, positions, sigma, masses)
+    return tuple(invariant.apply(raw_moments, normalise) for invariant in invariants)

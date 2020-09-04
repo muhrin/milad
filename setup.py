@@ -23,7 +23,7 @@ setup(name='milad',
           'Programming Language :: Python :: 3.8',
       ],
       keywords='machine learning, atomic descriptor, moment invariants',
-      install_requires=['dscribe', 'matplotlib', 'numpy', 'scipy'],
+      install_requires=['dscribe', 'matplotlib', 'numpy', 'plotly', 'scipy'],
       extras_require={
           'dev': [
               'ipython',

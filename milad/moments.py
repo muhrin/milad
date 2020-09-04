@@ -4,13 +4,16 @@ from typing import Union
 
 import numpy
 
-__all__ = 'moment_tensor3d', 'calc_raw_moments3d'
+__all__ = 'gaussian_geometric_moments', 'geometric_moments_of_gaussians', \
+          'geometric_moments_of_deltas'
 
 
-def gaussian_moments(order: int,
-                     mu: Union[numbers.Number, numpy.array],
-                     sigmas: Union[numbers.Number, numpy.array] = 0.4,
-                     weight: numbers.Number = 1.) -> numbers.Number:
+def gaussian_moments(
+    order: int,
+    mu: Union[numbers.Number, numpy.array],
+    sigmas: Union[numbers.Number, numpy.array] = 0.4,
+    weight: numbers.Number = 1.
+) -> numbers.Number:
     """Get the nt^h moment of a n-dim Gaussian (or normal distribution) centred at `mu`
     with a standard deviation of `sigma`.
 
@@ -28,9 +31,7 @@ def gaussian_moments(order: int,
         moment be definition
     """
     if order > 16:
-        raise NotImplementedError(
-            "Asked for order '{}', only up to order 16 implemented!".format(
-                order))
+        raise NotImplementedError("Asked for order '{}', only up to order 16 implemented!".format(order))
 
     mu = numpy.array(mu)
     shape = mu.shape[0]
@@ -138,10 +139,13 @@ def gaussian_moments(order: int,
     return weight * mom
 
 
-def moment_tensor3d(max_order: int, mu: numpy.array, sigma: numbers.Number,
-                    weight: numbers.Number) -> numpy.array:
+def gaussian_geometric_moments(
+    max_order: int, mu: numpy.array, sigma: numbers.Number, weight: numbers.Number
+) -> numpy.array:
     """
-    :param mu: the position of the normal distribution
+    Get the geometric moments for a 3D Gaussian
+
+    :param mu: the position of the Gaussian distribution
     :param sigma: the standard deviation (scalar - same in all directions)
     :param max_order: the maximum order to calculate moments for
     :param weight: the total mass of the Gaussian (or equivalently total probability)
@@ -156,28 +160,32 @@ def moment_tensor3d(max_order: int, mu: numpy.array, sigma: numbers.Number,
         # Use weight 1 for now and then multiply later
         moments[:, order] = gaussian_moments(order, mu, sigma, weight=1.0)
 
-    mom_tensor = numpy.empty((ubound, ) * 3)
-    for i in range(ubound):
-        for j in range(ubound):
-            for k in range(ubound):
-                mom_tensor[i, j,
-                           k] = moments[0, i] * moments[1, j] * moments[2, k]
+    moments_3d = numpy.empty((ubound,) * 3)
+    # pylint: disable=invalid-name
 
-    mom_tensor *= weight
-    return mom_tensor
+    for p in range(ubound):
+        for q in range(ubound):
+            for r in range(ubound):
+                moments_3d[p, q, r] = moments[0, p] * moments[1, q] * moments[2, r]
+
+    moments_3d *= weight  # todo: why are the weights here?  Shouldn't they be in 'moments'?
+    return moments_3d
 
 
-def calc_raw_moments3d(max_order: int,
-                       positions: numpy.array,
-                       sigmas: Union[numbers.Number, numpy.array] = 0.4,
-                       weights: Union[numbers.Number, numpy.array] = 1.):
-    """Calculate the raw moments tensor for a collection of Gaussians at the given positions with
+def geometric_moments_of_gaussians(
+    max_order: int,
+    positions: numpy.ndarray,
+    sigmas: Union[numbers.Number, numpy.array] = 0.4,
+    weights: Union[numbers.Number, numpy.array] = 1.
+) -> numpy.ndarray:
+    """Calculate the geometric moments for a collection of Gaussians at the given positions with
     the passed parameters.
 
     :param positions: the positions of the Gaussians
     :param sigmas: the standard deviations
     :param max_order: the maximum order to calculate moments up to
     :param weights: the masses of the Gaussians (or probabilities)
+    :return: a max_order * max_order * max_order array of moments
     """
     positions = numpy.array(positions)
     shape = positions.shape[0]
@@ -186,9 +194,54 @@ def calc_raw_moments3d(max_order: int,
 
     moments = numpy.zeros((max_order + 1, max_order + 1, max_order + 1))
     for pos, sigma, weight in zip(positions, sigmas, weights):
-        moments += moment_tensor3d(max_order, pos, sigma, weight)
+        moments += gaussian_geometric_moments(max_order, pos, sigma, weight)
 
     return moments
+
+
+def geometric_moments_of_deltas(
+    max_order: int, positions: numpy.array, weights: Union[numbers.Number, numpy.array] = 1.
+) -> numpy.array:
+    """
+    Calculate the geometric moments for a collection of delta functions at the given positions with
+    the given weights.
+
+    :param max_order: the maximum order to calculate moments up to
+    :param positions: the positions of the delta functions
+    :param weights: the weights of the delta functions
+    :return: a max_order * max_order * max_order array of moments
+    """
+    positions = numpy.array(positions)
+    shape = positions.shape[0]
+    weights = _to_array(weights, shape)
+    ubound = max_order + 1  # Calculate to max order (inclusive)
+
+    # pylint: disable=invalid-name
+
+    moments = numpy.zeros((ubound, ubound, ubound))
+    for pos, weight in zip(positions, weights):
+        moms = numpy.empty((ubound, 3))
+        moms[0] = 1.
+
+        for power in range(1, ubound):
+            moms[power] = numpy.multiply(moms[power - 1, :], pos)
+
+        moments += weight * numpy.tensordot(
+            numpy.tensordot(moms[:, 0], moms[:, 1], axes=0), moms[:, 2], axes=0)
+
+    return moments
+
+
+
+def value_at(geom_moments, x: numpy.array, n_max: int = None) -> float:
+
+    shape = geom_moments.shape
+    value = 0.
+    for p in range(shape[0]):
+        for q in range(shape[1]):
+            for r in range(shape[2]):
+                value += geom_moments[p, q, r] * (x ** (p, q, r)).prod(axis=-1)
+    return value
 
 
 def _to_array(value: Union[numbers.Number, numpy.array], shape):
