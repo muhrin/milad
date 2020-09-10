@@ -3,6 +3,11 @@ import numpy
 import pytest
 
 import milad
+from milad import generate
+from milad import moments
+from milad import utils
+
+# pylint: disable=invalid-name
 
 
 def test_multidim_norm_moments():
@@ -75,7 +80,28 @@ def test_moments_symmetric():
     mass = 1.5
     max_order = 4
 
-    tensor = milad.moments.geometric_moments_of_gaussians(max_order, positions, sigma, mass)
+    tensor = moments.geometric_moments_of_gaussians(max_order, positions, sigma, mass)
     assert tensor[0, 0, 0] == mass * len(positions)
     assert tensor[1, 0, 0] == 0.
     assert tensor[2, 0, 0] == 2 * mass * (x**2 + sigma**2)
+
+
+def test_geom_moments_of_deltas():
+    num_points = 4
+    positions = generate.random_points_in_sphere(num_points, radius=.7)
+    weights = numpy.random.rand(num_points)
+    max_order = 11
+
+    # Manually calculate the moments
+    moms = numpy.zeros((max_order + 1, max_order + 1, max_order + 1))
+    for p in utils.from_to(max_order):
+        for q in utils.from_to(max_order):
+            for r in utils.from_to(max_order):
+                for pos, weight in zip(positions, weights):
+                    moms[p, q, r] += weight * (pos**(p, q, r)).prod(axis=-1)
+
+    calculated = moments.geometric_moments_of_deltas(max_order, positions, weights=weights)
+    numpy.testing.assert_array_almost_equal(moms, calculated)
+
+    # The 0^th moment should always be the sum of the weights
+    assert calculated[0, 0, 0] == weights.sum()

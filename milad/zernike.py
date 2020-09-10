@@ -23,9 +23,18 @@ _LOGGER = logging.getLogger(__name__)
 __all__ = ('ZernikeMoments', 'from_deltas', 'from_gaussians')
 
 
-def from_deltas(order: int, positions: numpy.array,
-                weights: Union[numbers.Number, numpy.array] = 1.
-                ) -> 'ZernikeMoments':
+def _domain_check(positions: numpy.array):
+    for idx, pos in enumerate(positions):
+        if numpy.dot(pos, pos) > 1.:
+            _LOGGER.warning(
+                'Delta function %i is outside of the domain of Zernike basis functions '
+                'with are defined within the unit ball', idx
+            )
+
+
+def from_deltas(
+    order: int, positions: numpy.array, weights: Union[numbers.Number, numpy.array] = 1.
+) -> 'ZernikeMoments':
     """Create a set of Zernike moments from a collection of delta functions with optional weights
 
     :param order: the order of Zernike moments to calculate to
@@ -33,15 +42,17 @@ def from_deltas(order: int, positions: numpy.array,
     :param weights: the weights of the delta functions, can be a scalar or numpy.array of the same
         length as positions
     """
+    _domain_check(positions)
     geom_moments = moments.geometric_moments_of_deltas(16, positions, weights)
     return from_geometric_moments(order, geom_moments)
 
 
-def from_gaussians(order: int,
-                   positions: numpy.ndarray,
-                   sigmas: Union[numbers.Number, numpy.array] = 0.1,
-                   weights: Union[numbers.Number, numpy.array] = 0.1
-                   ) -> 'ZernikeMoments':
+def from_gaussians(
+    order: int,
+    positions: numpy.ndarray,
+    sigmas: Union[numbers.Number, numpy.array] = 0.1,
+    weights: Union[numbers.Number, numpy.array] = 0.1
+) -> 'ZernikeMoments':
     """Create a set of Zernike moments from a collection of Gaussian functions with the given sigmas
     and weights
 
@@ -52,6 +63,7 @@ def from_gaussians(order: int,
     :param weights: the weights of the delta functions, can be a scalar or numpy.array of the same
         length as positions
     """
+    _domain_check(positions)
     geom_moments = moments.geometric_moments_of_gaussians(16, positions, sigmas, weights)
     return from_geometric_moments(order, geom_moments)
 
@@ -107,7 +119,7 @@ class ZernikeMoments:
                         return n, l, m
                     counted += 1
 
-        raise RuntimeError("Index too high: {}".format(lexicographic_index))
+        raise RuntimeError('Index too high: {}'.format(lexicographic_index))
 
     @classmethod
     def from_vector(cls, n_max: int, vec: numpy.array) -> 'ZernikeMoments':
@@ -162,7 +174,7 @@ class ZernikeMoments:
 
         if m < 0:
             m = -m
-            value = (-1) ** m * value.conjugate()
+            value = (-1)**m * value.conjugate()
         self._moments[n, l, m] = value
 
     def iter_indices(self, redundant=False):
@@ -184,7 +196,7 @@ class ZernikeMoments:
         m_prime = abs(m)
         omega = self._moments[n, l, m_prime]
         if m < 0:
-            omega = (-1) ** m_prime * omega.conjugate()
+            omega = (-1)**m_prime * omega.conjugate()
         return omega
 
     def value_at(self, x: numpy.array, order: int = None) -> float:
@@ -212,13 +224,14 @@ class ZernikeMoments:
 
             if m != 0:
                 # Now do the symmetric -m part
-                z_conj = (-1) ** m * z.conjugate()
+                z_conj = (-1)**m * z.conjugate()
                 value += z_conj * self.moment(n, l, -m)
 
         return value.real
 
 
 class SphericalInvariantsFunction:
+
     def __init__(self, invs: List[invariants.MomentInvariant]):
         self._invariants = invs
         self._max_n = max(inv.max_order for inv in invs)
@@ -242,9 +255,10 @@ from sympy.core import symbol
 
 
 class SymbolicInvariants:
+
     def __init__(self, n_max):
         self._n_max = n_max
-        self._c = symbol.symbols(f"c:{ZernikeMoments.num_coeffs(n_max)}")
+        self._c = symbol.symbols(f'c:{ZernikeMoments.num_coeffs(n_max)}')
 
     def symbols(self):
         return self._c
@@ -261,7 +275,7 @@ class SymbolicInvariants:
                     if n == target_n and l == target_l and m == abs(target_m):
                         value = self._c[count]
                         if target_m < 0:
-                            value = (-1) ** m * value.conjugate()
+                            value = (-1)**m * value.conjugate()
                         return value
                     count += 1
 
@@ -272,8 +286,8 @@ class SymbolicInvariants:
 
 
 class Residuals:
-    def __init__(self, order: int, invs: invariants.MomentInvariants,
-                 fixed: Mapping[Tuple, Any] = None):
+
+    def __init__(self, order: int, invs: invariants.MomentInvariants, fixed: Mapping[Tuple, Any] = None):
         self._order = order
         self._invariants = invs
         self._fixed_values = []
@@ -282,16 +296,16 @@ class Residuals:
             for (l, n, m), value in fixed.items():
                 idx, conjugate = ZernikeMoments.lexicographic_index(l, n, m)
                 if conjugate:
-                    value = (-1) ** (-m) * value.conjugate()
+                    value = (-1)**(-m) * value.conjugate()
                 self._fixed_values.append((idx, value))
                 self._fixed_values.sort(key=operator.itemgetter(0))
 
         self._num_coeffs = ZernikeMoments.num_coeffs(self._order) - len(self._fixed_values)
         self._index_mapping = self._get_index_mapping()
 
-        print("Looking for:")
+        print('Looking for:')
         for indices in self._index_mapping.values():
-            print("o{}".format(indices))
+            print('o{}'.format(indices))
 
     @property
     def vector_length(self) -> int:
@@ -316,6 +330,8 @@ class Residuals:
         model = self._invariants.apply(predicted_moms, normalise=False)
 
         diff = (data - model)
+        print(np.abs(diff.imag).max())
+
         diff = mathutil.to_real(diff)
 
         return diff / epsilon
@@ -386,7 +402,7 @@ def c_l_m(l: int, m: int) -> float:
         # make use of symmetry c_l^m == c_l^-m
         return c_l_m(l, -m)
 
-    return ((2 * l + 1) * factorial(l + m) * factorial(l - m)) ** 0.5 / factorial(l)
+    return ((2 * l + 1) * factorial(l + m) * factorial(l - m))**0.5 / factorial(l)
 
 
 @functools.lru_cache(maxsize=None)
@@ -402,7 +418,7 @@ def q_kl_nu(k: int, l: int, nu: int) -> float:
 
 def sum_chi_nlm(n: int, l: int, m: int, geom_moments: numpy.ndarray) -> Union[complex, numpy.array]:
     """Calculate the Zernike geometric moment conversion factors"""
-    return c_l_m(l, m) * 2 ** (-m) * sum1(n=n, l=l, m=m, geom_moments=geom_moments)
+    return c_l_m(l, m) * 2**(-m) * sum1(n=n, l=l, m=m, geom_moments=geom_moments)
 
 
 def sum1(n: int, l: int, m: int, geom_moments: numpy.ndarray) -> Union[complex, numpy.array]:
@@ -415,8 +431,7 @@ def sum1(n: int, l: int, m: int, geom_moments: numpy.ndarray) -> Union[complex, 
     return total
 
 
-def sum2(n: int, l: int, m: int, nu: int, geom_moments: numpy.ndarray) -> Union[
-    complex, numpy.array]:
+def sum2(n: int, l: int, m: int, nu: int, geom_moments: numpy.ndarray) -> Union[complex, numpy.array]:
     total = 0.
     for alpha in from_to(nu):
         total += binomial_coeff(nu, alpha) * \
@@ -424,8 +439,7 @@ def sum2(n: int, l: int, m: int, nu: int, geom_moments: numpy.ndarray) -> Union[
     return total
 
 
-def sum3(n: int, l: int, m: int, nu: int, alpha: int, geom_moments: numpy.ndarray) -> Union[
-    complex, numpy.array]:
+def sum3(n: int, l: int, m: int, nu: int, alpha: int, geom_moments: numpy.ndarray) -> Union[complex, numpy.array]:
     total = 0.
     for beta in from_to(nu - alpha):
         total += binomial_coeff(nu - alpha, beta) * \

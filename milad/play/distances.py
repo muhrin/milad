@@ -3,19 +3,21 @@ import math
 import numpy as np
 
 
-def get_num_plane_repetitions_to_bound_sphere(radius: float, volume: float,
-                                              cross_len: float) -> float:
+def get_num_plane_repetitions_to_bound_sphere(radius: float, volume: float, cross_len: float) -> float:
     # The vector normal to the plane
     return radius / volume * cross_len
 
 
 class AperiodicDistanceCalculator:
-    def get_vecs_between(self,
-                         a: np.array,
-                         b: np.array,
-                         cutoff: float,
-                         max_cell_multiples: int = 100000,
-                         self_interation=True) -> np.array:
+
+    def get_vecs_between(
+        self,
+        a: np.array,
+        b: np.array,
+        cutoff: float,
+        max_cell_multiples: int = 100000,
+        self_interation=True
+    ) -> np.array:  # pylint: disable=invalid-name
         dr = b - a
         cutoff_sq = cutoff * cutoff
 
@@ -28,7 +30,9 @@ class AperiodicDistanceCalculator:
 
 
 class UnitCellDistanceCalculator:
+
     def __init__(self, unit_cell: np.array):
+        # Precompute some useful values
         self._cell = unit_cell
         self._a = self._cell[0]
         self._b = self._cell[1]
@@ -48,37 +52,52 @@ class UnitCellDistanceCalculator:
         self._a_cross_c_hat = self._a_cross_c / self._a_cross_c_len
 
     def get_num_plane_repetitions_to_bound_sphere_planes(
-            self, plane_vec1: np.array, plane_vec2: np.array,
-            radius: float) -> float:
+        self, plane_vec1: np.array, plane_vec2: np.array, radius: float
+    ) -> float:
         # The vector normal to the plane
         normal = np.cross(plane_vec1, plane_vec2)
         vol = self._volume  # = a . |b x c|
         return radius / vol * np.linalg.norm(normal)
 
-    def get_vecs_between(self,
-                         a: np.array,
-                         b: np.array,
-                         cutoff: float,
-                         max_cell_multiples: int = 100000,
-                         self_interation=True) -> np.array:
+    def get_vecs_between(
+        self,
+        a: np.array,
+        b: np.array,
+        cutoff: float,
+        max_cell_multiples: int = 100000,
+        self_interation=True
+    ) -> np.array:  # pylint: disable=invalid-name
+        """
+        Get all vectors from a to b that are less than the cutoff in length
+
+        :param a:
+        :param b:
+        :param cutoff:
+        :param max_cell_multiples:
+        :param self_interation:
+        :return:
+        """
         vol = self._volume
         # TODO: Wrap a, and b into the current unit cell
         dr = b - a
 
         a_max = math.floor(
             get_num_plane_repetitions_to_bound_sphere(
-                cutoff + math.fabs(np.dot(dr, self._b_cross_c_hat)), vol,
-                self._b_cross_c_len))
+                cutoff + math.fabs(np.dot(dr, self._b_cross_c_hat)), vol, self._b_cross_c_len
+            )
+        )
 
         b_max = math.floor(
             get_num_plane_repetitions_to_bound_sphere(
-                cutoff + math.fabs(np.dot(dr, self._a_cross_c_hat)), vol,
-                self._a_cross_c_len))
+                cutoff + math.fabs(np.dot(dr, self._a_cross_c_hat)), vol, self._a_cross_c_len
+            )
+        )
 
         c_max = math.floor(
             get_num_plane_repetitions_to_bound_sphere(
-                cutoff + math.fabs(np.dot(dr, self._a_cross_b_hat)), vol,
-                self._a_cross_b_len))
+                cutoff + math.fabs(np.dot(dr, self._a_cross_b_hat)), vol, self._a_cross_b_len
+            )
+        )
 
         a_max = min(a_max, max_cell_multiples)
         b_max = min(b_max, max_cell_multiples)
