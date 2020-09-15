@@ -2,7 +2,7 @@
 import numpy as np
 
 import milad
-from milad import moments
+from milad import geometric
 from milad import zernike
 from milad import invariants
 from milad import generate
@@ -57,13 +57,13 @@ def test_zernike_of_gaussians(complex_invariants):
     mass = 1.
     max_order = 10
 
-    geom_moments = moments.geometric_moments_of_gaussians(max_order, positions, sigma, mass)
+    geom_moments = geometric.from_gaussians(max_order, positions, sigma, mass)
     zmoments = zernike.from_geometric_moments(max_order, geom_moments)
     invs_one = invariants.apply_invariants(complex_invariants, zmoments)
 
     # Now rotate the system randomly and recalculate the invariants
     rotated = transform.randomly_rotate(positions)
-    rot_geom_moments = moments.geometric_moments_of_gaussians(max_order, rotated, sigma, mass)
+    rot_geom_moments = geometric.from_gaussians(max_order, rotated, sigma, mass)
     rot_zmoments = zernike.from_geometric_moments(max_order, rot_geom_moments)
     invs_two = invariants.apply_invariants(complex_invariants, rot_zmoments)
 
@@ -77,7 +77,7 @@ def test_zernike_properties():
     weights = np.random.rand(num_particles)
     max_order = 10
 
-    geom_moments = moments.geometric_moments_of_gaussians(max_order, positions, sigmas=sigmas, weights=weights)
+    geom_moments = geometric.from_gaussians(max_order, positions, sigmas=sigmas, weights=weights)
     assert geom_moments[0, 0, 0] == weights.sum()
 
     moms = zernike.from_geometric_moments(max_order, geom_moments)

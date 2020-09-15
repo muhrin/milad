@@ -6,6 +6,7 @@ from typing import List, Callable, Union, Sequence
 import numpy
 
 import milad
+from milad import geometric
 
 __all__ = (
     'CutoffFunction', 'Distribution', 'Gaussian3D', 'GaussianEnvironment', 'SmoothGaussianEnvironment', 'cos_cutoff',
@@ -61,7 +62,7 @@ class Gaussian3D(Distribution):
         self.volume = volume
 
     def moment_tensor(self, max_order: int, normalise=False) -> numpy.array:
-        return milad.moments.gaussian_geometric_moments(
+        return geometric.gaussian_geometric_moments(
             max_order=max_order, mu=self.pos, sigma=self.sigma, weight=self.volume
         )
 

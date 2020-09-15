@@ -78,7 +78,7 @@ def test_moments_calculator():
 
     # Get the environments
     envs = list(milad.play.ase.extract_environments(molecule, cutoff=4.))
-    calculator = milad.play.ase.MomentsCalculator(milad.zernike.from_deltas, order=7)
+    calculator = milad.play.ase.MomentsCalculator(milad.zernike.from_deltas, max_order=7)
 
     for env in envs:
         moments = calculator.calculate_moments(env)

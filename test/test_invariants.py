@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
+import random
+
 import matplotlib.pyplot as plt
 import numpy as np
+import sympy
 
 import milad
 
@@ -16,12 +19,9 @@ def test_invariant_single_mass(moment_invariants, request):
     for i in range(num_masses):
         mass = 0. + (0.1 * i)
 
-        invariants = milad.invariants.calc_moment_invariants(
-            moment_invariants[:num_invariants], origin, 0.4, mass)
+        invariants = milad.invariants.calc_moment_invariants(moment_invariants[:num_invariants], origin, 0.4, mass)
 
-        milad.plot.plot_invariants(invariants,
-                                   axes,
-                                   label='mass={}'.format(mass))
+        milad.plot.plot_invariants(invariants, axes, label='mass={}'.format(mass))
 
     fig.legend()
     fig.savefig('{}.pdf'.format(request.node.name))
@@ -39,10 +39,8 @@ def test_invariant_two_weights(moment_invariants, request):
         mass = 0. + (0.1 * i)
 
         invariants = milad.invariants.calc_moment_invariants(
-            moment_invariants[:num_invariants],
-            positions,
-            0.4, (1., mass),
-            normalise=True)
+            moment_invariants[:num_invariants], positions, 0.4, (1., mass), normalise=True
+        )
 
         milad.plot.plot_invariants(invariants, axes, label=f'$w={mass:.1f}$')
 
@@ -50,3 +48,19 @@ def test_invariant_two_weights(moment_invariants, request):
     axes.set_title('Varying mass')
     fig.legend()
     fig.savefig('{}.pdf'.format(request.node.name))
+
+
+def test_invariant_derivative(moment_invariants):
+    # Take a random invariant and make sure that derivatives are getting calculated accurately
+    invariant = random.choice(moment_invariants)
+
+    m = sympy.IndexedBase('m')  # Symbols for moments
+    phi = invariant.apply(m)  # Analytic expression for moments
+    derivatives = invariant.derivatives()
+
+    for indices, entry in derivatives.items():
+        dm = m[indices]
+        dphi_dm_analytic = phi.diff(dm)
+        dphi_dm_calculated = entry.apply(m)
+
+        assert dphi_dm_calculated == dphi_dm_analytic

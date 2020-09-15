@@ -331,14 +331,14 @@ class MomentsCalculator:
     def __init__(
         self,
         calculator: Callable,
-        order: int = 7,
+        max_order: int = 7,
         weights: Union[Dict, float] = 1.,
         sigmas: Union[Dict, float] = None,
         scale_to_sphere: float = None,
     ):
 
         self._calculator = calculator
-        self._order = order
+        self._order = max_order
         self._weights = weights
         self._sigmas = sigmas
         self._scale_to_sphere = scale_to_sphere
@@ -350,7 +350,7 @@ class MomentsCalculator:
             scale = self._scale_to_sphere / max_r_sq**0.5
             positions = scale * positions
 
-        params = dict(order=self._order, positions=positions)
+        params = dict(max_order=self._order, positions=positions)
 
         symbols = environment.symbols
         if isinstance(self._weights, float):

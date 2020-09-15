@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+"""Module for calculating Zernike moments"""
+
 import logging
 import itertools
 import numbers
@@ -11,8 +13,9 @@ import numpy as np
 import scipy
 import scipy.special
 
+from . import base_moments
+from . import geometric
 from . import mathutil
-from . import moments
 from . import invariants
 from .utils import even, from_to
 
@@ -23,32 +26,23 @@ _LOGGER = logging.getLogger(__name__)
 __all__ = ('ZernikeMoments', 'from_deltas', 'from_gaussians')
 
 
-def _domain_check(positions: numpy.array):
-    for idx, pos in enumerate(positions):
-        if numpy.dot(pos, pos) > 1.:
-            _LOGGER.warning(
-                'Delta function %i is outside of the domain of Zernike basis functions '
-                'with are defined within the unit ball', idx
-            )
-
-
 def from_deltas(
-    order: int, positions: numpy.array, weights: Union[numbers.Number, numpy.array] = 1.
+    max_order: int, positions: numpy.array, weights: Union[numbers.Number, numpy.array] = 1.
 ) -> 'ZernikeMoments':
     """Create a set of Zernike moments from a collection of delta functions with optional weights
 
-    :param order: the order of Zernike moments to calculate to
+    :param max_order: the order of Zernike moments to calculate to
     :param positions: the Cartesian positions of the delta functions
     :param weights: the weights of the delta functions, can be a scalar or numpy.array of the same
         length as positions
     """
     _domain_check(positions)
-    geom_moments = moments.geometric_moments_of_deltas(16, positions, weights)
-    return from_geometric_moments(order, geom_moments)
+    geom_moments = geometric.from_deltas(16, positions, weights)
+    return from_geometric_moments(max_order, geom_moments)
 
 
 def from_gaussians(
-    order: int,
+    max_order: int,
     positions: numpy.ndarray,
     sigmas: Union[numbers.Number, numpy.array] = 0.1,
     weights: Union[numbers.Number, numpy.array] = 0.1
@@ -56,7 +50,7 @@ def from_gaussians(
     """Create a set of Zernike moments from a collection of Gaussian functions with the given sigmas
     and weights
 
-    :param order: the order of Zernike moments to calculate to
+    :param max_order: the order of Zernike moments to calculate to
     :param positions: the Cartesian positions of the delta functions
     :param sigmas: the sigmas of the Gaussians, can be a scalar or numpy.array of the same length
         as positions
@@ -64,8 +58,8 @@ def from_gaussians(
         length as positions
     """
     _domain_check(positions)
-    geom_moments = moments.geometric_moments_of_gaussians(16, positions, sigmas, weights)
-    return from_geometric_moments(order, geom_moments)
+    geom_moments = geometric.from_gaussians(16, positions, sigmas, weights)
+    return from_geometric_moments(max_order, geom_moments)
 
 
 def from_geometric_moments(order: int, geom_moments: numpy.array) -> 'ZernikeMoments':
@@ -83,7 +77,7 @@ def from_geometric_moments(order: int, geom_moments: numpy.array) -> 'ZernikeMom
     return ZernikeMoments(order, omega)
 
 
-class ZernikeMoments:
+class ZernikeMoments(base_moments.Moments):
     """A container class for calculated Zernike moments"""
 
     @staticmethod
@@ -184,6 +178,9 @@ class ZernikeMoments:
         """Return this set of moments as a vector"""
         return numpy.array([self[indices] for indices in self.iter_indices(redundant)])
 
+    def to_matrix(self) -> np.array:
+        raise AttributeError('Zernike moments cannot be converted to a matrix as the orders use negative indexing')
+
     @staticmethod
     def num_coeffs(order: int, redundant=False) -> int:
         """Get the total number of terms for Zernike coefficients up to the given order
@@ -208,12 +205,12 @@ class ZernikeMoments:
         order = order or self._max_n
 
         if len(x.shape) == 2:
-            moms = [moments.geometric_moments_of_deltas(self._max_n, [pt]) for pt in x]
+            moms = [geometric.from_deltas(self._max_n, [pt]).to_matrix() for pt in x]
             query = numpy.empty(list(moms[0].shape) + [len(moms)])
             for idx, entry in enumerate(moms):
                 query[:, :, :, idx] = entry
         else:
-            query = moments.geometric_moments_of_deltas(self._max_n, [x])
+            query = geometric.from_deltas(self._max_n, [x])
 
         value = 0.0
 
@@ -520,3 +517,14 @@ def iter_indices(order: int = None, redundant=False) -> Iterator[Tuple]:
             m_start = -l if redundant else 0
             for m in from_to(m_start, l):
                 yield n, l, m
+
+
+def _domain_check(positions: numpy.array):
+    """Check that a given set of positions are within the domain for which Zernike moments are
+    defined i.e. that |r| <= 1."""
+    for idx, pos in enumerate(positions):
+        if numpy.dot(pos, pos) > 1.:
+            _LOGGER.warning(
+                'Delta function %i is outside of the domain of Zernike basis functions '
+                'with are defined within the unit ball', idx
+            )
