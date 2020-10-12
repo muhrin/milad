@@ -9,6 +9,7 @@ import sympy
 
 from . import base_moments
 from . import generate
+from . import utils
 
 __all__ = 'gaussian_geometric_moments', 'from_gaussians', 'from_deltas'
 
@@ -17,7 +18,7 @@ class GeometricMoments(base_moments.Moments):
 
     @classmethod
     def empty(cls, max_order: int):
-        return GeometricMoments(np.array(max_order + 1, max_order + 1, max_order + 1))
+        return GeometricMoments(np.zeros(max_order + 1, max_order + 1, max_order + 1))
 
     def __init__(self, moments: np.array):
         self._moments = moments
@@ -85,7 +86,8 @@ def from_deltas(
     positions: np.array,
     weights: Union[numbers.Number, np.array] = 1.,
     out_moments=None,
-    get_derivatives=False
+    pos_derivatives: np.array = None,
+    weight_derivatives: np.array = None,
 ) -> Union[GeometricMoments, np.array]:
     """
     Calculate the geometric moments for a collection of delta functions at the given positions with
@@ -94,8 +96,6 @@ def from_deltas(
     :param max_order: the maximum order to calculate moments up to
     :param positions: the positions of the delta functions
     :param weights: the weights of the delta functions
-    :param get_derivatives: if True will return the derivatives of the moments for each delta
-        function
     :return: a max_order * max_order * max_order array of moments
     """
     try:
@@ -117,11 +117,16 @@ def from_deltas(
 
     num_points = positions.shape[0]
     weights = _to_array(weights, num_points)
-    pos_derivatives = None
-    weight_derivatives = None
-    if get_derivatives:
-        pos_derivatives = np.zeros((num_points, 3, ubound, ubound, ubound), dtype=dtype)
-        weight_derivatives = np.empty((num_points, ubound, ubound, ubound), dtype=dtype)
+
+    if pos_derivatives is not None:
+        expected_shape = (ubound, ubound, ubound, num_points, 3)
+        if pos_derivatives.shape != expected_shape:
+            raise ValueError("Positional derivatives have the wrong shape, should be '{}'".format(expected_shape))
+
+    if weight_derivatives is not None:
+        expected_shape = (ubound, ubound, ubound, num_points)
+        if weight_derivatives.shape != expected_shape:
+            raise ValueError("Weight derivatives have the wrong shape, should be '{}'".format(expected_shape))
 
     # pylint: disable=invalid-name
     out_moments.fill(0.)
@@ -132,22 +137,20 @@ def from_deltas(
         for power in range(1, ubound):
             moms[power] = np.multiply(moms[power - 1, :], pos)
 
-        this_moments = weight * np.tensordot(np.tensordot(moms[:, 0], moms[:, 1], axes=0), moms[:, 2], axes=0)
+        this_moments = weight * utils.outer_product(moms[:, 0], moms[:, 1], moms[:, 2])
         out_moments += this_moments
 
-        if get_derivatives:
+        if pos_derivatives is not None:
             for p in range(ubound):
                 for q in range(ubound):
                     for r in range(ubound):
                         # perform the derivative
-                        pos_derivatives[idx, 0, p, q, r] = p * this_moments[p - 1, q, r]
-                        pos_derivatives[idx, 1, p, q, r] = q * this_moments[p, q - 1, r]
-                        pos_derivatives[idx, 2, p, q, r] = r * this_moments[p, q, r - 1]
+                        pos_derivatives[p, q, r, idx, 0] = p * this_moments[p - 1, q, r]
+                        pos_derivatives[p, q, r, idx, 1] = q * this_moments[p, q - 1, r]
+                        pos_derivatives[p, q, r, idx, 2] = r * this_moments[p, q, r - 1]
 
-            weight_derivatives[idx] = this_moments / weight
-
-    if get_derivatives:
-        return geom_moms, weight_derivatives, pos_derivatives
+        if weight_derivatives is not None:
+            weight_derivatives[:, :, :, idx] = this_moments / weight
 
     return geom_moms
 
@@ -195,72 +198,6 @@ def _deltas_from_vec(
     return points, weights
 
 
-def reconstruct_from_deltas(
-    invariants,
-    target: np.array,
-    points: Union[int, np.array],
-    weights: Union[int, np.array] = 1,
-    find_points: bool = True,
-    find_weights: bool = True
-):
-    if isinstance(points, int):
-        starting_pos = generate.random_points_in_sphere(points, radius=2.)
-    elif isinstance(points, np.ndarray):
-        starting_pos = points
-    else:
-        raise TypeError('Unsupported points type: {}'.format(points))
-
-    num_points = len(starting_pos)
-    starting_weights = _to_array(weights, num_points)
-    max_order = invariants.max_order
-    degrees_of_freedom = 0
-    if find_points:
-        degrees_of_freedom += num_points * 3
-    if find_weights:
-        degrees_of_freedom += num_points
-
-    def residuals(vec: np.array) -> np.array:
-        current_pos, current_weights = _deltas_from_vec(vec, find_points, find_weights, starting_pos, starting_weights)
-
-        # Calculate moments
-        current_moments = from_deltas(max_order, current_pos, current_weights)
-
-        # Calculate invariants
-        current_invariants = np.array(invariants.apply(current_moments, normalise=False))
-        diff = current_invariants - target
-        # Return the residuals
-        return diff
-
-    def jacobian(vec: np.array):
-        current_pos, current_weights = _deltas_from_vec(vec, find_points, find_weights, starting_pos, starting_weights)
-
-        current_moments, dmdw, dmdx = from_deltas(max_order, current_pos, current_weights, get_derivatives=True)
-
-        jacobian_mtx = np.zeros((len(vec), degrees_of_freedom))
-
-        for k, inv in enumerate(invariants):
-            for indices, derivative in inv.derivatives().items():
-                # Evaluate the derivative at this set of moments
-                d_phi_here = derivative.apply(current_moments)
-
-                current_idx = 0
-
-                if find_points:
-                    for i, dx in enumerate(dmdx):
-                        start = current_idx + 3 * i
-                        end = start + 3
-                        jacobian_mtx[k, start:end] += \
-                            d_phi_here * dx[:, indices[0], indices[1], indices[2]]
-
-                    current_idx += num_points * 3
-
-                if find_weights:
-                    for i, dw in enumerate(dmdw):
-                        jacobian_mtx[k, i + current_idx] += d_phi_here * dw[indices]
-
-        return jacobian_mtx
-
-
 class DeltaReconstruction:
 
     def __init__(
@@ -288,8 +225,15 @@ class DeltaReconstruction:
 
         # Preallocate our arrays
         max_order = invariants.max_order
-        self._moments = np.array((max_order + 1, max_order + 1, max_order + 1))
-        self._invariant_values = np.array(len(self._invariants))
+        ubound = max_order + 1
+
+        self._moments = np.empty((ubound, ubound, ubound))
+        self._invariant_values = np.empty(len(self._invariants))
+
+        # Derivatives
+        self._jacobian_mtx = np.zeros((len(self._invariants), self._degrees_of_freedom))
+        self._pos_derivatives = np.empty((ubound, ubound, ubound, num_points, 3))
+        self._weight_derivatives = np.empty((ubound, ubound, ubound, num_points))
 
     @property
     def degrees_of_freedom(self):
@@ -328,11 +272,14 @@ class DeltaReconstruction:
         max_order = self._invariants.max_order
         current_pos, current_weights = self.from_vec(vec)
 
+        current_moments = self._moments
+        current_invariants = self._invariant_values
+
         # Calculate moments
-        current_moments = from_deltas(max_order, current_pos, current_weights)
+        from_deltas(max_order, current_pos, current_weights, out_moments=current_moments)
 
         # Calculate invariants
-        current_invariants = np.array(self._invariants.apply(current_moments, normalise=False))
+        np.array(self._invariants.apply(current_moments, results=current_invariants, normalise=False))
         diff = current_invariants - self._target
 
         if callback is not None:
@@ -343,11 +290,22 @@ class DeltaReconstruction:
 
     def jacobian(self, vec: np.array, *_args, **_kwargs):
         max_order = self._invariants.max_order
+        jacobian_mtx = self._jacobian_mtx
+        current_moments = self._moments
+
         current_pos, current_weights = self.from_vec(vec)
 
-        current_moments, dmdw, dmdx = from_deltas(max_order, current_pos, current_weights, get_derivatives=True)
+        current_moments = from_deltas(
+            max_order,
+            current_pos,
+            current_weights,
+            out_moments=current_moments,
+            pos_derivatives=self._pos_derivatives if self._points is None else None,
+            weight_derivatives=self._weight_derivatives if self._weights is None else None,
+        )
 
-        jacobian_mtx = np.zeros((len(self._invariants), self._degrees_of_freedom))
+        # Reset the jacobian
+        jacobian_mtx.fill(0.)
 
         for k, inv in enumerate(self._invariants):
             for indices, derivative in inv.derivatives().items():
@@ -357,17 +315,18 @@ class DeltaReconstruction:
                 current_idx = 0
 
                 if self._points is None:
-                    for i, dx in enumerate(dmdx):
+                    dm = self._pos_derivatives[indices[0], indices[1], indices[2]]
+
+                    for i, dm_dx_i in enumerate(dm):
                         start = current_idx + 3 * i
                         end = start + 3
-                        jacobian_mtx[k, start:end] += \
-                            d_phi_here * dx[:, indices[0], indices[1], indices[2]]
+                        jacobian_mtx[k, start:end] += d_phi_here * dm_dx_i
 
                     current_idx += self._num_points * 3
 
                 if self._weights is None:
-                    for i, dw in enumerate(dmdw):
-                        jacobian_mtx[k, i + current_idx] += d_phi_here * dw[indices]
+                    dw = self._weight_derivatives[indices[0], indices[1], indices[2]]
+                    jacobian_mtx[k, current_idx:] += d_phi_here * dw
 
         return jacobian_mtx
 
@@ -530,7 +489,7 @@ def gaussian_geometric_moments(max_order: int, mu: np.array, sigma: numbers.Numb
             for r in range(ubound):
                 moments_3d[p, q, r] = moments[0, p] * moments[1, q] * moments[2, r]
 
-    moments_3d *= weight  # todo: why are the weights here?  Shouldn't they be in 'moments'?
+    moments_3d *= weight
     return moments_3d
 
 

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from typing import Iterator
 
-import numpy
+import numpy as np
 
 __all__ = 'generate_all_pair_distances'
 
@@ -13,7 +13,7 @@ def calculate_all_pair_distances(vectors, sort_result=True):
     for i in range(num - 1):
         for j in range(i + 1, num):
             dr = vectors[i] - vectors[j]
-            lengths.append(numpy.linalg.norm(dr))
+            lengths.append(np.linalg.norm(dr))
 
     if sort_result:
         lengths.sort()
@@ -29,7 +29,7 @@ def from_to(*args) -> Iterator[int]:
     """Like range() but inclusive of supper bound and automatically does iteration of ranges with a
     negative step e.g. 0, -4 will a range containing 0, -1, -2, -3, -4"""
     if len(args) not in (1, 2):
-        raise ValueError("Takes one or two args, got: {}".format(args))
+        raise ValueError('Takes one or two args, got: {}'.format(args))
 
     if len(args) == 1:
         start = 0
@@ -44,13 +44,15 @@ def from_to(*args) -> Iterator[int]:
 
 
 class CoefficientCapture:
+
     class Capture:
-        def __init__(self, mtx: numpy.array, idx):
+
+        def __init__(self, mtx: np.array, idx):
             self._mtx = mtx
             self._idx = idx
 
         def __mul__(self, other):
-            print("Coeff: {}, idx: {}".format(other, self._idx))
+            print('Coeff: {}, idx: {}'.format(other, self._idx))
             self._mtx[self._idx] = other
             return self
 
@@ -64,12 +66,23 @@ class CoefficientCapture:
             return self.__iadd__(other)
 
     def __init__(self, shape: tuple):
-        self._mtx = numpy.zeros(shape)
+        self._mtx = np.zeros(shape)
 
     def __getitem__(self, item):
-        print("Capturing {}".format(item))
+        print('Capturing {}'.format(item))
         return self.Capture(self._mtx, item)
 
     @property
-    def mtx(self) -> numpy.array:
+    def mtx(self) -> np.array:
         return self._mtx
+
+
+def outer_product(*array) -> np.array:
+    if not array:
+        raise ValueError('No arrays supplied')
+
+    product = array[0]
+    for entry in array[1:]:
+        product = np.tensordot(product, entry, axes=0)
+
+    return product

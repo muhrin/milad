@@ -205,7 +205,7 @@ class ZernikeMoments(base_moments.Moments):
         order = order or self._max_n
 
         if len(x.shape) == 2:
-            moms = [geometric.from_deltas(self._max_n, [pt]).to_matrix() for pt in x]
+            moms = [geometric.from_deltas(self._max_n, pt).to_matrix() for pt in x]
             query = numpy.empty(list(moms[0].shape) + [len(moms)])
             for idx, entry in enumerate(moms):
                 query[:, :, :, idx] = entry

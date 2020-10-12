@@ -110,24 +110,35 @@ def test_geom_moments_of_deltas():
 
 def test_delta_moments_derivatives():
     """Test that derivatives of moments calculated from delta functions are correct"""
-    order = 5
+    ORDER = 5
     NUM_POINTS = 4
+    UBOUND = ORDER + 1
 
     x = sympy.IndexedBase('x')
     w = sympy.IndexedBase('w')
-    points = analytic.create_array(x, (NUM_POINTS, 3))
-    weights = analytic.create_array(w, NUM_POINTS)
 
-    # Get the moments and derivates wrt to weights and positions
-    moments, dw, dx = geometric.from_deltas(order, points, weights=weights, get_derivatives=True)
-    for p in range(order):
-        for q in range(order):
-            for r in range(order):
+    POINTS = analytic.create_array(x, (NUM_POINTS, 3))
+    WEIGHTS = analytic.create_array(w, NUM_POINTS)
+
+    dx = numpy.empty((UBOUND, UBOUND, UBOUND, NUM_POINTS, 3), dtype=type(POINTS[0, 0]))
+    dw = numpy.empty((UBOUND, UBOUND, UBOUND, NUM_POINTS), dtype=type(WEIGHTS[0]))
+
+    # Get the moments and derivatives wrt to weights and positions
+    moments = geometric.from_deltas(
+        ORDER,
+        POINTS,
+        weights=WEIGHTS,
+        pos_derivatives=dx,
+        weight_derivatives=dw,
+    )
+    for p in range(ORDER):
+        for q in range(ORDER):
+            for r in range(ORDER):
                 moment = moments[p, q, r]
 
                 # Check weight derivatives
                 for i in range(NUM_POINTS):
-                    dm_dx_calculated = dw[i, p, q, r]
+                    dm_dx_calculated = dw[p, q, r, i]
                     if isinstance(moment, float):
                         # We have a constant, so derivative is always 0
                         dw_dx_analytic = 0
@@ -138,12 +149,12 @@ def test_delta_moments_derivatives():
 
                 # Now loop over each point and the x, y, z coordinates
                 for i in range(4):
-                    for d in range(3):
-                        dm_dx_calculated = dx[i, d, p, q, r]
+                    for dim in range(3):  # Look over x = 0, y = 1, z = 2
+                        dm_dx_calculated = dx[p, q, r, i, dim]
                         if isinstance(moment, (float, sympy.core.numbers.Zero)):
                             # We have a constant, so derivative is always 0
                             dw_dx_analytic = 0
                         else:
-                            dw_dx_analytic = moment.diff(x[i, d])
+                            dw_dx_analytic = moment.diff(x[i, dim])
 
                         assert dm_dx_calculated == dw_dx_analytic

@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """Module that is concerned with the calculation of moment invariants"""
-import ast
 import collections
 import pathlib
 from typing import Sequence, Union, List, Set, Tuple, Dict, Iterator
 
+import numba
 import numpy
 
 from . import base_moments
@@ -58,7 +58,7 @@ class MomentInvariant:
         return ' + '.join(sum_parts)
 
     @property
-    def weight(self):
+    def weight(self) -> int:
         """The number of terms in each product of the invariant.  This gives the units"""
         return self._weight
 
@@ -133,15 +133,29 @@ class MomentInvariant:
 
         return total
 
+    # def _numpy_apply(self, raw_moments: numpy.ndarray):
+    #     """Fast method to get the invariant from a numpy array"""
+    #     total = self._constant  # type: float
+    #
+    #     if self._terms:
+    #         indices = self._indarray
+    #         total += numpy.prod(
+    #             self._farray,
+    #             numpy.product(raw_moments[indices[:, :, 0], indices[:, :, 1], indices[:, :, 2]],
+    #                           axis=1)
+    #         )
+    #
+    #     return total
+
     def _numpy_apply(self, raw_moments: numpy.ndarray):
         """Fast method to get the invariant from a numpy array"""
-        total = self._constant
+        total = self._constant  # type: float
 
         if self._terms:
-            indices = self._indarray
-            total += numpy.dot(
-                self._farray, numpy.product(raw_moments[indices[:, :, 0], indices[:, :, 1], indices[:, :, 2]], axis=1)
-            )
+            if len(self._terms) < 48:
+                total += _numpy_apply(self._farray, self._indarray, raw_moments)
+            else:
+                total += _parallel_apply(self._farray, self._indarray, raw_moments)
 
         return total
 
@@ -211,6 +225,35 @@ class MomentInvariant:
         for indices in product:
             powers[indices] += 1
         return powers
+
+
+def _numpy_apply(prefactors, indices: numpy.array, raw_moments: numpy.ndarray):
+    """Fast method to get the invariant from a numpy array"""
+    total = 0
+
+    total += numpy.dot(
+        prefactors, numpy.prod(raw_moments[indices[:, :, 0], indices[:, :, 1], indices[:, :, 2]], axis=1)
+    )
+
+    return total
+
+
+@numba.jit(parallel=True)
+def _parallel_apply(prefactors, indices, moments):
+    """Generic apply for moments that support indexing.
+
+    This is slower version of above but compatible with moments that aren't numpy arrays"""
+    total = 0.
+    for idx in numba.prange(len(prefactors)):
+        factor = prefactors[idx]
+        entry = indices[idx]
+
+        product = 1.
+        for index in entry:
+            product *= moments[index[0], index[1], index[2]]
+
+        total += factor * product
+    return total
 
 
 class MomentInvariants:
