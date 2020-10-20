@@ -1,8 +1,0 @@
-//
-// Created by martin on 15/09/2020.
-//
-
-#ifndef MILAD_INCLUDE_INVARIANTS_H_
-#define MILAD_INCLUDE_INVARIANTS_H_
-
-#endif //MILAD_INCLUDE_INVARIANTS_H_
