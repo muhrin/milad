@@ -25,9 +25,9 @@ def even(val: int) -> bool:
     return (val % 2) == 0
 
 
-def from_to(*args) -> Iterator[int]:
-    """Like range() but inclusive of supper bound and automatically does iteration of ranges with a
-    negative step e.g. 0, -4 will a range containing 0, -1, -2, -3, -4"""
+def inclusive(*args) -> Iterator[int]:
+    """Like range() but inclusive of upper bound and automatically does iteration of ranges with a
+    negative step e.g. 0, -4 will produce a range containing 0, -1, -2, -3, -4"""
     if len(args) not in (1, 2):
         raise ValueError('Takes one or two args, got: {}'.format(args))
 

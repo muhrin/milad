@@ -6,10 +6,12 @@ from typing import Tuple
 
 import numpy as np
 
+from . import functions
+
 Index = Tuple[int, int, int]  # A three dimensional moment index
 
 
-class Moments(metaclass=abc.ABCMeta):
+class Moments(functions.State, metaclass=abc.ABCMeta):
     """A class representing three dimensional moments"""
 
     @property
@@ -29,6 +31,10 @@ class Moments(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def moment(self, n: int, l: int, m: int):
         """Get the n, l, m^th moment"""
+
+    @abc.abstractmethod
+    def linear_index(self, index: Index) -> int:
+        """Get a linearised index from the passed triple index"""
 
     @abc.abstractmethod
     def value_at(self, x: np.array, max_order: int = None):

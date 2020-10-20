@@ -6,6 +6,9 @@ import numpy as np
 import sympy
 
 import milad
+from milad import functions
+from milad import generate
+from milad import geometric
 
 
 def test_invariant_single_mass(moment_invariants, request):
@@ -64,3 +67,25 @@ def test_invariant_derivative(moment_invariants):
         dphi_dm_calculated = entry.apply(m)
 
         assert dphi_dm_calculated == dphi_dm_analytic
+
+
+def test_invariants_function(moment_invariants):
+    NUM_POINTS = 10
+    MAX_ORDER = 10
+
+    invariants_fn = milad.invariants.MomentInvariants(*moment_invariants)
+    moments_fn = geometric.GeometricMomentsCalculator(MAX_ORDER)
+
+    pts = generate.random_points_in_sphere(NUM_POINTS)
+    env = functions.Features(*map(functions.WeightedDelta, pts))
+    moments = moments_fn(env)
+    phi = invariants_fn(moments)
+
+    # The 1st moment is always the total mass
+    assert phi[0] == NUM_POINTS
+
+    # Now try the same thing using chain
+    combined_fn = functions.Chain(moments_fn, invariants_fn)
+    phi2, jacobian = combined_fn(env, jacobian=True)
+
+    assert np.all(phi == phi2)

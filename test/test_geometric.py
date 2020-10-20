@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 import numpy
+import numpy as np
 import pytest
 import sympy
 
 from milad import analytic
+from milad import functions
 from milad import generate
 from milad import geometric
 from milad import utils
@@ -13,35 +15,34 @@ from milad import utils
 
 def test_multidim_norm_moments():
     sigma = 2.
-    mass = 5.
 
-    moms = geometric.gaussian_moments(0, numpy.zeros((3, 1)), sigmas=sigma, weight=mass)
+    moms = geometric.gaussian_moment[0](numpy.zeros((3, 1)), sigma)
     expected = numpy.empty((3, 1))
-    expected.fill(mass)
+    expected.fill(1.)
     assert pytest.approx((moms - expected).max(), 0)
 
     # Do the odds first
     for order in (1, 3, 5, 7):
-        moms = geometric.gaussian_moments(order, numpy.zeros((3, 1)), sigmas=sigma, weight=mass)
+        moms = geometric.gaussian_moment[order](numpy.zeros((3, 1)))
         expected = numpy.zeros((3, 1))
         assert pytest.approx((moms - expected).max(), 0)
 
-    moms = geometric.gaussian_moments(2, numpy.zeros((3, 1)), sigmas=sigma, weight=mass)
+    moms = geometric.gaussian_moment[2](numpy.zeros((3, 1)), sigma)
     expected = numpy.empty((3, 1))
     expected.fill(sigma**2)
     assert pytest.approx((moms - expected).max(), 0)
 
-    moms = geometric.gaussian_moments(4, numpy.zeros((3, 1)), sigmas=sigma, weight=mass)
+    moms = geometric.gaussian_moment[4](numpy.zeros((3, 1)), sigma)
     expected = numpy.empty((3, 1))
     expected.fill(3 * sigma**4)
     assert pytest.approx((moms - expected).max(), 0)
 
-    moms = geometric.gaussian_moments(6, numpy.zeros((3, 1)), sigmas=sigma, weight=mass)
+    moms = geometric.gaussian_moment[6](numpy.zeros((3, 1)), sigma)
     expected = numpy.empty((3, 1))
     expected.fill(15 * sigma**6)
     assert pytest.approx((moms - expected).max(), 0)
 
-    moms = geometric.gaussian_moments(8, numpy.zeros((3, 1)), sigmas=sigma, weight=mass)
+    moms = geometric.gaussian_moment[8](numpy.zeros((3, 1)), sigma)
     expected = numpy.empty((3, 1))
     expected.fill(105 * sigma**8)
     assert pytest.approx((moms - expected).max(), 0)
@@ -95,9 +96,9 @@ def test_geom_moments_of_deltas():
 
     # Manually calculate the moments
     moms = numpy.zeros((max_order + 1, max_order + 1, max_order + 1))
-    for p in utils.from_to(max_order):
-        for q in utils.from_to(max_order):
-            for r in utils.from_to(max_order):
+    for p in utils.inclusive(max_order):
+        for q in utils.inclusive(max_order):
+            for r in utils.inclusive(max_order):
                 for pos, weight in zip(positions, weights):
                     moms[p, q, r] += weight * (pos**(p, q, r)).prod(axis=-1)
 
@@ -158,3 +159,52 @@ def test_delta_moments_derivatives():
                             dw_dx_analytic = moment.diff(x[i, dim])
 
                         assert dm_dx_calculated == dw_dx_analytic
+
+
+def test_geometric_moments_calculator_deltas():
+    """Test using the geometric moments calculator with delta functions as features"""
+    num_points = 4
+    positions = generate.random_points_in_sphere(num_points, radius=.7)
+    weights = np.random.rand(num_points)
+    max_order = 11
+
+    # First, try a single delta function
+    delta = functions.WeightedDelta(positions[0], weights[0])
+    calculator = geometric.GeometricMomentsCalculator(max_order)
+    moms = calculator(delta)
+    moms2 = geometric.from_deltas(max_order, positions[0:1], weights[0:1])
+    assert np.all(moms.moments == moms2.moments)
+
+    # Now try all of them
+    env = functions.Features(delta)
+    for idx in range(1, num_points):
+        env.add(functions.WeightedDelta(positions[idx], weights[idx]))
+
+    moms = calculator(env)
+    moms2 = geometric.from_deltas(max_order, positions, weights)
+    assert np.all(moms.moments == moms2.moments)
+
+
+def test_geometric_moments_calculator_gaussians():
+    """Test using the geometric moments calculator with Gaussian functions as features"""
+    num_points = 4
+    positions = generate.random_points_in_sphere(num_points, radius=.7)
+    sigmas = np.random.rand(num_points)
+    weights = np.random.rand(num_points)
+    max_order = 11
+
+    # First, try a single delta function
+    gaussian = functions.WeightedGaussian(positions[0], sigmas[0], weights[0])
+    calculator = geometric.GeometricMomentsCalculator(max_order)
+    moms = calculator(gaussian)
+    moms2 = geometric.from_gaussians(max_order, positions[0:1], sigmas[0:1], weights[0:1])
+    assert np.all(moms.moments == moms2.moments)
+
+    # Now try all of them
+    env = functions.Features(gaussian)
+    for idx in range(1, num_points):
+        env.add(functions.WeightedGaussian(positions[idx], sigmas[idx], weights[idx]))
+
+    moms = calculator(env)
+    moms2 = geometric.from_gaussians(max_order, positions, sigmas, weights)
+    assert np.all(moms.moments == moms2.moments)

@@ -6,8 +6,10 @@ from typing import Sequence, Union, List, Set, Tuple, Dict, Iterator
 
 import numba
 import numpy
+import numpy as np
 
 from . import base_moments
+from . import functions
 from . import geometric
 
 __all__ = 'MomentInvariant', 'read_invariants', 'RES_DIR'
@@ -256,11 +258,19 @@ def _parallel_apply(prefactors, indices, moments):
     return total
 
 
-class MomentInvariants:
+class MomentInvariants(functions.Function):
     """A container for moment invariants"""
+    input_type = base_moments.Moments
+    output_type = np.ndarray
+    supports_jacobian = True
 
-    def __init__(self):
-        self._invariants = []
+    def __init__(self, *invariant: MomentInvariant):
+        super().__init__()
+        for entry in invariant:
+            if not isinstance(entry, MomentInvariant):
+                raise TypeError(f'Expected MomentInvariant, got {entry.__class__.__name__}')
+
+        self._invariants: List[MomentInvariant] = list(invariant)
         self._max_order = -1
 
     def __len__(self):
@@ -274,6 +284,9 @@ class MomentInvariants:
         """Get the maximum order of all the invariants"""
         return self._max_order
 
+    def output_length(self, in_state: functions.State) -> int:
+        return len(self._invariants)
+
     def apply(self, moms: numpy.array, normalise=False, results=None) -> list:
         """Calculate the invariants from the given moments"""
         return apply_invariants(self._invariants, moms, normalise=normalise, results=results)
@@ -283,6 +296,22 @@ class MomentInvariants:
         self._invariants.append(invariant)
         self._max_order = max(self._max_order, invariant.max_order)
 
+    def evaluate(self, state: base_moments.Moments, get_jacobian=False) -> np.ndarray:
+        vector = np.empty(len(self._invariants), dtype=np.promote_types(state.vector.dtype, float))
+        for idx, inv in enumerate(self._invariants):
+            vector[idx] = inv.apply(state, normalise=False)
+
+        if get_jacobian:
+            jac = np.zeros((len(self._invariants), len(state)), dtype=vector.dtype)
+
+            for idx, inv in enumerate(self._invariants):
+                for index, deriv in inv.derivatives().items():
+                    jac[idx, state.linear_index(index)] = deriv.apply(state)
+
+            return vector, jac
+
+        return vector
+
 
 def apply_invariants(invariants: List[MomentInvariant], moms: numpy.array, normalise=False, results=None) -> list:
     """Calculate the moment invariants for a given set of moments
@@ -290,7 +319,7 @@ def apply_invariants(invariants: List[MomentInvariant], moms: numpy.array, norma
     :param invariants: a list of invariants to calculate
     :param moms: the moments to use
     :param normalise: if True fill normalise the moments using the 0th moment
-    :param results: an optional container to place the result in, if not suppled one will be created
+    :param results: an optional container to place the result in, if not supplied one will be created
     """
     if results is None:
         results = [None] * len(invariants)
@@ -368,6 +397,9 @@ def read(filename: str = GEOMETRIC_INVARIANTS, read_max: int = None, max_order=N
         MomentInvariants:
     """Read the invariants from file"""
     invariants = MomentInvariants()
+    if filename == COMPLEX_INVARIANTS:
+        invariants.dtype = complex
+
     for inv in read_invariants(filename, read_max):
         if max_order is None or inv.max_order <= max_order:
             invariants.append(inv)
