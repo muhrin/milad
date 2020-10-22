@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 import abc
-import numbers
+import logging
 from typing import List, Union, Tuple, Dict, Callable, Any, Iterable, Type, Optional
 
 import numpy as np
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class State(metaclass=abc.ABCMeta):
@@ -203,46 +205,41 @@ class Function(metaclass=abc.ABCMeta):
     def remove_callback(self, fn: Callable[[StateLike, StateLike, np.ndarray], None]):
         self._callbacks.remove(fn)
 
-    @abc.abstractmethod
-    def output_length(self, in_state: State) -> int:
-        """Return the length of the output state"""
-
-    def empty_output(self, in_state: State) -> StateLike:
-        msg = f"Cannot construct output state for '{self.__class__.__name__}', please implement empty_output"
-        if (isinstance(self.output_type, tuple) and np.ndarray not in self.output_type) or \
-                (not isinstance(self.output_type, tuple) and self.output_type != np.ndarray):
-            raise RuntimeError(msg)
-
-        return np.empty(self.output_length(in_state))
-
-    def empty_jacobian(self, in_state: State) -> np.array:
-        return np.empty((self.output_length(in_state), len(in_state)))
-
     def __call__(self, state: State, jacobian=False) -> Union[State, Tuple[State, np.array]]:
+        name = self.__class__.__name__
+
         if self.input_type is not None:
             self._check_input_type(state, self.input_type)
 
         result = self.evaluate(state, get_jacobian=jacobian)
         if result is None:
-            raise RuntimeError(f'{self.__class__.__name__} produced None output')
+            raise RuntimeError(f'{name} produced None output')
 
         if jacobian:
             if not isinstance(result, tuple):
-                raise RuntimeError(f"{self.__class__.__name__}.evaulate didn't return Jacobian despite being asked to")
+                raise RuntimeError(f"{name}.evaulate didn't return Jacobian despite being asked to")
             if np.isnan(get_bare_vector(result[0])).any():
-                raise ValueError(f'{self.__class__.__name__}.evaulate produce a result with a NaN entry')
+                raise ValueError(f'{name}.evaulate produce a result with a NaN entry')
             if np.isnan(result[1]).any():
-                raise ValueError(f'{self.__class__.__name__}.evaulate produce a result with a NaN entry')
+                raise ValueError(f'{name}.evaulate produce a result with a NaN entry')
+
+            _LOGGER.debug(
+                '%s: |input|: %s, |output|: %s, |jac|: %s', name, np.mean(get_bare_vector(state)),
+                np.mean(get_bare_vector(result[0])), np.mean(result[1])
+            )
         else:
             if np.isnan(get_bare_vector(result)).any():
-                raise ValueError(f'{self.__class__.__name__}.evaulate produce a result with a NaN entry')
+                raise ValueError(f'{name}.evaulate produce a result with a NaN entry')
+            _LOGGER.debug(
+                '%s: |input|: %s, |output|: %s', name, np.mean(get_bare_vector(state)),
+                np.mean(get_bare_vector(result))
+            )
 
         for fn in self._callbacks:
             if jacobian:
                 fn(state, result[0], result[1])
             else:
                 fn(state, result, jacobian=None)
-
         return result
 
     @abc.abstractmethod
@@ -279,6 +276,10 @@ class Chain(Function):
 
         return self._functions[item]
 
+    def copy(self) -> 'Chain':
+        """Create a shallow copy"""
+        return Chain(self._functions)
+
     @property
     def input_type(self):
         if not self._functions:
@@ -308,15 +309,6 @@ class Chain(Function):
             inverse_chain.append(inverse)
 
         return inverse_chain
-
-    def empty_jacobian(self, in_state: State) -> np.array:
-        return np.empty((self.output_length(in_state), len(in_state)), dtype=complex)
-
-    def output_length(self, in_state: State):
-        return self._functions[-1].output_length(in_state)
-
-    def empty_output(self, in_state: State) -> StateLike:
-        return self._functions[-1].empty_output(in_state)
 
     def append(self, function):
         self._functions.append(function)
@@ -363,7 +355,7 @@ class Residuals(Function):
 
     def __init__(self, data: np.array):
         super().__init__()
-        self._data = data
+        self._data = get_bare_vector(data)
 
     def output_length(self, in_state: State) -> int:
         return len(self._data)
@@ -378,6 +370,24 @@ class Residuals(Function):
             return out_vector, np.identity(len(state), dtype=out_vector.dtype)
 
         return out_vector
+
+
+class Native(Function):
+
+    def __init__(self, fn: Callable[[StateLike], StateLike], jac: Callable[[StateLike], np.ndarray]):
+        super().__init__()
+        self._fn = fn
+        self._jac = jac
+
+    @property
+    def support_jacobian(self):
+        return self._jac is not None
+
+    def evaluate(self, state: State, get_jacobian=False) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+        if self.supports_jacobian:
+            return self._fn(state), self._jac(state)
+
+        return self._fn(state)
 
 
 # endregion

@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
-import numpy as np
+import pytest
 
-import milad
+import numpy as np
+import sympy
+
 from milad import geometric
 from milad import zernike
 from milad import invariants
+from milad import utils
 from milad import generate
 from milad import transform
 
@@ -90,3 +93,42 @@ def test_zernike_properties():
 
             for m in range(l):
                 assert moms[n, l, -m] == (-1)**m * moms[n, l, m].conjugate()
+
+
+def test_zernike_analytic():
+    MAX_ORDER = 6
+
+    zern = sympy.IndexedBase('z', complex=True)  # Zernike moments
+    geom = sympy.IndexedBase('m', real=True)  # Geometric moments
+
+    calculator = zernike.ZernikeMomentCalculator(MAX_ORDER)
+    jacobian = zernike.get_jacobian_wrt_geom_moments(MAX_ORDER)
+
+    # Let's build the Jacobian symbolically
+    for idx, (n, l, m) in enumerate(zernike.iter_indices(MAX_ORDER, redundant=False)):
+        eq = zernike.omega_nl_m(n, l, m, geom)
+        for p in range(MAX_ORDER):
+            for q in range(MAX_ORDER):
+                for r in range(MAX_ORDER):
+                    differentiated = eq.diff(geom[p, q, r])
+
+                    zindex = zernike.linear_index((n, l, m))
+                    gindex = geometric.linear_index(MAX_ORDER, (p, q, r))
+                    jacobian_value = jacobian[zindex, gindex]
+
+                    assert complex(differentiated) == pytest.approx(jacobian_value), f'Omega{n},{l},{m} m{p},{q},{r}'
+
+
+def test_zernike_indexing():
+    MAX_ORDER = 6
+
+    # Check that linear indexing works correctly
+    idx = 0
+    for n in utils.inclusive(MAX_ORDER):
+        for l in utils.inclusive(n):
+            if not utils.even(n - l):
+                continue
+
+            for m in utils.inclusive(-l, l):
+                assert zernike.ZernikeMoments.linear_index((n, l, m)) == idx
+                idx += 1

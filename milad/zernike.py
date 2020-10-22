@@ -4,7 +4,6 @@
 import logging
 import itertools
 import numbers
-import operator
 import functools
 from typing import Union, List, Tuple, Dict, Mapping, Any, Iterator
 
@@ -18,8 +17,6 @@ import sympy
 from . import base_moments
 from . import functions
 from . import geometric
-from . import mathutil
-from . import utils
 from .utils import even, inclusive
 
 _LOGGER = logging.getLogger(__name__)
@@ -84,25 +81,9 @@ class ZernikeMoments(base_moments.Moments):
     """A container class for calculated Zernike moments"""
 
     @classmethod
-    def linear_index(cls, index: base_moments.Index) -> Tuple[int, bool]:
-        """Given a triple of zernike function indices this will return a lexicographically ordered
-        integer and a boolean indicating if (-1)**m conjugate(value) should be applied"""
-        n, l, m = index
-
-        MAX_N = 100000
-        idx = 0
-        conjugate = m < 0
-        m = abs(m)
-        for n_ in inclusive(MAX_N):
-            for l_ in inclusive(n_):
-                if not even(n_ - l_):
-                    continue
-
-                for m_ in inclusive(l_):
-                    if n == n_ and l == l_ and m == m_:
-                        return idx, conjugate
-
-                    idx += 1
+    def linear_index(cls, index: base_moments.Index) -> int:
+        """Given a triple of Zernike moment indices this will return the corresponding linearly ordered index"""
+        return linear_index(index)
 
     @staticmethod
     def triple_index(linear_index: int, redundant=False) -> Tuple:
@@ -185,12 +166,17 @@ class ZernikeMoments(base_moments.Moments):
 
     def moment(self, n: int, l: int, m: int) -> complex:
         """Get the n, l, m^th moment"""
-        assert_valid(n, l, m)
-        m_prime = abs(m)
-        omega = self._moments[n, l, m_prime]
         if m < 0:
-            omega = (-1)**m_prime * omega.conjugate()
-        return omega
+            return (-1)**(-m) * self.moment(n, l, -m).conjugate()
+
+        assert_valid(n, l, m)
+        return self._moments[n, l, m]
+
+        # m_prime = abs(m)
+        # omega = self._moments[n, l, m_prime]
+        # if m < 0:
+        #     omega = (-1) ** m_prime * omega.conjugate()
+        # return omega
 
     def value_at(self, x: numpy.array, order: int = None) -> float:
         """Reconstruct the value at x from the moments
@@ -240,7 +226,9 @@ class ZernikeMomentCalculator(functions.Function):
     def output_length(self, in_state: functions.State) -> int:
         return ZernikeMoments.num_moments(self._max_order, redundant=True)
 
-    def evaluate(self, state: functions.State, get_jacobian=False) -> ZernikeMoments:
+    def evaluate(self,
+                 state: functions.State,
+                 get_jacobian=False) -> Union[ZernikeMoments, Tuple[ZernikeMoments, np.ndarray]]:
         moments = ZernikeMoments(self._max_order)
         geom_moments = self._geometric_moments_calculator(state, get_jacobian)
         geom_jac = None
@@ -253,73 +241,58 @@ class ZernikeMomentCalculator(functions.Function):
 
         if get_jacobian:
             jac = np.matmul(self._get_jacobian(), geom_jac)
-            return moments, jac.real
+            return moments, jac
 
         return moments
 
     def _get_jacobian(self):
         if self._jacobian is None:
-            # Calculate
-            class DerivativeTracker:
-
-                def __init__(self, max_order):
-                    self._max_order = max_order
-                    self._num_coeffs = geometric.GeometricMoments.num_moments(max_order)
-                    self._terms = sympy.IndexedBase('m', real=True)
-
-                def __getitem__(self, item: base_moments.Index):
-                    if not isinstance(item, tuple):
-                        raise TypeError(item)
-
-                    return self._terms[geometric.linear_index(self._max_order, item)]
-                    # vector = np.zeros(self._num_coeffs)
-                    # try:
-                    #     vector[geometric.linear_index(self._max_order, item)] = 1.
-                    # except IndexError:
-                    #     raise IndexError(
-                    #         f"index {item} out of bounds for geometric moments of order {self._max_order}")
-                    # return vector
-
-            O = self._max_order  # Number of geometric moments
-            tracker = DerivativeTracker(O)
-            num_moments = ZernikeMoments.num_moments(O, redundant=True)  # Number of zernike moments
-            num_geometric_moments = geometric.GeometricMoments.num_moments(O)
-            jacobian = np.empty((num_moments, num_geometric_moments), dtype=complex)
-            jacobian.fill(0.)
-
-            for idx, (n, l, m) in enumerate(iter_indices(O, redundant=False)):
-                if m < 0:
-                    # First calculate the derivatives for all the positive m indices
-                    continue
-
-                vec = omega_nl_m(n, l, m, tracker)
-
-                for term in vec.free_symbols:
-                    if isinstance(term, sympy.Indexed):
-                        val = vec.coeff(term)
-                        jacobian[idx, term.indices[0]] = val
-
-                minus_m = (-1)**m * vec.conjugate()
-                minus_m_idx = linear_index((n, l, -m))
-
-                for term in minus_m.free_symbols:
-                    if isinstance(term, sympy.Indexed):
-                        val = minus_m.coeff(term)
-                        jacobian[minus_m_idx, term.indices[0]] = val
-
-                # jacobian[idx, :] = vec
-
-            # Now do all the m < 0 cases
-            # for idx, (n, l, m) in enumerate(iter_indices(O, redundant=True)):
-            #     if m >= 0:
-            #         continue
-            #
-            #     row = jacobian[linear_index((n, l, -m))]
-            #     jacobian[idx, :] = (-1) ** (-m) * row.conjugate()
-
-            self._jacobian = jacobian
+            # Calculate the first time
+            self._jacobian = get_jacobian_wrt_geom_moments(self._max_order)
 
         return self._jacobian
+
+
+def get_jacobian_wrt_geom_moments(max_order: int):
+    """Get the Jacobian of the Zernike moments wrt Geometric moments as input"""
+
+    # Calculate
+    class DerivativeTracker:
+
+        def __init__(self, max_ord):
+            self._max_order = max_ord
+            self._num_coeffs = geometric.GeometricMoments.num_moments(max_ord)
+
+        def __getitem__(self, item: base_moments.Index):
+            if not isinstance(item, tuple):
+                raise TypeError(item)
+
+            vector = np.zeros(self._num_coeffs)
+            try:
+                vector[geometric.linear_index(self._max_order, item)] = 1.
+            except IndexError:
+                raise IndexError(f'index {item} out of bounds for geometric moments of order {self._max_order}')
+            return vector
+
+    O = max_order
+    tracker = DerivativeTracker(O)
+    num_moments = ZernikeMoments.num_moments(O, redundant=True)  # Number of zernike moments
+    num_geometric_moments = geometric.GeometricMoments.num_moments(O)
+    jacobian = np.zeros((num_moments, num_geometric_moments), dtype=complex)
+
+    for idx, (n, l, m) in enumerate(iter_indices(O, redundant=True)):
+        if m < 0:
+            # First calculate the derivatives for all the positive m indices
+            continue
+
+        vec = omega_nl_m(n, l, m, tracker)
+        jacobian[idx, :] = vec
+
+        minus_m = (-1)**m * vec.conjugate()
+        minus_m_idx = linear_index((n, l, -m))
+        jacobian[minus_m_idx, :] = minus_m
+
+    return jacobian
 
 
 class SymbolicInvariants:
@@ -467,7 +440,11 @@ def omega_nl_m(n: int, l: int, m: int, geom_moments: numpy.array) -> complex:
     """Given a set of geometric moments this function will compute the corresponding Zernike moments
     """
     assert_valid(n, l, m)
-    return 3 / (4 * np.pi) * sum_chi_nlm(n, l, m, geom_moments).conjugate()
+    if m < 0:
+        # Symmetry relation
+        return (-1)**(-m) * omega_nl_m(n, l, -m, geom_moments).conjugate()
+
+    return 3. / (4. * np.pi) * sum_chi_nlm(n, l, m, geom_moments).conjugate()
 
 
 def iter_indices(max_order: int = None, redundant=False) -> Iterator[Tuple]:
@@ -490,6 +467,7 @@ def iter_indices(max_order: int = None, redundant=False) -> Iterator[Tuple]:
                 yield n, l, m
 
 
+@functools.lru_cache(maxsize=256)
 def linear_index(index: base_moments.Index) -> int:
     """Given a triple of zernike function indices this will return a lexicographically ordered
     integer and a boolean indicating if (-1)**m conjugate(value) should be applied"""

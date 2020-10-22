@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import numbers
-from typing import Dict, Optional, Type, Tuple
+from typing import Dict, Optional, Type, Tuple, Union
 
 import numpy as np
 
@@ -65,7 +65,9 @@ class AtomsCollection(functions.PlainState):
 
     @positions.setter
     def positions(self, new_positions: np.array):
-        self._vector[:3 * self._num_atoms] = new_positions.reshape(3 * self._num_atoms)
+        positions = self.vector[:3 * self._num_atoms]
+        positions.shape = (self._num_atoms, 3)
+        positions[:, :] = new_positions
 
     @property
     def numbers(self) -> np.array:
@@ -153,6 +155,12 @@ class AtomsCollectionBuilder(functions.Function):
             self._num_atoms = num_atoms
             self._mask = mask
 
+        @property
+        def inverse(self) -> 'AtomsCollectionBuilder':
+            builder = AtomsCollectionBuilder(self._num_atoms)
+            builder._mask = self._mask
+            return builder
+
         def output_length(self, in_state: AtomsCollection) -> int:
             return (self._mask == None).sum()
 
@@ -169,6 +177,33 @@ class AtomsCollectionBuilder(functions.Function):
                     current_idx += 1
 
             return out_vector
+
+
+class AtomsCollectionBuilder2:
+    """An atoms collection builder that doesn't require a fixed number of atoms to be defined"""
+    input_type = np.ndarray
+    output_type = AtomsCollection
+    supports_jacobian = True
+
+    def __init__(self, species=True):
+        super().__init__()
+        self._species = species
+
+    def evaluate(self,
+                 state: functions.State,
+                 get_jacobian=False) -> Union[AtomsCollection, Tuple[AtomsCollection, np.ndarray]]:
+        vector = functions.get_bare_vector(state)
+        length = len(vector)
+        if (length % 4) != 0:
+            raise ValueError(f'Passed vector is not a multiple of 4 ({length})')
+
+        atoms = AtomsCollection(length / 4)
+        atoms.vector[:] = vector
+
+        if get_jacobian:
+            return atoms, np.identity(len(vector))
+
+        return atoms
 
 
 class FeatureMapper(functions.Function):
@@ -370,6 +405,7 @@ class MapNumbers(functions.Function):
                     rescaled = (num - self._mapped_range[0]) / self._range_size * len(self._numbers)
                     out_atoms.numbers[idx] = self._numbers[int(rescaled)]
                 else:
+
                     print('GOT HERE')
 
             return out_atoms

@@ -296,18 +296,21 @@ class MomentInvariants(functions.Function):
         self._invariants.append(invariant)
         self._max_order = max(self._max_order, invariant.max_order)
 
-    def evaluate(self, state: base_moments.Moments, get_jacobian=False) -> np.ndarray:
-        vector = np.empty(len(self._invariants), dtype=np.promote_types(state.vector.dtype, float))
+    def evaluate(self, moments: base_moments.Moments, get_jacobian=False) -> np.ndarray:
+        vector = np.empty(len(self._invariants), dtype=np.promote_types(moments.vector.dtype, float))
+        if get_jacobian:
+            jac = np.zeros((len(self._invariants), len(moments)), dtype=vector.dtype)
+
         for idx, inv in enumerate(self._invariants):
-            vector[idx] = inv.apply(state, normalise=False)
+            vector[idx] = inv.apply(moments, normalise=False)
+
+            if get_jacobian:
+                # Evaluate the derivatives
+                for index, dphi in inv.derivatives().items():
+                    in_index = moments.linear_index(index)
+                    jac[idx, in_index] = dphi.apply(moments)
 
         if get_jacobian:
-            jac = np.zeros((len(self._invariants), len(state)), dtype=vector.dtype)
-
-            for idx, inv in enumerate(self._invariants):
-                for index, deriv in inv.derivatives().items():
-                    jac[idx, state.linear_index(index)] = deriv.apply(state)
-
             return vector, jac
 
         return vector
