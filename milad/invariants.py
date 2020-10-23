@@ -279,6 +279,9 @@ class MomentInvariants(functions.Function):
     def __iter__(self) -> Iterator[MomentInvariant]:
         return self._invariants.__iter__()
 
+    def __getitem__(self, item) -> 'MomentInvariants':
+        return MomentInvariants(*self._invariants[item])
+
     @property
     def max_order(self) -> int:
         """Get the maximum order of all the invariants"""

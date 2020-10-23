@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-from . import ase
+from . import asetools
 from .envs import *
 from .fingerprints import *
 
-_ADDITIONAL = (ase, )
+_ADDITIONAL = ('asetools',)
 
 __all__ = envs.__all__ + fingerprints.__all__ + _ADDITIONAL

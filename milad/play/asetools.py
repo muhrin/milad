@@ -7,6 +7,8 @@ import numpy as np
 import dscribe.utils.geometry
 
 import milad
+from milad import atomic
+from milad import reconstruct
 from . import distances
 from . import envs
 from . import fingerprints
@@ -285,7 +287,7 @@ class MiladFingerprint:
         return fingerprint
 
 
-def extract_environments(system: ase.Atoms, atom_centered=True, cutoff=5.):
+def extract_environments(system: ase.Atoms, atom_centered=True, cutoff=5., yield_indexes=False):
     """Given an ase.Atoms this will extract atomic environments and yield them as new Atoms objects
 
     The central atom will always be at position 0 and the rest (if any) will follow.
@@ -323,7 +325,10 @@ def extract_environments(system: ase.Atoms, atom_centered=True, cutoff=5.):
                 env_symbols.append(neighbour_symbol)
 
         # Finally yield the environment
-        yield ase.Atoms(positions=env_positions, symbols=env_symbols)
+        if yield_indexes:
+            yield i, ase.Atoms(positions=env_positions, symbols=env_symbols)
+        else:
+            yield ase.Atoms(positions=env_positions, symbols=env_symbols)
 
 
 class MomentsCalculator:
@@ -367,3 +372,19 @@ class MomentsCalculator:
             params['sigmas'] = sigmas
 
         return self._calculator(**params)
+
+
+class AseFingerprintsCalculator:
+
+    def __init__(self, fingerprinter: reconstruct.Fingerprinter):
+        self._fingerprinter = fingerprinter
+
+    def evaluate(self, atoms: ase.Atoms, get_jacobian=False):
+        return self._fingerprinter(ase2milad(atoms), get_jacobian)
+
+    def __call__(self, atoms: ase.Atoms, get_jacobian=False):
+        return self.evaluate(atoms, get_jacobian)
+
+
+def ase2milad(atoms: ase.Atoms):
+    return atomic.AtomsCollection(len(atoms), positions=atoms.positions, species=atoms.numbers)

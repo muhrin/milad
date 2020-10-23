@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from typing import Union, Type, Tuple
+from typing import Union, Type, Tuple, Optional
 
 import numpy as np
 from scipy import optimize
@@ -158,8 +158,10 @@ class Fingerprinter(functions.Function):
         super().__init__()
         fingerprint = functions.Chain(atomic.MapNumbers(species, species_number_range))
         if cutoff is not None:
-            fingerprint.append(atomic.ScalePositions(1 / cutoff))
+            fingerprint.append(atomic.ScalePositions(1. / cutoff))
 
+        # The descriptor is typically defined in the domain [-1,1] to apply the cutoff
+        fingerprint.append(atomic.ApplyCutoff(1.))
         fingerprint.append(
             atomic.FeatureMapper(
                 feature_type,
@@ -176,13 +178,26 @@ class Fingerprinter(functions.Function):
         self._fingerprint = fingerprint
 
     def evaluate(self, state: atomic.AtomsCollection, get_jacobian=False):
-        return self._fingerprint(state, get_jacobian)
+        result = self._fingerprint(state, get_jacobian)
+        if get_jacobian:
+            return result[0].real, result[1].real
+
+        return result.real
+
+    def atom_centred(self, atoms: atomic.AtomsCollection, idx: int, get_jacobian=False):
+        new_centre = atoms.positions[idx]
+        new_atoms = atomic.AtomsCollection(
+            atoms.num_atoms, positions=atoms.positions - new_centre, species=atoms.numbers
+        )
+        return self.evaluate(new_atoms, get_jacobian=get_jacobian)
 
 
-def get_species_map_idx(feature_type: Type[functions.Feature], map_to: Union[int, str]) -> int:
+def get_species_map_idx(feature_type: Type[functions.Feature], map_to: Union[int, str]) -> Optional[int]:
     if isinstance(map_to, int):
         return map_to
     if isinstance(map_to, str):
         return getattr(feature_type, map_to)
+    if map_to is None:
+        return None
 
     raise TypeError(map_to)

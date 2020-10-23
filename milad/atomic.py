@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
+import logging
 import numbers
 from typing import Dict, Optional, Type, Tuple, Union
 
 import numpy as np
 
 from . import functions
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class AtomsCollection(functions.PlainState):
@@ -405,7 +408,41 @@ class MapNumbers(functions.Function):
                     rescaled = (num - self._mapped_range[0]) / self._range_size * len(self._numbers)
                     out_atoms.numbers[idx] = self._numbers[int(rescaled)]
                 else:
-
-                    print('GOT HERE')
+                    _LOGGER.warning(
+                        'Got a species number that is no in the range: %n <= %n <= %n', self._mapped_range[0], num,
+                        self._mapped_range[1]
+                    )
 
             return out_atoms
+
+
+class ApplyCutoff(functions.Function):
+    """Given a collection of atoms exclude any that are further from the origin than the given cutoff"""
+
+    def __init__(self, cutoff: float):
+        super().__init__()
+        self._cutoff_sq = cutoff * cutoff
+
+    def evaluate(self, atoms: AtomsCollection, get_jacobian=False):
+        index_map = {}
+        # Find all those that are within the cutoff
+        for idx in range(atoms.num_atoms):
+            pos = atoms.positions[idx]
+            if np.dot(pos, pos) < self._cutoff_sq:
+                index_map[idx] = len(index_map)
+
+        transformed = AtomsCollection(
+            len(index_map),
+            positions=atoms.positions[tuple(index_map.keys()), :],
+            species=atoms.numbers[(tuple(index_map.keys()),)]
+        )
+
+        if get_jacobian:
+            jac = np.zeros(len(index_map), len(atoms))
+            for old_idx, new_idx in index_map.items():
+                jac[atoms.linear_pos_idx(old_idx), transformed.linear_pos_idx(new_idx)] = 1.
+                jac[atoms.linear_number_idx(old_idx), transformed.linear_number_idx(new_idx)] = 1.
+
+            return atoms, jac
+
+        return atoms
