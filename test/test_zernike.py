@@ -11,12 +11,14 @@ from milad import utils
 from milad import generate
 from milad import transform
 
+# pylint: disable=invalid-name
+
 
 def test_zernike_reconstruct_deltas():
     num_points = 4
     positions = generate.random_points_in_sphere(num_points, radius=.7)
     weights = 1.
-    max_order = 10
+    max_order = 7
     n_samples = 11
 
     moms = zernike.from_deltas(max_order, positions, weights=weights)

@@ -46,11 +46,11 @@ class PlainState(State):
 class Feature(State):
     LENGTH = None
 
-    def __init__(self):
+    def __init__(self, dtype=float):
         super().__init__()
         if self.LENGTH is None:
             raise RuntimeError('Feature length not set, please set the LENGTH class attribute')
-        self._vector = np.zeros(self.LENGTH)
+        self._vector = np.zeros(self.LENGTH, dtype=dtype)
 
     @property
     def vector(self):
@@ -60,7 +60,7 @@ class Feature(State):
     def vector(self, value: np.array):
         if not value.size == self._vector.size:
             raise ValueError(f"Size mismatch, expected '{self._vector.size}', got '{value.size}'")
-        self._vector = value
+        self._vector[:] = value[:]
 
     def __add__(self, other: 'Feature') -> 'Features':
         if not isinstance(other, Feature):
@@ -113,7 +113,7 @@ class WeightedDelta(Feature):
     LENGTH = 4
 
     def __init__(self, pos: np.array, weight=1.0):
-        super().__init__()
+        super().__init__(dtype=pos.dtype)
         self.pos = pos
         self.weight = weight
 
@@ -197,10 +197,10 @@ class Function(metaclass=abc.ABCMeta):
         """A function may optionally provide an inverse in which case it would be returned by this property"""
         return None
 
-    def add_callback(self, fn: Callable):
-        if fn in self._callbacks:
-            raise ValueError("'{}' is already registered".format(fn))
-        self._callbacks.add(fn)
+    def add_callback(self, func: Callable):
+        if func in self._callbacks:
+            raise ValueError("'{}' is already registered".format(func))
+        self._callbacks.add(func)
 
     def remove_callback(self, fn: Callable[[StateLike, StateLike, np.ndarray], None]):
         self._callbacks.remove(fn)
@@ -218,10 +218,6 @@ class Function(metaclass=abc.ABCMeta):
         if jacobian:
             if not isinstance(result, tuple):
                 raise RuntimeError(f"{name}.evaulate didn't return Jacobian despite being asked to")
-            if np.isnan(get_bare_vector(result[0])).any():
-                raise ValueError(f'{name}.evaulate produce a result with a NaN entry')
-            if np.isnan(result[1]).any():
-                raise ValueError(f'{name}.evaulate produce a result with a NaN entry')
 
             _LOGGER.debug(
                 '%s: |input|: %s, |output|: %s, |jac|: %s', name, np.mean(get_bare_vector(state)),
@@ -235,11 +231,11 @@ class Function(metaclass=abc.ABCMeta):
                 np.mean(get_bare_vector(result))
             )
 
-        for fn in self._callbacks:
+        for func in self._callbacks:
             if jacobian:
-                fn(state, result[0], result[1])
+                func(state, result[0], result[1])
             else:
-                fn(state, result, jacobian=None)
+                func(state, result, jacobian=None)
         return result
 
     @abc.abstractmethod
@@ -269,6 +265,9 @@ class Chain(Function):
     def __init__(self, *functions):
         super().__init__()
         self._functions: List[Function] = list(functions)
+
+    def __len__(self):
+        return len(self._functions)
 
     def __getitem__(self, item) -> Function:
         if isinstance(item, slice):
@@ -301,8 +300,8 @@ class Chain(Function):
     @property
     def inverse(self) -> Optional['Function']:
         inverse_chain = Chain()
-        for fn in reversed(self._functions):
-            inverse = fn.inverse
+        for func in reversed(self._functions):
+            inverse = func.inverse
             if inverse is None:
                 # Can't build inverse chain as at least one function doesn't have an inverse
                 return None
@@ -374,9 +373,9 @@ class Residuals(Function):
 
 class Native(Function):
 
-    def __init__(self, fn: Callable[[StateLike], StateLike], jac: Callable[[StateLike], np.ndarray]):
+    def __init__(self, func: Callable[[StateLike], StateLike], jac: Callable[[StateLike], np.ndarray]):
         super().__init__()
-        self._fn = fn
+        self._fn = func
         self._jac = jac
 
     @property

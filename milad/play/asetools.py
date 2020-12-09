@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from typing import Union, Any, Callable, Dict
+from typing import Union, Any, Callable, Dict, Tuple
 
 import ase.neighborlist
 import numpy as np
@@ -375,12 +375,20 @@ class MomentsCalculator:
 
 
 class AseFingerprintsCalculator:
+    """Convenience class for using ASE atoms objects with generic fingerprinting methods"""
 
     def __init__(self, fingerprinter: reconstruct.Fingerprinter):
         self._fingerprinter = fingerprinter
 
+    @property
+    def fingerprinter(self):
+        return self._fingerprinter
+
     def evaluate(self, atoms: ase.Atoms, get_jacobian=False):
         return self._fingerprinter(ase2milad(atoms), get_jacobian)
+
+    def fingerprint_and_derivatives(self, atoms: ase.Atoms) -> Tuple[np.ndarray, np.ndarray]:
+        return self._fingerprinter.fingerprint_and_derivatives(ase2milad(atoms))
 
     def __call__(self, atoms: ase.Atoms, get_jacobian=False):
         return self.evaluate(atoms, get_jacobian)

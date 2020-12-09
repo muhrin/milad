@@ -122,16 +122,18 @@ def encoder(
 ):
     builder = atomic.AtomsCollectionBuilder(num_atoms)
     preprocess = functions.Chain(
-        atomic.MapNumbers(allowed_species, species_number_range), atomic.ScalePositions(scale_factor), builder.inverse
+        atomic.MapNumbers(allowed_species, species_number_range),  # Map the species onto a continuous range
+        atomic.ScalePositions(scale_factor),  # Scale the positions of atoms in an environment to fit in a radius
+        builder.inverse  # Convert to a single vector
     )
 
-    encode = functions.Chain(builder)
-    encode.append(
+    encode = functions.Chain(
+        builder,  # Given the vector, create a collection of atoms
         atomic.FeatureMapper(
             feature_type,
             feature_kwargs=feature_kwargs,
             map_species_to=get_species_map_idx(feature_type, map_species_to)
-        )
+        )  # Map the atoms onto feature functions
     )
     invs = invs or invariants.read(invariants.COMPLEX_INVARIANTS)
     moments_calculator = moments_calculator or zernike.ZernikeMomentCalculator(invs.max_order)
@@ -143,6 +145,7 @@ def encoder(
 
 
 class Fingerprinter(functions.Function):
+    """Class that is responsible for producing fingerprints form atomic environments"""
 
     def __init__(
         self,
@@ -183,6 +186,30 @@ class Fingerprinter(functions.Function):
             return result[0].real, result[1].real
 
         return result.real
+
+    def fingerprint_and_derivatives(self, atoms: atomic.AtomsCollection) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        This method computes the fingerprint for the pass atoms collection and the corresponding position
+        derivatives.
+        :param atoms: the atoms collection to fingerprint
+        :return: a tuple containing the fingerprint and the Jacobian
+        """
+        num_atoms = atoms.num_atoms
+
+        # First map the atomic numbers to a continuous range, this is not differentiable
+        mapped = self._fingerprint[0](atoms)
+        # Now perform the rest of the fingerprinting procedure which does have derivatives
+        fingerprint, jacobian = self._fingerprint[1:](mapped, jacobian=True)
+        len_fingerprint = len(fingerprint)
+
+        # Now extract the portion of the Jacobian that relates just to atomic positions and reshape
+        derivatives = jacobian[:, :3 * num_atoms].real
+        # Reshape to be (len_fingerprint, num_atoms, 3) so xyz are stored in separate dimension
+        derivatives = derivatives.reshape((len_fingerprint, num_atoms, 3))
+        # Now sum xyz
+        derivatives = derivatives.sum(axis=1)
+
+        return fingerprint.real, derivatives
 
     def atom_centred(self, atoms: atomic.AtomsCollection, idx: int, get_jacobian=False):
         new_centre = atoms.positions[idx]

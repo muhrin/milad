@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """Module that is concerned with the calculation of moment invariants"""
 import collections
+import functools
+import operator
 import pathlib
 from typing import Sequence, Union, List, Set, Tuple, Dict, Iterator
 
 import numba
-import numpy
 import numpy as np
 
 from . import base_moments
@@ -19,12 +20,9 @@ RES_DIR = pathlib.Path(__file__).parent / 'res'
 GEOMETRIC_INVARIANTS = RES_DIR / 'rot3dinvs8mat.txt'
 COMPLEX_INVARIANTS = RES_DIR / 'cmfs7indep_0.txt'
 
-import operator
-from functools import reduce  # Required in Python 3
-
 
 def prod(iterable):
-    return reduce(operator.mul, iterable, 1)
+    return functools.reduce(operator.mul, iterable, 1)
 
 
 class MomentInvariant:
@@ -105,20 +103,20 @@ class MomentInvariant:
             raise ValueError('There have to be three indices per entry, got: {}'.format(indices))
         self._terms.append((prefactor, tuple(indices)))
         if indices:
-            self._max_order = max(self._max_order, numpy.max(indices))
+            self._max_order = max(self._max_order, np.max(indices))
 
     def build(self):
         if self._terms:
             factors, arr = zip(*self._terms)
-            self._farray = numpy.asarray(factors)
-            self._indarray = numpy.asarray(arr)
+            self._farray = np.asarray(factors)
+            self._indarray = np.asarray(arr)
             term = self._terms[0][1]
-            self._norm_power = numpy.sum(term) / 3. + len(term)
+            self._norm_power = np.sum(term) / 3. + len(term)
 
     def apply(self, raw_moments: base_moments.Moments, normalise=False) -> float:
         """Compute this invariant from the given moments optionally normalising"""
 
-        if isinstance(raw_moments, numpy.ndarray):
+        if isinstance(raw_moments, np.ndarray):
             total = self._numpy_apply(raw_moments)
         else:
             # If we can get a matrix we can still use the fast (numpy) method
@@ -135,21 +133,21 @@ class MomentInvariant:
 
         return total
 
-    # def _numpy_apply(self, raw_moments: numpy.ndarray):
+    # def _numpy_apply(self, raw_moments: np.ndarray):
     #     """Fast method to get the invariant from a numpy array"""
     #     total = self._constant  # type: float
     #
     #     if self._terms:
     #         indices = self._indarray
-    #         total += numpy.prod(
+    #         total += np.prod(
     #             self._farray,
-    #             numpy.product(raw_moments[indices[:, :, 0], indices[:, :, 1], indices[:, :, 2]],
+    #             np.product(raw_moments[indices[:, :, 0], indices[:, :, 1], indices[:, :, 2]],
     #                           axis=1)
     #         )
     #
     #     return total
 
-    def _numpy_apply(self, raw_moments: numpy.ndarray):
+    def _numpy_apply(self, raw_moments: np.ndarray):
         """Fast method to get the invariant from a numpy array"""
         total = self._constant  # type: float
 
@@ -229,13 +227,11 @@ class MomentInvariant:
         return powers
 
 
-def _numpy_apply(prefactors, indices: numpy.array, raw_moments: numpy.ndarray):
+def _numpy_apply(prefactors, indices: np.array, raw_moments: np.ndarray):
     """Fast method to get the invariant from a numpy array"""
     total = 0
 
-    total += numpy.dot(
-        prefactors, numpy.prod(raw_moments[indices[:, :, 0], indices[:, :, 1], indices[:, :, 2]], axis=1)
-    )
+    total += np.dot(prefactors, np.prod(raw_moments[indices[:, :, 0], indices[:, :, 1], indices[:, :, 2]], axis=1))
 
     return total
 
@@ -279,8 +275,11 @@ class MomentInvariants(functions.Function):
     def __iter__(self) -> Iterator[MomentInvariant]:
         return self._invariants.__iter__()
 
-    def __getitem__(self, item) -> 'MomentInvariants':
-        return MomentInvariants(*self._invariants[item])
+    def __getitem__(self, item) -> Union['MomentInvariants', MomentInvariant]:
+        if isinstance(item, slice):
+            return MomentInvariants(*self._invariants[item])
+
+        return self._invariants[item]
 
     @property
     def max_order(self) -> int:
@@ -290,7 +289,7 @@ class MomentInvariants(functions.Function):
     def output_length(self, in_state: functions.State) -> int:
         return len(self._invariants)
 
-    def apply(self, moms: numpy.array, normalise=False, results=None) -> list:
+    def apply(self, moms: np.array, normalise=False, results=None) -> list:
         """Calculate the invariants from the given moments"""
         return apply_invariants(self._invariants, moms, normalise=normalise, results=results)
 
@@ -319,7 +318,7 @@ class MomentInvariants(functions.Function):
         return vector
 
 
-def apply_invariants(invariants: List[MomentInvariant], moms: numpy.array, normalise=False, results=None) -> list:
+def apply_invariants(invariants: List[MomentInvariant], moms: np.array, normalise=False, results=None) -> list:
     """Calculate the moment invariants for a given set of moments
 
     :param invariants: a list of invariants to calculate
@@ -414,9 +413,9 @@ def read(filename: str = GEOMETRIC_INVARIANTS, read_max: int = None, max_order=N
 
 def calc_moment_invariants(
     invariants: Sequence[MomentInvariant],
-    positions: numpy.array,
-    sigma: Union[float, numpy.array] = 0.4,
-    masses: Union[float, numpy.array] = 1.,
+    positions: np.array,
+    sigma: Union[float, np.array] = 0.4,
+    masses: Union[float, np.array] = 1.,
     normalise=False
 ) -> Sequence[float]:
     """Calculate the moment invariants for a set of Gaussians at the given positions."""

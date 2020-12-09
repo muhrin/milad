@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
-import numbers
-from typing import Dict, Optional, Type, Tuple, Union
+from typing import Optional, Type, Tuple, Union
 
 import numpy as np
 
@@ -348,7 +347,7 @@ class CentreAtomsCollection(functions.Function):
 
 
 class MapNumbers(functions.Function):
-    """Map atom the given set of atom numbers onto a continuous range"""
+    """Map the given set of atom numbers onto a continuous range"""
     input_type = AtomsCollection
     output_type = AtomsCollection
     supports_jacobian = False
@@ -423,26 +422,26 @@ class ApplyCutoff(functions.Function):
         super().__init__()
         self._cutoff_sq = cutoff * cutoff
 
-    def evaluate(self, atoms: AtomsCollection, get_jacobian=False):
+    def evaluate(self, in_atoms: AtomsCollection, get_jacobian=False):
         index_map = {}
         # Find all those that are within the cutoff
-        for idx in range(atoms.num_atoms):
-            pos = atoms.positions[idx]
+        for idx in range(in_atoms.num_atoms):
+            pos = in_atoms.positions[idx]
             if np.dot(pos, pos) < self._cutoff_sq:
                 index_map[idx] = len(index_map)
 
-        transformed = AtomsCollection(
+        out_atoms = AtomsCollection(
             len(index_map),
-            positions=atoms.positions[tuple(index_map.keys()), :],
-            species=atoms.numbers[(tuple(index_map.keys()),)]
+            positions=in_atoms.positions[tuple(index_map.keys()), :],
+            species=in_atoms.numbers[(tuple(index_map.keys()),)]
         )
 
         if get_jacobian:
-            jac = np.zeros(len(index_map), len(atoms))
+            jac = np.zeros((len(out_atoms), len(in_atoms)))
             for old_idx, new_idx in index_map.items():
-                jac[atoms.linear_pos_idx(old_idx), transformed.linear_pos_idx(new_idx)] = 1.
-                jac[atoms.linear_number_idx(old_idx), transformed.linear_number_idx(new_idx)] = 1.
+                jac[out_atoms.linear_pos_idx(new_idx), in_atoms.linear_pos_idx(old_idx)] = 1.
+                jac[out_atoms.linear_number_idx(new_idx), in_atoms.linear_number_idx(old_idx)] = 1.
 
-            return atoms, jac
+            return out_atoms, jac
 
-        return atoms
+        return out_atoms

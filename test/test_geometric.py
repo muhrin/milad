@@ -114,6 +114,7 @@ def test_delta_moments_derivatives():
     ORDER = 5
     NUM_POINTS = 4
     UBOUND = ORDER + 1
+    Delta = functions.WeightedDelta
 
     x = sympy.IndexedBase('x')
     w = sympy.IndexedBase('w')
@@ -121,25 +122,20 @@ def test_delta_moments_derivatives():
     POINTS = analytic.create_array(x, (NUM_POINTS, 3))
     WEIGHTS = analytic.create_array(w, NUM_POINTS)
 
-    dx = numpy.empty((UBOUND, UBOUND, UBOUND, NUM_POINTS, 3), dtype=type(POINTS[0, 0]))
-    dw = numpy.empty((UBOUND, UBOUND, UBOUND, NUM_POINTS), dtype=type(WEIGHTS[0]))
-
     # Get the moments and derivatives wrt to weights and positions
-    moments = geometric.from_deltas(
-        ORDER,
-        POINTS,
-        weights=WEIGHTS,
-        pos_derivatives=dx,
-        weight_derivatives=dw,
-    )
-    for p in range(ORDER):
-        for q in range(ORDER):
-            for r in range(ORDER):
-                moment = moments[p, q, r]
+    moments, jac = geometric.from_deltas(ORDER, POINTS, weights=WEIGHTS, get_jacobian=True)
 
-                # Check weight derivatives
-                for i in range(NUM_POINTS):
-                    dm_dx_calculated = dw[p, q, r, i]
+    jac = jac.reshape(UBOUND, UBOUND, UBOUND, -1)
+
+    for i in range(NUM_POINTS):
+        delta_idx = i * Delta.LENGTH
+        for p in range(ORDER):
+            for q in range(ORDER):
+                for r in range(ORDER):
+                    moment = moments[p, q, r]
+
+                    # Check weight derivatives
+                    dm_dx_calculated = jac[p, q, r, delta_idx + Delta.WEIGHT]
                     if isinstance(moment, float):
                         # We have a constant, so derivative is always 0
                         dw_dx_analytic = 0
@@ -148,10 +144,9 @@ def test_delta_moments_derivatives():
 
                     assert dm_dx_calculated == dw_dx_analytic
 
-                # Now loop over each point and the x, y, z coordinates
-                for i in range(4):
+                    # Now loop over each x, y, z coordinate
                     for dim in range(3):  # Look over x = 0, y = 1, z = 2
-                        dm_dx_calculated = dx[p, q, r, i, dim]
+                        dm_dx_calculated = jac[p, q, r, delta_idx + dim]
                         if isinstance(moment, (float, sympy.core.numbers.Zero)):
                             # We have a constant, so derivative is always 0
                             dw_dx_analytic = 0

@@ -101,7 +101,7 @@ class GeometricMomentsCalculator(functions.Function):
     def evaluate(self, features: functions.State, get_jacobian=False) -> GeometricMoments:
         out_jacobian = None
         if get_jacobian:
-            out_jacobian = np.empty((self.output_length(features), len(features)))
+            out_jacobian = np.empty((self.output_length(features), len(features)), dtype=features.vector.dtype)
 
         moments = GeometricMoments(geometric_moments(features, self._max_order, out_jacobian))
 
@@ -118,9 +118,10 @@ def geometric_moments(state: functions.State, max_order: int, jacobian: Optional
 
 @geometric_moments.register
 def _(d: functions.WeightedDelta, max_order: int, jacobian: Optional[np.array]) -> np.ndarray:
+    dtype = d.vector.dtype
     O = max_order
 
-    moms = np.empty((O + 1, 3))
+    moms = np.empty((O + 1, 3), dtype=dtype)
     moms[0] = 1  # 0^th power always 1.
     moms[1] = d.pos  # 1^st power always the position itself
 
@@ -213,7 +214,7 @@ def _(environment: functions.Features, max_order: int, jacobian: Optional[np.arr
     idx = 0
     partial_jacobian = None
 
-    moments = np.empty((O + 1, O + 1, O + 1))
+    moments = np.empty((O + 1, O + 1, O + 1), dtype=environment.vector.dtype)
     moments.fill(0.)
 
     for feature in environment.features:
@@ -246,20 +247,18 @@ def from_gaussians(
     sigmas = _to_array(sigmas, shape)
     weights = _to_array(weights, shape)
 
-    moments = np.zeros((max_order + 1, max_order + 1, max_order + 1))
+    features = functions.Features()
     for pos, sigma, weight in zip(positions, sigmas, weights):
-        moments += gaussian_geometric_moments(max_order, pos, sigma, weight)
+        features.add(functions.WeightedGaussian(pos, sigma, weight))
 
-    return GeometricMoments(moments)
+    return GeometricMomentsCalculator(max_order)(features)
 
 
 def from_deltas(
     max_order: int,
     positions: np.array,
     weights: Union[numbers.Number, np.array] = 1.,
-    out_moments=None,
-    pos_derivatives: np.array = None,
-    weight_derivatives: np.array = None,
+    get_jacobian=False,
 ) -> Union[GeometricMoments, np.array]:
     """
     Calculate the geometric moments for a collection of delta functions at the given positions with
@@ -268,63 +267,25 @@ def from_deltas(
     :param max_order: the maximum order to calculate moments up to
     :param positions: the positions of the delta functions
     :param weights: the weights of the delta functions
+    :param get_jacobian: return the Jacobian along with the geometric moments
     :return: a max_order * max_order * max_order array of moments
     """
-    try:
-        dtype = positions.dtype
-    except AttributeError:
-        dtype = object
+    if not isinstance(positions, np.ndarray):
+        positions = np.array(positions)
 
-    ubound = max_order + 1  # Calculate to max order (inclusive)
+    if not len(positions.shape) == 2 or positions.shape[1] != 3:
+        raise ValueError(
+            "Positions must be a list of vectors or a numpy array with shape [n, 3], not: '{}".format(positions.shape)
+        )
 
-    if out_moments is None:
-        out_moments = np.zeros((ubound, ubound, ubound), dtype=dtype)
-        geom_moms = GeometricMoments(out_moments)
-    else:
-        if isinstance(out_moments, GeometricMoments):
-            geom_moms = out_moments
-            out_moments = geom_moms.to_matrix()
-        else:
-            geom_moms = GeometricMoments(out_moments)
+    shape = positions.shape[0]
+    weights = _to_array(weights, shape)
 
-    num_points = positions.shape[0]
-    weights = _to_array(weights, num_points)
+    features = functions.Features()
+    for pos, weight in zip(positions, weights):
+        features.add(functions.WeightedDelta(pos, weight))
 
-    if pos_derivatives is not None:
-        expected_shape = (ubound, ubound, ubound, num_points, 3)
-        if pos_derivatives.shape != expected_shape:
-            raise ValueError("Positional derivatives have the wrong shape, should be '{}'".format(expected_shape))
-
-    if weight_derivatives is not None:
-        expected_shape = (ubound, ubound, ubound, num_points)
-        if weight_derivatives.shape != expected_shape:
-            raise ValueError("Weight derivatives have the wrong shape, should be '{}'".format(expected_shape))
-
-    # pylint: disable=invalid-name
-    out_moments.fill(0.)
-    moms = np.empty((ubound, 3), dtype=dtype)
-    moms[0] = 1  # 0^th power always 1.
-    for idx, (pos, weight) in enumerate(zip(positions, weights)):
-        # Calculate each x, y, z raise to powers up to the upper bound
-        for power in range(1, ubound):
-            moms[power] = np.multiply(moms[power - 1, :], pos)
-
-        this_moments = weight * utils.outer_product(moms[:, 0], moms[:, 1], moms[:, 2])
-        out_moments += this_moments
-
-        if pos_derivatives is not None:
-            for p in range(ubound):
-                for q in range(ubound):
-                    for r in range(ubound):
-                        # perform the derivative
-                        pos_derivatives[p, q, r, idx, 0] = p * this_moments[p - 1, q, r]
-                        pos_derivatives[p, q, r, idx, 1] = q * this_moments[p, q - 1, r]
-                        pos_derivatives[p, q, r, idx, 2] = r * this_moments[p, q, r - 1]
-
-        if weight_derivatives is not None:
-            weight_derivatives[:, :, :, idx] = this_moments / weight
-
-    return geom_moms
+    return GeometricMomentsCalculator(max_order)(features, jacobian=get_jacobian)
 
 
 def from_deltas_analytic(max_order: int, num_particles: int, pos_symbols=None, weight_symbols=None):
