@@ -193,9 +193,35 @@ class ZernikeMoments(base_moments.Moments):
 
         return value.real
 
+    def grid_values(self, num_samples, zero_outside_domain=True):
+        """Get a grid and corresponding values of the moments reconstructed at the gridpoints"""
+        # Create a coordinate grid
+        spacing = np.linspace(-1., 1., num_samples)
+        grid = np.array(np.meshgrid(spacing, spacing, spacing))
+        grid_points = grid.reshape(3, -1).T
+
+        if zero_outside_domain:
+            # Calculate the lengths squared and get the corresponding indexes
+            length_sq = (grid_points**2).sum(axis=1)
+            valid_idxs = np.argwhere(length_sq < 1)
+
+            # Now calculate the grid values at those points, the rest are 0
+            grid_vals = np.zeros(grid_points.shape[0])
+            values = self.value_at(grid_points[valid_idxs][:, 0, :])
+            np.put(grid_vals, valid_idxs, values, mode='raise')
+        else:
+            # Do all points, even those outside the domain
+            grid_vals = self.value_at(grid_points)
+
+        # Reshape into nxnxn array
+        return grid, grid_vals.reshape((grid.shape[1:]))
+
 
 class ZernikeMomentCalculator(functions.Function):
-    """Calculate Zernike moments"""
+    """Calculate Zernike moments.
+
+    Takes as input geometric moments or any state vector that is a valid input to GeometricMomentsCalculator
+    """
 
     output_type = ZernikeMoments
     supports_jacobian = True
@@ -221,10 +247,7 @@ class ZernikeMomentCalculator(functions.Function):
         if get_jacobian:
             geom_moments, geom_jac = geom_moments
 
-        # for n, l, m in iter_indices(self._max_order):
-        #     moments[n, l, m] = omega_nl_m(n, l, m, geom_moments.moments)
-
-        # Get the moments themselves
+        # Get the moments themselves from polynomials of geometric moments
         for (n, l, m), poly in self.chi.items():
             moments[n, l, m] = poly.evaluate(geom_moments.moments)
 

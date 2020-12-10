@@ -86,14 +86,13 @@ def linear_index(max_order: int, index: base_moments.Index) -> int:
 
 
 class GeometricMomentsCalculator(functions.Function):
+    """Function that calculates geometric moments up to some maximum order"""
+
     supports_jacobian = False
 
     def __init__(self, max_order: int):
         super().__init__()
         self._max_order = max_order
-
-    def empty_output(self, in_state) -> functions.State:
-        return GeometricMoments(np.zeros((self._max_order + 1, self._max_order + 1, self._max_order + 1)))
 
     def output_length(self, in_state: functions.State) -> int:
         return GeometricMoments.num_moments(self._max_order)
@@ -594,6 +593,7 @@ def _check_gaussian_moments_input(
     return input_length, output_length
 
 
+# pylint: disable=invalid-name
 def gaussian_geometric_moments(max_order: int, mu: np.array, sigma: numbers.Number, weight: numbers.Number) -> np.array:
     """
     Get the geometric moments for a 3D Gaussian

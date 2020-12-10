@@ -8,9 +8,9 @@ def random_points_in_sphere(num: int, radius=1., centre=False) -> np.array:
     r_sq = radius * radius
 
     for idx in range(num):
-        vec = 2 * radius * (np.random.rand(1, 3) - 0.5)
-        while np.linalg.norm(vec) > r_sq:
-            vec = 2 * radius * (np.random.rand(1, 3) - 0.5)
+        vec = 2 * radius * (np.random.rand(3) - 0.5)
+        while np.dot(vec, vec) >= r_sq:
+            vec = 2 * radius * (np.random.rand(3) - 0.5)
         points[idx] = vec
 
     if centre:

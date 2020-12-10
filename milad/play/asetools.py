@@ -8,7 +8,7 @@ import dscribe.utils.geometry
 
 import milad
 from milad import atomic
-from milad import reconstruct
+from milad import fingerprinting
 from . import distances
 from . import envs
 from . import fingerprints
@@ -377,7 +377,7 @@ class MomentsCalculator:
 class AseFingerprintsCalculator:
     """Convenience class for using ASE atoms objects with generic fingerprinting methods"""
 
-    def __init__(self, fingerprinter: reconstruct.Fingerprinter):
+    def __init__(self, fingerprinter: fingerprinting.Fingerprinter):
         self._fingerprinter = fingerprinter
 
     @property
@@ -396,3 +396,7 @@ class AseFingerprintsCalculator:
 
 def ase2milad(atoms: ase.Atoms):
     return atomic.AtomsCollection(len(atoms), positions=atoms.positions, species=atoms.numbers)
+
+
+def milad2ase(atoms: atomic.AtomsCollection) -> ase.Atoms:
+    return ase.Atoms(positions=atoms.positions, numbers=atoms.numbers)

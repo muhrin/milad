@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
+"""
+Module containing functions and objects related to manipulating collections of atoms
+"""
 import logging
-from typing import Optional, Type, Tuple, Union
+from typing import Optional, Type, Tuple
 
 import numpy as np
 
@@ -35,6 +38,9 @@ class AtomsCollection(functions.PlainState):
             self.positions = positions
         if species is not None:
             self.numbers = species
+
+    def __str__(self) -> str:
+        return f'{len(self)} {str(self.numbers)}'
 
     def copy(self) -> 'AtomsCollection':
         atoms = AtomsCollection(self._num_atoms)
@@ -77,7 +83,7 @@ class AtomsCollection(functions.PlainState):
 
     @numbers.setter
     def numbers(self, new_numbers: np.array):
-        self._vector[3 * self._num_atoms:] = new_numbers
+        self._array[3 * self._num_atoms:] = new_numbers
 
 
 class AtomsCollectionBuilder(functions.Function):
@@ -91,6 +97,11 @@ class AtomsCollectionBuilder(functions.Function):
         self._num_atoms = num_atoms
         self._mask = np.empty(4 * num_atoms, dtype=object)
         self._mask.fill(None)
+
+    @property
+    def num_atoms(self) -> int:
+        """Get the number of atoms supported by this builder"""
+        return self._num_atoms
 
     @property
     def positions(self) -> np.ndarray:
@@ -179,33 +190,6 @@ class AtomsCollectionBuilder(functions.Function):
                     current_idx += 1
 
             return out_vector
-
-
-class AtomsCollectionBuilder2:
-    """An atoms collection builder that doesn't require a fixed number of atoms to be defined"""
-    input_type = np.ndarray
-    output_type = AtomsCollection
-    supports_jacobian = True
-
-    def __init__(self, species=True):
-        super().__init__()
-        self._species = species
-
-    def evaluate(self,
-                 state: functions.State,
-                 get_jacobian=False) -> Union[AtomsCollection, Tuple[AtomsCollection, np.ndarray]]:
-        vector = functions.get_bare_vector(state)
-        length = len(vector)
-        if (length % 4) != 0:
-            raise ValueError(f'Passed vector is not a multiple of 4 ({length})')
-
-        atoms = AtomsCollection(length / 4)
-        atoms.vector[:] = vector
-
-        if get_jacobian:
-            return atoms, np.identity(len(vector))
-
-        return atoms
 
 
 class FeatureMapper(functions.Function):
@@ -327,11 +311,16 @@ class ScalePositions(functions.Function):
 
 
 class CentreAtomsCollection(functions.Function):
-    """Centre an atomic system by translating it to the centre of mass"""
+    """Centre an atomic system by translating it such that the centroid is coincident with the origin"""
 
     input_type = AtomsCollection
     output_type = AtomsCollection
     supports_jacobian = False
+
+    def inverse(self) -> Optional[functions.Function]:
+        """It is not possible to 'uncenter' a set of atoms (as we dont' keep track of where the previous centre was)
+        and so the inverse of this function simply does nothing."""
+        return functions.Identity()
 
     def output_length(self, in_state: AtomsCollection) -> int:
         return len(in_state)
@@ -358,6 +347,11 @@ class MapNumbers(functions.Function):
         self._mapped_range = mapped_range
         self._range_size = mapped_range[1] - mapped_range[0]
         self._half_bin = self._range_size / (2 * len(self._numbers))
+
+    @property
+    def mapped_range(self) -> Tuple[float, float]:
+        """Get the range that species are mapped onto"""
+        return self._mapped_range
 
     @property
     def inverse(self) -> Optional['functions.Function']:
@@ -421,6 +415,10 @@ class ApplyCutoff(functions.Function):
     def __init__(self, cutoff: float):
         super().__init__()
         self._cutoff_sq = cutoff * cutoff
+
+    @property
+    def inverse(self) -> Optional[functions.Function]:
+        return functions.Identity()
 
     def evaluate(self, in_atoms: AtomsCollection, get_jacobian=False):
         index_map = {}

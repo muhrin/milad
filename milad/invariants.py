@@ -255,7 +255,7 @@ def _parallel_apply(prefactors, indices, moments):
 
 
 class MomentInvariants(functions.Function):
-    """A container for moment invariants"""
+    """A function that takes moments as input and produces rotation invariants using polyonimals thereof"""
     input_type = base_moments.Moments
     output_type = np.ndarray
     supports_jacobian = True

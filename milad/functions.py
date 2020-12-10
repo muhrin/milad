@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import abc
 import logging
-from typing import List, Union, Tuple, Dict, Callable, Any, Iterable, Type, Optional
+from typing import List, Union, Tuple, Callable, Any, Iterable, Type, Optional
 
 import numpy as np
 
@@ -20,6 +20,11 @@ class State(metaclass=abc.ABCMeta):
     def vector(self) -> np.array:
         """Get the state vector as a numpy array"""
 
+    @property
+    def array(self) -> np.array:
+        """Get the state as a numpy array"""
+        return self.vector
+
     def __len__(self) -> int:
         """Get the length of this state vector"""
         return len(self.vector)
@@ -34,13 +39,23 @@ StateLike = Union[np.ndarray, State]
 
 
 class PlainState(State):
+    __slots__ = ('_array',)
 
     def __init__(self, length):
-        self._vector = np.zeros(length)
+        self._array = np.zeros(length)
 
     @property
     def vector(self) -> np.array:
-        return self._vector
+        return self._array
+
+    @property
+    def array(self) -> np.array:
+        """Get the array corresponding to this state"""
+        return self._array
+
+    @array.setter
+    def array(self, arr: np.ndarray):
+        self._array[:] = arr
 
 
 class Feature(State):
@@ -55,6 +70,14 @@ class Feature(State):
     @property
     def vector(self):
         return self._vector
+
+    @property
+    def array(self):
+        return self._vector
+
+    @array.setter
+    def array(self, arr: np.ndarray):
+        self._vector[:] = arr
 
     @vector.setter
     def vector(self, value: np.array):
@@ -71,7 +94,7 @@ class Feature(State):
 class Features(State):
     """An collection of features"""
 
-    def __init__(self, *feature):
+    def __init__(self, *feature: Feature):
         self._vector = np.empty(0)
         self._features: List[Feature] = []
         for entry in feature:
@@ -85,6 +108,14 @@ class Features(State):
     @property
     def vector(self):
         return self._vector
+
+    @property
+    def array(self):
+        return self._vector
+
+    @array.setter
+    def array(self, arr):
+        self._vector[:] = arr
 
     def add(self, feature: Feature):
         self._features.append(feature)
@@ -202,8 +233,8 @@ class Function(metaclass=abc.ABCMeta):
             raise ValueError("'{}' is already registered".format(func))
         self._callbacks.add(func)
 
-    def remove_callback(self, fn: Callable[[StateLike, StateLike, np.ndarray], None]):
-        self._callbacks.remove(fn)
+    def remove_callback(self, func: Callable[[StateLike, StateLike, np.ndarray], None]):
+        self._callbacks.remove(func)
 
     def __call__(self, state: State, jacobian=False) -> Union[State, Tuple[State, np.array]]:
         name = self.__class__.__name__
@@ -239,8 +270,12 @@ class Function(metaclass=abc.ABCMeta):
         return result
 
     @abc.abstractmethod
-    def evaluate(self, state: StateLike, get_jacobian=False):
-        """Evaluate the function with the passed input"""
+    def evaluate(self, state, get_jacobian=False):
+        """Evaluate the function with the passed input
+
+        :param state: the state that is the input to the function
+        :param get_jacobian: if True returns a tuple [value, jacobian_mtx] else returns value
+        """
 
     @classmethod
     def _check_input_type(cls, value: Any, allowed_types: Union[Type, Iterable[Type]]):
@@ -260,7 +295,19 @@ class Function(metaclass=abc.ABCMeta):
             )
 
 
+class Identity(Function):
+    """Function that just returns what it is passed"""
+
+    def evaluate(self, state: StateLike, get_jacobian=False):
+        """Evaluate the function with the passed input"""
+        if get_jacobian:
+            return state, np.eye(len(state))
+
+        return state
+
+
 class Chain(Function):
+    """A function that is a chain of other functions."""
 
     def __init__(self, *functions):
         super().__init__()
@@ -278,6 +325,16 @@ class Chain(Function):
     def copy(self) -> 'Chain':
         """Create a shallow copy"""
         return Chain(self._functions)
+
+    def find_type(self, query: type) -> List[Tuple[int, Function]]:
+        """Look for functions in this chain of the given type.  Returns a list of Tuple[index, function]
+        where index is the index in the chain and function is the matching function instance
+        """
+        found = []
+        for idx, func in enumerate(self):
+            if isinstance(func, query):
+                found.append((idx, func))
+        return found
 
     @property
     def input_type(self):
@@ -395,7 +452,7 @@ class Native(Function):
 def get_bare_vector(state: Union[np.ndarray, State]) -> np.array:
     if isinstance(state, np.ndarray):
         return state
-    elif isinstance(state, State):
+    if isinstance(state, State):
         return state.vector
 
     raise TypeError(f"Unknown state type: '{state.__class__.__name__}'")
