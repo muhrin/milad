@@ -68,6 +68,33 @@ def from_geometric_moments(max_order: int, geom_moments: np.array) -> 'ZernikeMo
     return ZernikeMomentCalculator(max_order)(geom_moments)
 
 
+class ZernikeReconstructionQuery(base_moments.ReconstructionQuery):
+
+    def __init__(self, points: np.ndarray, moments: np.ndarray):
+        super().__init__(points)
+        self._moments = moments
+        self._valid_idxs = None
+        self._moments_in_domain = None
+
+    @property
+    def moments(self) -> np.ndarray:
+        return self._moments
+
+    @property
+    def moments_in_domain(self) -> np.ndarray:
+        if self._moments_in_domain is None:
+            # Annoying indexing and unindexing, this returns a copy
+            self._moments_in_domain = self._moments[:, :, :, self.valid_idxs][:, :, :, :, 0]
+        return self._moments_in_domain
+
+    @property
+    def valid_idxs(self):
+        """Get the indexes of points that are within the domain"""
+        if self._valid_idxs is None:
+            self._valid_idxs = ZernikeMoments._get_indices_in_domain(self.points)
+        return self._valid_idxs
+
+
 class ZernikeMoments(base_moments.Moments):
     """A container class for calculated Zernike moments"""
 
@@ -111,6 +138,10 @@ class ZernikeMoments(base_moments.Moments):
     @property
     def dtype(self):
         return complex
+
+    @property
+    def max_order(self) -> int:
+        return self._max_n
 
     @property
     def real(self):
@@ -170,51 +201,66 @@ class ZernikeMoments(base_moments.Moments):
         :param order: the maximum order to go up to (defaults to the order of these moments)
         """
         order = order or self._max_n
+        return self.reconstruct(self.create_reconstruction_query(x, order), order, zero_outside_domain=False)
 
-        if len(x.shape) == 2:
-            moms = [geometric.from_deltas(self._max_n, [pt]).to_matrix() for pt in x]
-            query = np.empty(list(moms[0].shape) + [len(moms)])
-            for idx, entry in enumerate(moms):
-                query[:, :, :, idx] = entry
+    def reconstruct(self, query: ZernikeReconstructionQuery, order=None, zero_outside_domain=True):
+        order = order or self._max_n
+        moments = query.moments
+
+        values = np.zeros(query.points.shape[0], dtype=self.dtype)
+
+        if zero_outside_domain:
+            # Use only reconstruction moments from within the domain
+            moments = query.moments_in_domain
+            calculated_values = np.zeros(query.valid_idxs.size, dtype=self.dtype)
         else:
-            query = geometric.from_deltas(self._max_n, [x])
-
-        value = 0.0
+            calculated_values = values
 
         for n, l, m in iter_indices(max_order=order):
             omega = self.moment(n, l, m)
-            z = sum_chi_nlm(n, l, m, query)
-            value += omega * z
+            z = sum_chi_nlm(n, l, m, moments)
+            calculated_values += omega * z
 
             if m != 0:
                 # Now do the symmetric -m part
                 z_conj = (-1)**m * z.conjugate()
-                value += z_conj * self.moment(n, l, -m)
 
-        return value.real
-
-    def grid_values(self, num_samples, zero_outside_domain=True):
-        """Get a grid and corresponding values of the moments reconstructed at the gridpoints"""
-        # Create a coordinate grid
-        spacing = np.linspace(-1., 1., num_samples)
-        grid = np.array(np.meshgrid(spacing, spacing, spacing))
-        grid_points = grid.reshape(3, -1).T
+                calculated_values += z_conj * self.moment(n, l, -m)
 
         if zero_outside_domain:
-            # Calculate the lengths squared and get the corresponding indexes
-            length_sq = (grid_points**2).sum(axis=1)
-            valid_idxs = np.argwhere(length_sq < 1)
+            np.put(values, query.valid_idxs, calculated_values)
 
-            # Now calculate the grid values at those points, the rest are 0
-            grid_vals = np.zeros(grid_points.shape[0])
-            values = self.value_at(grid_points[valid_idxs][:, 0, :])
-            np.put(grid_vals, valid_idxs, values, mode='raise')
+        return values.real
+
+    @classmethod
+    def create_reconstruction_query(cls, points: np.ndarray, order=None) -> ZernikeReconstructionQuery:
+        """Create a query object that can be passed to self.value_at to reconstruct the Zernike functions
+        at the given query points.  This is useful if the same point (or grid of points) is used multiple
+        times as this precomputation can be done once and reused.
+
+        :param points: the point to get the value at
+        :param order: the maximum order to go up to (defaults to the order of these moments)
+        """
+        return ZernikeReconstructionQuery(points, cls._get_geometric_moments(points, order))
+
+    @classmethod
+    def _get_geometric_moments(cls, point: np.array, order: int) -> np.ndarray:
+        """Get geometric moments from a point or set of points.  Used in reconstruction."""
+        if len(point.shape) == 2:
+            moms = [geometric.from_deltas(order, [pt]).to_matrix() for pt in point]
+            moments = np.empty(list(moms[0].shape) + [len(moms)])
+            for idx, entry in enumerate(moms):
+                moments[:, :, :, idx] = entry
         else:
-            # Do all points, even those outside the domain
-            grid_vals = self.value_at(grid_points)
+            moments = geometric.from_deltas(order, [point])
 
-        # Reshape into nxnxn array
-        return grid, grid_vals.reshape((grid.shape[1:]))
+        return moments
+
+    @staticmethod
+    def _get_indices_in_domain(points: np.ndarray) -> np.ndarray:
+        """Calculate the lengths squared and get the corresponding indexes"""
+        length_sq = (points**2).sum(axis=1)
+        return np.argwhere(length_sq <= 1)
 
 
 class ZernikeMomentCalculator(functions.Function):

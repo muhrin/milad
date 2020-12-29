@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from typing import Union, Any, Callable, Dict, Tuple
+from typing import Union, Any, Callable, Dict, Tuple, List
 
 import ase.neighborlist
 import numpy as np
@@ -395,8 +395,22 @@ class AseFingerprintsCalculator:
 
 
 def ase2milad(atoms: ase.Atoms):
-    return atomic.AtomsCollection(len(atoms), positions=atoms.positions, species=atoms.numbers)
+    return atomic.AtomsCollection(len(atoms), positions=atoms.positions, numbers=atoms.numbers)
 
 
 def milad2ase(atoms: atomic.AtomsCollection) -> ase.Atoms:
     return ase.Atoms(positions=atoms.positions, numbers=atoms.numbers)
+
+
+def prepare_molecule(*molecules: ase.Atoms) -> float:
+    """This will bring the centroid of each molecule to be coincident with the origin and return
+    the maximum radius found from any of the molecules"""
+    max_radius_sq = 0.
+    for molecule in molecules:
+        com = molecule.get_center_of_mass()
+        molecule.set_positions(molecule.positions - com)
+        new_positions = molecule.positions
+        max_dist_sq = max(np.dot(pos, pos) for pos in new_positions)
+        max_radius_sq = max(max_radius_sq, max_dist_sq)
+
+    return max_radius_sq**0.5

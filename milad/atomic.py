@@ -3,7 +3,7 @@
 Module containing functions and objects related to manipulating collections of atoms
 """
 import logging
-from typing import Optional, Type, Tuple
+from typing import Optional, Type, Tuple, Union
 
 import numpy as np
 
@@ -31,13 +31,13 @@ class AtomsCollection(functions.PlainState):
     def total_length(num_atoms: int) -> int:
         return 4 * num_atoms
 
-    def __init__(self, num: int, positions: np.array = None, species: np.array = None):
+    def __init__(self, num: int, positions: np.array = None, numbers: np.array = None):
         super().__init__(self.total_length(num))
         self._num_atoms = num
         if positions is not None:
             self.positions = positions
-        if species is not None:
-            self.numbers = species
+        if numbers is not None:
+            self.numbers = numbers
 
     def __str__(self) -> str:
         return f'{len(self)} {str(self.numbers)}'
@@ -102,6 +102,11 @@ class AtomsCollectionBuilder(functions.Function):
     def num_atoms(self) -> int:
         """Get the number of atoms supported by this builder"""
         return self._num_atoms
+
+    @property
+    def mask(self) -> np.ndarray:
+        """Return the mask of fixed values (free values will have None entries)"""
+        return self._mask
 
     @property
     def positions(self) -> np.ndarray:
@@ -198,11 +203,21 @@ class FeatureMapper(functions.Function):
     output_type = functions.Features
     supports_jacobian = True
 
-    def __init__(self, feature: Type[functions.Feature], feature_kwargs=None, map_species_to: int = None):
+    def __init__(
+        self,
+        type: Type[functions.Feature] = functions.WeightedDelta,
+        kwargs: dict = None,
+        map_species_to: Union[int, str] = None
+    ):
+        """
+        :param type: the feature type
+        :param kwargs: dictionary of keyword arguments to pass to construct the features with
+        :param map_species_to: optionally map atomic numbers to this index of the feature function vector
+        """
         super().__init__()
-        self._feature_type = feature
-        self._map_species_to = map_species_to
-        self._feature_kwargs = feature_kwargs or {}
+        self._feature_type = type
+        self._map_species_to = self._get_species_map_idx(type, map_species_to)
+        self._feature_kwargs = kwargs or {}
         self._inverse = self.Inverse(self)
 
     @property
@@ -212,6 +227,17 @@ class FeatureMapper(functions.Function):
     @property
     def map_species_to(self) -> Optional[str]:
         return self._map_species_to
+
+    @staticmethod
+    def _get_species_map_idx(feature_type: Type[functions.Feature], map_to: Union[int, str]) -> Optional[int]:
+        if isinstance(map_to, int):
+            return map_to
+        if isinstance(map_to, str):
+            return getattr(feature_type, map_to)
+        if map_to is None:
+            return None
+
+        raise TypeError(map_to)
 
     def empty_output(self, in_state: AtomsCollection) -> functions.Features:
         return functions.Features()
@@ -341,11 +367,15 @@ class MapNumbers(functions.Function):
     output_type = AtomsCollection
     supports_jacobian = False
 
-    def __init__(self, possible_numbers: set, mapped_range: Tuple[float, float]):
+    def __init__(self, species: set, map_to: Union[float, Tuple[float, float]] = (1.0, 6.0)):
         super().__init__()
-        self._numbers = list(sorted(possible_numbers))
-        self._mapped_range = mapped_range
-        self._range_size = mapped_range[1] - mapped_range[0]
+        if not isinstance(map_to, tuple):
+            # Assume it's a scalar and everything is being mapped to a single number
+            map_to = (map_to, map_to)
+
+        self._numbers = list(sorted(species))
+        self._mapped_range = map_to
+        self._range_size = map_to[1] - map_to[0]
         self._half_bin = self._range_size / (2 * len(self._numbers))
 
     @property
@@ -427,11 +457,13 @@ class ApplyCutoff(functions.Function):
             pos = in_atoms.positions[idx]
             if np.dot(pos, pos) < self._cutoff_sq:
                 index_map[idx] = len(index_map)
+            else:
+                print('WARNING: CUTTING OFF {}'.format(idx))
 
         out_atoms = AtomsCollection(
             len(index_map),
             positions=in_atoms.positions[tuple(index_map.keys()), :],
-            species=in_atoms.numbers[(tuple(index_map.keys()),)]
+            numbers=in_atoms.numbers[(tuple(index_map.keys()),)]
         )
 
         if get_jacobian:

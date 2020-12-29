@@ -4,6 +4,7 @@ from typing import Optional, Type, Tuple, Union
 import numpy as np
 
 from . import atomic
+from . import base_moments
 from . import invariants
 from . import functions
 from . import zernike
@@ -16,10 +17,8 @@ class Fingerprinter(functions.Function):
 
     def __init__(
         self,
+        feature_mapper: atomic.FeatureMapper,
         cutoff: float = None,
-        feature_type=functions.WeightedDelta,
-        feature_kwargs=None,
-        map_species_to='WEIGHT',
         moments_calculator=None,
         invs: invariants.MomentInvariants = None,
         preprocess: functions.Function = None
@@ -28,15 +27,7 @@ class Fingerprinter(functions.Function):
         preprocess = preprocess or functions.Identity()
 
         # Now the actual fingerprinting
-        process = functions.Chain()
-
-        process.append(
-            atomic.FeatureMapper(
-                feature_type,
-                feature_kwargs=feature_kwargs,
-                map_species_to=get_species_map_idx(feature_type, map_species_to)
-            ),
-        )
+        process = functions.Chain(feature_mapper)
         invs = invs or invariants.read(invariants.COMPLEX_INVARIANTS)
         moments_calculator = moments_calculator or zernike.ZernikeMomentCalculator(invs.max_order)
 
@@ -63,9 +54,10 @@ class Fingerprinter(functions.Function):
         """Return the processing function"""
         return self._process
 
-    def get_moments(self, atoms: atomic.AtomsCollection) -> np.ndarray:
-        preprocessed = self.preprocess(atoms)
-        return self.process[:-1](preprocessed)
+    def get_moments(self, atoms: atomic.AtomsCollection, preprocess=True) -> base_moments.Moments:
+        if preprocess:
+            atoms = self.preprocess(atoms)
+        return self.process[:-1](atoms)
 
     def evaluate(self, state: atomic.AtomsCollection, get_jacobian=False):
         result = self._calculator(state, get_jacobian)
@@ -102,27 +94,45 @@ class Fingerprinter(functions.Function):
     def atom_centred(self, atoms: atomic.AtomsCollection, idx: int, get_jacobian=False):
         new_centre = atoms.positions[idx]
         new_atoms = atomic.AtomsCollection(
-            atoms.num_atoms, positions=atoms.positions - new_centre, species=atoms.numbers
+            atoms.num_atoms, positions=atoms.positions - new_centre, numbers=atoms.numbers
         )
         return self.evaluate(new_atoms, get_jacobian=get_jacobian)
 
 
 def fingerprinter(
-    species: set,
+    features: Optional[dict] = None,
+    species: Optional[dict] = None,
     cutoff: float = None,
     scale=True,
-    species_number_range=(0.5, 5.),
-    map_species_to='WEIGHT',
-    feature_type=functions.WeightedDelta,
-    feature_kwargs=None,
     moments_calculator=None,
     invs: invariants.MomentInvariants = None,
 ):
+    """
+
+    :param features:
+    :param species: a dictionary that has the following form:
+        {
+            'map': {
+                'numbers': Sequence[Number] - a sequence of atomic numbers to be mapped
+                'range': Union[Number, Tuple[Number, Number]] - a number range to map species to
+                'to': Union[int, str] - the feature value to map the numbers to e.g. 'WEIGHT' which is a class
+                                            property of WeightedDelta
+            }
+        }
+    :param cutoff:
+    :param scale:
+    :param moments_calculator:
+    :param invs:
+    :return:
+    """
     # Set up the preprocessing
     preprocess = functions.Chain()
 
-    if map_species_to is not None:
-        preprocess.append(atomic.MapNumbers(species, species_number_range))
+    species = species or {}
+
+    species_map = species.get('map', {})
+    if species_map:
+        preprocess.append(atomic.MapNumbers(species=species_map['numbers'], map_to=species_map['range']))
 
     if cutoff is not None:
         preprocess.append(atomic.ApplyCutoff(cutoff))
@@ -131,11 +141,10 @@ def fingerprinter(
             # Rescale everything to be in the range [-1, 1], the typical domain of orthogonality
             preprocess.append(atomic.ScalePositions(1. / cutoff))
 
+    features = features or dict(type=functions.WeightedDelta, map_species_to=species_map.get('to', None))
     return Fingerprinter(
+        feature_mapper=atomic.FeatureMapper(**features),
         cutoff=cutoff,
-        feature_type=feature_type,
-        feature_kwargs=feature_kwargs,
-        map_species_to=map_species_to,
         moments_calculator=moments_calculator,
         invs=invs,
         preprocess=preprocess

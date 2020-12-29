@@ -236,7 +236,7 @@ class Function(metaclass=abc.ABCMeta):
     def remove_callback(self, func: Callable[[StateLike, StateLike, np.ndarray], None]):
         self._callbacks.remove(func)
 
-    def __call__(self, state: State, jacobian=False) -> Union[State, Tuple[State, np.array]]:
+    def __call__(self, state: State, jacobian=False):
         name = self.__class__.__name__
 
         if self.input_type is not None:

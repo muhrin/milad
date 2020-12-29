@@ -12,6 +12,16 @@ from . import functions
 Index = Tuple[int, int, int]  # A three dimensional moment index
 
 
+class ReconstructionQuery:
+
+    def __init__(self, points: np.ndarray):
+        self._points = points
+
+    @property
+    def points(self):
+        return self._points
+
+
 class Moments(functions.State, metaclass=abc.ABCMeta):
     """A class representing three dimensional moments"""
 
@@ -31,6 +41,11 @@ class Moments(functions.State, metaclass=abc.ABCMeta):
         special indexing schemes in which case an AttributeError will be raised"""
         raise AttributeError('Does not support conversion to matrix')
 
+    @property
+    @abc.abstractmethod
+    def max_order(self):
+        """Get the maximum order of the moments"""
+
     @abc.abstractmethod
     def moment(self, n: int, l: int, m: int):
         """Get the n, l, m^th moment"""
@@ -47,6 +62,51 @@ class Moments(functions.State, metaclass=abc.ABCMeta):
         :param max_order: the maximum order to go up to (defaults to the maximum order of these
             moments)
         """
+
+    def grid_values(self, num_samples: int, zero_outside_domain=True):
+        """Get a grid and corresponding values of the moments reconstructed at the gridpoints"""
+        # Create a coordinate grid
+        spacing = np.linspace(-1., 1., num_samples)
+        grid = np.array(np.meshgrid(spacing, spacing, spacing))
+        grid_points = grid.reshape(3, -1).T
+
+        if zero_outside_domain:
+            # Calculate the lengths squared and get the corresponding indexes
+            length_sq = (grid_points**2).sum(axis=1)
+            valid_idxs = np.argwhere(length_sq < 1)
+
+            # Now calculate the grid values at those points, the rest are 0
+            grid_vals = np.zeros(grid_points.shape[0])
+            values = self.value_at(grid_points[valid_idxs][:, 0, :])
+            np.put(grid_vals, valid_idxs, values, mode='raise')
+        else:
+            # Do all points, even those outside the domain
+            grid_vals = self.value_at(grid_points)
+
+        # Reshape into n * n * n array
+        return grid, grid_vals.reshape((grid.shape[1:]))
+
+    def reconstruct(self, query: ReconstructionQuery, order=None, zero_outside_domain=True):
+        return self.value_at(query.points)
+
+    @classmethod
+    def get_grid(cls, num_samples: int, restrict_to_domain=True) -> np.ndarray:
+        # Create a coordinate grid
+        spacing = np.linspace(-1., 1., num_samples)
+        grid = np.array(np.meshgrid(spacing, spacing, spacing))
+        grid_points = grid.reshape(3, -1).T
+
+        if restrict_to_domain:
+            # Calculate the lengths squared and get the corresponding indexes
+            length_sq = (grid_points**2).sum(axis=1)
+            valid_idxs = np.argwhere(length_sq < 1)
+            grid_points = grid_points[valid_idxs][:, 0, :]
+
+        return grid_points
+
+    @classmethod
+    def create_reconstruction_query(cls, points, order) -> ReconstructionQuery:
+        return ReconstructionQuery(points)
 
 
 ProductTerm = collections.namedtuple('ProductTerm', 'index terms')

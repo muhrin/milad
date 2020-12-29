@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import math
+import numba
 import numpy as np
 
 
@@ -58,6 +59,61 @@ class UnitCellDistanceCalculator:
         normal = np.cross(plane_vec1, plane_vec2)
         vol = self._volume  # = a . |b x c|
         return radius / vol * np.linalg.norm(normal)
+
+    def get_vec_min_img(
+        self,
+        a: np.array,
+        b: np.array,
+        max_cell_multiples: int = 100000,
+        self_interation=True
+    ) -> np.array:  # pylint: disable=invalid-name
+        """
+        Get all vectors from a to b that are less than the cutoff in length
+
+        :param a:
+        :param b:
+        :param cutoff:
+        :param max_cell_multiples:
+        :param self_interation:
+        :return:
+        """
+        vol = self._volume
+        # TODO: Wrap a, and b into the current unit cell
+        dr = b - a
+
+        min_dr_sq = np.dot(dr, dr)
+        min_length = min_dr_sq**0.5
+
+        a_max = math.ceil(get_num_plane_repetitions_to_bound_sphere(min_length, vol, self._b_cross_c_len))
+
+        b_max = math.ceil(get_num_plane_repetitions_to_bound_sphere(min_length, vol, self._a_cross_c_len))
+
+        c_max = math.ceil(get_num_plane_repetitions_to_bound_sphere(min_length, vol, self._a_cross_b_len))
+
+        a_max = min(a_max, max_cell_multiples)
+        b_max = min(b_max, max_cell_multiples)
+        c_max = min(c_max, max_cell_multiples)
+
+        # min_dr = fast_min_img(dr, self._a, self._b, self._c, a_max, b_max, c_max, self_interation)
+        # return min_dr
+
+        min_dr = dr
+
+        for i in range(-a_max, a_max + 1):
+            ra = i * self._a
+            for j in range(-b_max, b_max + 1):
+                rab = ra + j * self._b
+                for k in range(-c_max, c_max + 1):
+                    if not self_interation and i == 0 and j == 0 and k == 0:
+                        continue
+
+                    out_vec = rab + k * self._c + dr
+                    len_sq = np.dot(out_vec, out_vec)
+                    if len_sq < min_dr_sq:
+                        min_dr = out_vec
+                        min_dr_sq = len_sq
+
+        return min_dr
 
     def get_vecs_between(
         self,
@@ -119,3 +175,25 @@ class UnitCellDistanceCalculator:
                         out_values.append(out_vec)
 
         return np.array(out_values)
+
+
+@numba.jit(parallel=True)
+def fast_min_img(dr, a, b, c, a_max, b_max, c_max, self_interation):
+    min_dr = dr.copy()
+    min_dr_sq = np.dot(dr, dr)
+
+    for i in range(-a_max, a_max + 1):
+        ra = i * a
+        for j in range(-b_max, b_max + 1):
+            rab = ra + j * b
+            for k in range(-c_max, c_max + 1):
+                if not self_interation and i == 0 and j == 0 and k == 0:
+                    continue
+
+                out_vec = rab + k * c + dr
+                len_sq = np.dot(out_vec, out_vec)
+                if len_sq < min_dr_sq:
+                    min_dr = out_vec
+                    min_dr_sq = len_sq
+
+    return min_dr
