@@ -28,17 +28,21 @@ class Fingerprinter(functions.Function):
 
         # Now the actual fingerprinting
         process = functions.Chain(feature_mapper)
-        invs = invs or invariants.read(invariants.COMPLEX_INVARIANTS)
+        self._invariants = invs or invariants.read(invariants.COMPLEX_INVARIANTS)
         moments_calculator = moments_calculator or zernike.ZernikeMomentCalculator(invs.max_order)
 
         process.append(moments_calculator)
-        process.append(invs)
+        process.append(self._invariants)
 
         self._cutoff = cutoff
         self._preprocess = preprocess
         self._process = process
         # Combine the two steps in one calculator
         self._calculator = functions.Chain(preprocess, process)
+
+    @property
+    def fingerprint_len(self) -> int:
+        return len(self._invariants)
 
     @property
     def cutoff(self) -> Optional[float]:
@@ -149,14 +153,3 @@ def fingerprinter(
         invs=invs,
         preprocess=preprocess
     )
-
-
-def get_species_map_idx(feature_type: Type[functions.Feature], map_to: Union[int, str]) -> Optional[int]:
-    if isinstance(map_to, int):
-        return map_to
-    if isinstance(map_to, str):
-        return getattr(feature_type, map_to)
-    if map_to is None:
-        return None
-
-    raise TypeError(map_to)

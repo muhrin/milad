@@ -204,7 +204,7 @@ class ZernikeMoments(base_moments.Moments):
         return self.reconstruct(self.create_reconstruction_query(x, order), order, zero_outside_domain=False)
 
     def reconstruct(self, query: ZernikeReconstructionQuery, order=None, zero_outside_domain=True):
-        order = order or self._max_n
+        order = order if order is not None else self._max_n
         moments = query.moments
 
         values = np.zeros(query.points.shape[0], dtype=self.dtype)
