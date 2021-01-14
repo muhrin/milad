@@ -29,13 +29,13 @@ class StructureOptimiser:
     to match a structure to a given fingerprint.
     """
 
-    def __init__(self, fingerprinter: fingerprinting.Fingerprinter):
+    def __init__(self, descriptor: fingerprinting.MomentInvariantsDescriptors):
         super().__init__()
-        self._fingerprinter = fingerprinter
+        self._descriptor = descriptor
 
     @property
-    def fingerprinter(self) -> fingerprinting.Fingerprinter:
-        return self._fingerprinter
+    def fingerprinter(self) -> fingerprinting.MomentInvariantsDescriptors:
+        return self._descriptor
 
     def optimise(
         self,
@@ -53,7 +53,7 @@ class StructureOptimiser:
         :param atoms_builder: an optional atoms builder that can be used to freeze certain degrees of freedom
         :return: a structure optimisation result
         """
-        preprocess = self._fingerprinter.preprocess
+        preprocess = self._descriptor.preprocess
 
         if atoms_builder:
             preprocessed = preprocess(starting_configuration)
@@ -65,7 +65,7 @@ class StructureOptimiser:
             atoms_builder = atomic.AtomsCollectionBuilder(starting_configuration.num_atoms)
 
         # We're going to need a residuals function
-        residuals = functions.Chain(atoms_builder, self._fingerprinter.process, functions.Residuals(fingerprint))
+        residuals = functions.Chain(atoms_builder, self._descriptor.process, functions.Residuals(fingerprint))
 
         previous_result: Optional[Tuple] = None
 
@@ -88,7 +88,7 @@ class StructureOptimiser:
             return jacobian.real
 
         # Preprocess the starting structure and get the corresponding flattened array
-        preprocess = self._fingerprinter.preprocess
+        preprocess = self._descriptor.preprocess
         preprocessed = preprocess(starting_configuration)
         starting_vec = functions.get_bare_vector(atoms_builder.inverse(preprocessed))
 
@@ -112,14 +112,14 @@ class StructureOptimiser:
         return StructureOptimisationResult(success=result.success, atoms=final_atoms, message=result.message, rmsd=rmsd)
 
     def _get_bounds(self, builder: atomic.AtomsCollectionBuilder) -> Tuple[np.ndarray, np.ndarray]:
-        preprocess = self._fingerprinter.preprocess
+        preprocess = self._descriptor.preprocess
 
         species_range = (-np.inf, np.inf)
         positions_range = (-np.inf, np.inf)
         results = preprocess.find_type(atomic.MapNumbers)
         if results:
             species_range = results[0][1].mapped_range
-        if self._fingerprinter.cutoff is not None:
+        if self._descriptor.cutoff is not None:
             # positions_range = (-self._fingerprinter.cutoff, self._fingerprinter.cutoff)
             positions_range = (-1, 1)
 
@@ -148,7 +148,7 @@ def find_clusters(spec, num_clusters: int, **kwargs) -> np.ndarray:
 
 @find_clusters.register(base_moments.Moments)
 def _(moments: base_moments.Moments, num_clusters: int, query: base_moments.ReconstructionQuery,
-      fingerprinter: fingerprinting.Fingerprinter) -> np.ndarray:
+      fingerprinter: fingerprinting.MomentInvariantsDescriptors) -> np.ndarray:
     """Find clusters from moments.  This will take the moments and reconstruct values on a grid
     which will be used for the actual cluster determination"""
     # Calculate the grid values
@@ -177,7 +177,7 @@ def _(grid, num_clusters: int) -> np.ndarray:
 
 def find_peaks(
     moments: base_moments.Moments, num_peaks: int, query: base_moments.ReconstructionQuery,
-    fingerprinter: fingerprinting.Fingerprinter
+    fingerprinter: fingerprinting.MomentInvariantsDescriptors
 ):
     atom_positions = []
 
@@ -215,17 +215,24 @@ def create_atoms_collection(clusters: cluster.KMeans, atomic_numbers=1.):
 
 class Decoder:
 
-    def __init__(self, fingerprinter: fingerprinting.Fingerprinter, moments_query=None, initial_finder=find_peaks):
+    def __init__(
+        self,
+        fingerprinter: fingerprinting.MomentInvariantsDescriptors,
+        moments_query=None,
+        initial_finder=find_peaks,
+        default_grid_size=31
+    ):
         self._fingerprinter = fingerprinter
         self._optimiser = StructureOptimiser(fingerprinter)
         self._moments_query = moments_query
         self._initial_finder = initial_finder
+        self._default_grid_size = default_grid_size
 
     def decode(
         self, phi, moments: base_moments.Moments, num_atoms: int, atomic_numbers=None
     ) -> StructureOptimisationResult:
         if self._moments_query is None:
-            query = moments.create_reconstruction_query(moments.get_grid(31), moments.max_order)
+            query = moments.create_reconstruction_query(moments.get_grid(self._default_grid_size), moments.max_order)
         else:
             query = self._moments_query
 

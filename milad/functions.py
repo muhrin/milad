@@ -255,8 +255,12 @@ class Function(metaclass=abc.ABCMeta):
                 np.mean(get_bare_vector(result[0])), np.mean(result[1])
             )
         else:
-            if np.isnan(get_bare_vector(result)).any():
-                raise ValueError(f'{name}.evaulate produce a result with a NaN entry')
+            try:
+                if np.isnan(get_bare_vector(result)).any():
+                    raise ValueError(f'{name}.evaulate produce a result with a NaN entry')
+            except TypeError:
+                pass  # The types stored in the array don't support isnan ufunc
+
             _LOGGER.debug(
                 '%s: |input|: %s, |output|: %s', name, np.mean(get_bare_vector(state)),
                 np.mean(get_bare_vector(result))

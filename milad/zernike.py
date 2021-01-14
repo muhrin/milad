@@ -59,7 +59,9 @@ def from_gaussians(
     return from_geometric_moments(max_order, geom_moments)
 
 
-def from_geometric_moments(max_order: int, geom_moments: np.array) -> 'ZernikeMoments':
+def from_geometric_moments(
+    max_order: int, geom_moments: Union[geometric.GeometricMoments, np.array]
+) -> 'ZernikeMoments':
     """Create a set of Zernike moments from a set of geometric moments
 
     :param max_order: the order of Zernike moments to calculate to
@@ -99,37 +101,40 @@ class ZernikeMoments(base_moments.Moments):
     """A container class for calculated Zernike moments"""
 
     @classmethod
-    def linear_index(cls, index: base_moments.Index) -> int:
+    def linear_index(cls, index: base_moments.Index, redundant=True) -> int:
         """Given a triple of Zernike moment indices this will return the corresponding linearly ordered index"""
-        return linear_index(index)
+        return linear_index(index, redundant=True)
 
     @staticmethod
-    def triple_index(linear_index: int, redundant=False) -> Tuple:
+    def triple_index(linear_index: int, redundant=True) -> Tuple:
         """Get the triple index from the given lexicographic index"""
         for entry, _ in zip(iter_indices(redundant=redundant), range(linear_index + 1)):
             pass
         return entry
 
     @classmethod
-    def from_vector(cls, n_max: int, vec: np.array) -> 'ZernikeMoments':
+    def from_vector(cls, n_max: int, vec: np.array, redundant=True) -> 'ZernikeMoments':
         moms = ZernikeMoments(n_max)
 
-        for (n, l, m), value in zip(iter_indices(), vec):
+        for (n, l, m), value in zip(iter_indices(redundant=redundant), vec):
+            if n > n_max:
+                break
             moms[n, l, m] = value
 
         return moms
 
-    def __init__(self, n_max: int, omega: np.array = None):
+    def __init__(self, n_max: int, omega: np.array = None, dtype=complex):
         """Construct a Zernike moments object
 
         :param omega: an optional moments matrix to initialise the class with
         """
         self._max_n = n_max
+        self._dtype = dtype
 
         if omega is not None:
             self._moments = omega
         else:
-            self._moments = np.empty((n_max + 1, n_max + 1, n_max + 1), dtype=complex)
+            self._moments = np.empty((n_max + 1, n_max + 1, n_max + 1), dtype=dtype)
 
             # Fill with a number I will recognise if it's still left there
             # (which it shouldn't be for valid indexes)
@@ -137,7 +142,7 @@ class ZernikeMoments(base_moments.Moments):
 
     @property
     def dtype(self):
-        return complex
+        return self._dtype
 
     @property
     def max_order(self) -> int:
@@ -158,12 +163,16 @@ class ZernikeMoments(base_moments.Moments):
     @property
     def vector(self):
         """Return this set of moments as a vector"""
-        return np.array([self[indices] for indices in self.iter_indices(redundant=True)])
+        return self.to_vector(redundant=True)
 
-    def __getitem__(self, item) -> complex:
+    def to_vector(self, redundant=True):
+        """Return this set of moments as a vector"""
+        return np.array([self[indices] for indices in self.iter_indices(redundant=redundant)], dtype=self._dtype)
+
+    def __getitem__(self, item):
         return self.moment(*item)
 
-    def __setitem__(self, key, value: complex):
+    def __setitem__(self, key, value):
         if isinstance(key, int):
             # Assume the caller is treating us like a vector
             n, l, m = self.triple_index(key)
@@ -175,14 +184,14 @@ class ZernikeMoments(base_moments.Moments):
             value = (-1)**m * value.conjugate()
         self._moments[n, l, m] = value
 
-    def iter_indices(self, redundant=False):
+    def iter_indices(self, redundant=True):
         yield from iter_indices(max_order=self._max_n, redundant=redundant)
 
     def to_matrix(self) -> np.array:
         raise AttributeError('Zernike moments cannot be converted to a matrix as the orders use negative indexing')
 
     @staticmethod
-    def num_moments(max_order: int, redundant=False) -> int:
+    def num_moments(max_order: int, redundant=True) -> int:
         """Get the total number of Zernike moments up to the maximum order"""
         return sum(1 for _ in iter_indices(max_order, redundant=redundant))
 
@@ -272,6 +281,7 @@ class ZernikeMomentCalculator(functions.Function):
     output_type = ZernikeMoments
     supports_jacobian = True
     dtype = complex
+    input_type = geometric.GeometricMoments, np.ndarray, functions.Features
 
     def __init__(self, max_order: int):
         super().__init__()
@@ -283,19 +293,20 @@ class ZernikeMomentCalculator(functions.Function):
     def evaluate(self,
                  state: functions.State,
                  get_jacobian=False) -> Union[ZernikeMoments, Tuple[ZernikeMoments, np.ndarray]]:
-        moments = ZernikeMoments(self._max_order)
         if isinstance(state, geometric.GeometricMoments):
             geom_moments = state
         else:
             geom_moments = self._geometric_moments_calculator(state, get_jacobian)
-        geom_jac = None
 
+        geom_jac = None
         if get_jacobian:
             geom_moments, geom_jac = geom_moments
 
+        moments = ZernikeMoments(self._max_order, dtype=object if geom_moments.dtype == np.object else complex)
+
         # Get the moments themselves from polynomials of geometric moments
         for (n, l, m), poly in self.chi.items():
-            moments[n, l, m] = poly.evaluate(geom_moments.moments)
+            moments[n, l, m] = poly.evaluate(geom_moments)
 
         if get_jacobian:
             jac = np.matmul(self._get_jacobian(), geom_jac)
@@ -306,7 +317,7 @@ class ZernikeMomentCalculator(functions.Function):
     def _get_jacobian(self):
         if self._jacobian is None:
             # Calculate the first time
-            self._jacobian = get_jacobian_wrt_geom_moments(self._max_order)
+            self._jacobian = get_jacobian_wrt_geom_moments(self._max_order, redundant=True)
 
         return self._jacobian
 
@@ -343,7 +354,7 @@ class ZernikeMomentCalculator(functions.Function):
         return self._chi
 
 
-def get_jacobian_wrt_geom_moments(max_order: int):
+def get_jacobian_wrt_geom_moments(max_order: int, redundant=True):
     """Get the Jacobian of the Zernike moments wrt Geometric moments as input"""
 
     # Calculate
@@ -366,21 +377,22 @@ def get_jacobian_wrt_geom_moments(max_order: int):
 
     O = max_order
     tracker = DerivativeTracker(O)
-    num_moments = ZernikeMoments.num_moments(O, redundant=True)  # Number of zernike moments
+    num_moments = ZernikeMoments.num_moments(O, redundant=redundant)  # Number of zernike moments
     num_geometric_moments = geometric.GeometricMoments.num_moments(O)
     jacobian = np.zeros((num_moments, num_geometric_moments), dtype=complex)
 
-    for idx, (n, l, m) in enumerate(iter_indices(O, redundant=True)):
+    for idx, (n, l, m) in enumerate(iter_indices(O, redundant=redundant)):
         if m < 0:
-            # First calculate the derivatives for all the positive m indices
+            # These are taken care of during the positive m iteration
             continue
 
         vec = omega_nl_m(n, l, m, tracker)
         jacobian[idx, :] = vec
 
-        minus_m = (-1)**m * vec.conjugate()
-        minus_m_idx = linear_index((n, l, -m))
-        jacobian[minus_m_idx, :] = minus_m
+        if redundant and m != 0:
+            minus_m = (-1)**m * vec.conjugate()
+            minus_m_idx = linear_index((n, l, -m))
+            jacobian[minus_m_idx, :] = minus_m
 
     return jacobian
 
@@ -557,10 +569,13 @@ def iter_indices(max_order: int = None, redundant=False) -> Iterator[Tuple]:
 
 
 @functools.lru_cache(maxsize=256)
-def linear_index(index: base_moments.Index) -> int:
+def linear_index(index: base_moments.Index, redundant=True) -> int:
     """Given a triple of zernike function indices this will return a lexicographically ordered
     integer and a boolean indicating if (-1)**m conjugate(value) should be applied"""
-    for linear, triple in enumerate(iter_indices(redundant=True)):
+    if not redundant and index[2] < 0:
+        raise ValueError('m value cannot be negative')
+
+    for linear, triple in enumerate(iter_indices(redundant=redundant)):
         if triple == index:
             return linear
 

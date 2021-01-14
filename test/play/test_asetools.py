@@ -116,14 +116,3 @@ def test_generate_environments_solid():
                sorted(np.sum(known_positions * known_positions, axis=1))
 
     assert len(envs) == len(found_positions)
-
-
-def test_moments_calculator():
-    molecule = ase.build.molecule('CH3CH2OH')
-
-    # Get the environments
-    envs = list(asetools.extract_environments(molecule, cutoff=4.))
-    calculator = asetools.MomentsCalculator(milad.zernike.from_deltas, max_order=7)
-
-    for env in envs:
-        moments = calculator.calculate_moments(env)

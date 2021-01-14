@@ -4,7 +4,7 @@ from . import invariants
 from . import exceptions
 from . import functions
 from . import geometric
-from . import model
+from . import models
 from . import utils
 from . import play
 from . import plot
@@ -14,4 +14,4 @@ from .reconstruct import *
 from .zernike import *
 
 __all__ = ('atomic', 'invariants', 'functions', 'geometric', 'utils', 'play', 'plot', 'reconstruct', 'zernike', \
-           'exceptions', 'model', zernike.__all__ + fingerprinting.__all__ + reconstruct.__all__)
+           'exceptions', 'models', zernike.__all__ + fingerprinting.__all__ + reconstruct.__all__)

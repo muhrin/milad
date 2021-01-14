@@ -331,53 +331,10 @@ def extract_environments(system: ase.Atoms, atom_centered=True, cutoff=5., yield
             yield ase.Atoms(positions=env_positions, symbols=env_symbols)
 
 
-class MomentsCalculator:
-
-    def __init__(
-        self,
-        calculator: Callable,
-        max_order: int = 7,
-        weights: Union[Dict, float] = 1.,
-        sigmas: Union[Dict, float] = None,
-        scale_to_sphere: float = None,
-    ):
-
-        self._calculator = calculator
-        self._order = max_order
-        self._weights = weights
-        self._sigmas = sigmas
-        self._scale_to_sphere = scale_to_sphere
-
-    def calculate_moments(self, environment: ase.Atoms):
-        positions = environment.positions
-        if self._scale_to_sphere:
-            max_r_sq = max(map(lambda pos: np.dot(pos, pos), positions))
-            scale = self._scale_to_sphere / max_r_sq**0.5
-            positions = scale * positions
-
-        params = dict(max_order=self._order, positions=positions)
-
-        symbols = environment.symbols
-        if isinstance(self._weights, float):
-            weights = self._weights
-        else:
-            weights = map(self._weights.get, symbols)
-        params['weights'] = weights
-
-        if self._sigmas is not None:
-            if isinstance(self._sigmas, float):
-                sigmas = self._sigmas
-            else:
-                sigmas = map(self._sigmas.get, symbols)
-            params['sigmas'] = sigmas
-
-        return self._calculator(**params)
-
-
 class AseFingerprintsCalculator:
     """Convenience class for using ASE atoms objects with generic fingerprinting methods"""
 
-    def __init__(self, fingerprinter: fingerprinting.Fingerprinter):
+    def __init__(self, fingerprinter: fingerprinting.MomentInvariantsDescriptors):
         self._fingerprinter = fingerprinter
 
     @property

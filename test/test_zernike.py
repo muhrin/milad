@@ -134,3 +134,16 @@ def test_zernike_indexing():
             for m in utils.inclusive(-l, l):
                 assert zernike.ZernikeMoments.linear_index((n, l, m)) == idx
                 idx += 1
+
+
+def test_zernike_from_vector():
+    """Test converting Zernike moments to a vector and back"""
+    num_points = 4
+    positions = generate.random_points_in_sphere(num_points, radius=.7)
+    max_order = 7
+
+    moms = zernike.from_deltas(max_order, positions)
+    as_vector = moms.vector
+
+    from_vector = zernike.ZernikeMoments.from_vector(max_order, as_vector)
+    assert np.allclose(from_vector.vector, as_vector)

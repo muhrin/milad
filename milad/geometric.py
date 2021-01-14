@@ -29,15 +29,15 @@ class GeometricMoments(base_moments.Moments):
         return (max_order + 1)**3
 
     def __init__(self, moments: np.array):
-        self._moments = moments
+        self._moments = np.array(moments, dtype=moments.dtype)
 
     def __getitem__(self, index: base_moments.Index):
         """Get the moment of the given index"""
         return self._moments[index]
 
     @property
-    def dtype(self):
-        return float
+    def dtype(self) -> type:
+        return self._moments.dtype
 
     @property
     def max_order(self) -> int:

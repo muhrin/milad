@@ -9,10 +9,10 @@ from . import invariants
 from . import functions
 from . import zernike
 
-__all__ = 'Fingerprinter', 'fingerprinter'
+__all__ = 'MomentInvariantsDescriptors', 'descriptor', 'Fingerprinter', 'fingerprinter'
 
 
-class Fingerprinter(functions.Function):
+class MomentInvariantsDescriptors(functions.Function):
     """Class that is responsible for producing fingerprints form atomic environments"""
 
     def __init__(
@@ -29,7 +29,7 @@ class Fingerprinter(functions.Function):
         # Now the actual fingerprinting
         process = functions.Chain(feature_mapper)
         self._invariants = invs or invariants.read(invariants.COMPLEX_INVARIANTS)
-        moments_calculator = moments_calculator or zernike.ZernikeMomentCalculator(invs.max_order)
+        moments_calculator = moments_calculator or zernike.ZernikeMomentCalculator(self._invariants.max_order)
 
         process.append(moments_calculator)
         process.append(self._invariants)
@@ -39,6 +39,10 @@ class Fingerprinter(functions.Function):
         self._process = process
         # Combine the two steps in one calculator
         self._calculator = functions.Chain(preprocess, process)
+
+    @property
+    def invariants(self) -> invariants.MomentInvariants:
+        return self._invariants
 
     @property
     def fingerprint_len(self) -> int:
@@ -103,7 +107,7 @@ class Fingerprinter(functions.Function):
         return self.evaluate(new_atoms, get_jacobian=get_jacobian)
 
 
-def fingerprinter(
+def descriptor(
     features: Optional[dict] = None,
     species: Optional[dict] = None,
     cutoff: float = None,
@@ -146,10 +150,15 @@ def fingerprinter(
             preprocess.append(atomic.ScalePositions(1. / cutoff))
 
     features = features or dict(type=functions.WeightedDelta, map_species_to=species_map.get('to', None))
-    return Fingerprinter(
+    return MomentInvariantsDescriptors(
         feature_mapper=atomic.FeatureMapper(**features),
         cutoff=cutoff,
         moments_calculator=moments_calculator,
         invs=invs,
         preprocess=preprocess
     )
+
+
+# Alias for backwards compatibility
+Fingerprinter = MomentInvariantsDescriptors
+fingerprinter = descriptor
