@@ -30,19 +30,27 @@ def even(val: int) -> bool:
 def inclusive(*args) -> Iterator[int]:
     """Like range() but inclusive of upper bound and automatically does iteration of ranges with a
     negative step e.g. 0, -4 will produce a range containing 0, -1, -2, -3, -4"""
-    if len(args) not in (1, 2):
+    if len(args) not in (1, 2, 3):
         raise ValueError('Takes one or two args, got: {}'.format(args))
 
-    if len(args) == 1:
-        start = 0
-        stop = args[0]
+    if len(args) == 3:
+        # Assume form is start, stop, step
+        start, stop, step = args
     else:
-        start = args[0]
-        stop = args[1]
+        if len(args) == 1:
+            start = 0
+            stop = args[0]
+        else:
+            start = args[0]
+            stop = args[1]
 
-    ubound = stop + 1 if stop > 0 else stop - 1
-    step = 1 if stop > 0 else -1
-    return range(start, ubound, step)
+        step = 1 if start <= stop else -1
+
+    sign = 1 if step > 0 else -1
+    idx = start
+    while sign * (stop - idx) >= 0:
+        yield idx
+        idx += step
 
 
 class CoefficientCapture:

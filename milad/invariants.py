@@ -133,6 +133,9 @@ class MomentInvariant:
 
         return total
 
+    def __call__(self, *args, **kwargs):
+        return self.apply(*args, **kwargs)
+
     # def _numpy_apply(self, raw_moments: np.ndarray):
     #     """Fast method to get the invariant from a numpy array"""
     #     total = self._constant  # type: float

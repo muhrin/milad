@@ -28,8 +28,14 @@ class GeometricMoments(base_moments.Moments):
         """Get the total number of moments up to the given maximum order"""
         return (max_order + 1)**3
 
+    @classmethod
+    def from_vector(cls, n_max: int, vec: np.array) -> 'GeometricMoments':
+        return GeometricMoments(vec.reshape(n_max + 1, n_max + 1, n_max + 1).copy())
+
     def __init__(self, moments: np.array):
-        self._moments = np.array(moments, dtype=moments.dtype)
+        # Just trying this for now, let's see if it's possible to not force self._moments to be a numpy array
+        # self._moments = np.array(moments, dtype=moments.dtype)
+        self._moments = moments
 
     def __getitem__(self, index: base_moments.Index):
         """Get the moment of the given index"""
@@ -37,7 +43,10 @@ class GeometricMoments(base_moments.Moments):
 
     @property
     def dtype(self) -> type:
-        return self._moments.dtype
+        try:
+            return self._moments.dtype
+        except AttributeError:
+            return type(self._moments[0, 0, 0])
 
     @property
     def max_order(self) -> int:
