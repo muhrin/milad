@@ -132,22 +132,18 @@ class ZernikeMoments(base_moments.Moments):
     def builder(self: 'Union[ZernikeMoments, Type[ZernikeMoments]]'):
         return ZernikeMomentsBuilder(self._max_n)
 
-    def __init__(self, n_max: int, omega: np.array = None, dtype=complex):
+    def __init__(self, n_max: int, dtype=complex):
         """Construct a Zernike moments object
-
-        :param omega: an optional moments matrix to initialise the class with
         """
         self._max_n = n_max
         self._dtype = dtype
 
-        if omega is not None:
-            self._moments = omega
-        else:
-            self._moments = np.empty((n_max + 1, n_max + 1, n_max + 1), dtype=dtype)
-
-            # Fill with a number I will recognise if it's still left there
-            # (which it shouldn't be for valid indexes)
-            self._moments.fill(float('nan'))
+        self._moments = {}
+        self._moments[0] = np.empty((n_max + 1, n_max + 1), dtype=float)
+        for m in inclusive(1, n_max):
+            shape = (n_max - m + 1, n_max + 1)
+            self._moments[m] = np.empty(shape, dtype=complex)
+            self._moments[-m] = np.empty(shape, dtype=complex)
 
     def __eq__(self, other: 'ZernikeMoments'):
         """Test if another set of moments are equal to this one"""
@@ -164,22 +160,22 @@ class ZernikeMoments(base_moments.Moments):
     def max_order(self) -> int:
         return self._max_n
 
-    @property
-    def real(self):
-        moms = ZernikeMoments(self._max_n)
-        moms._moments = self._moments.real
-        return moms
-
-    @property
-    def imag(self):
-        moms = ZernikeMoments(self._max_n)
-        moms._moments = self._moments.imag
-        return moms
+    # @property
+    # def real(self):
+    #     moms = ZernikeMoments(self._max_n)
+    #     moms._moments = self._moments.real
+    #     return moms
+    #
+    # @property
+    # def imag(self):
+    #     moms = ZernikeMoments(self._max_n)
+    #     moms._moments = self._moments.imag
+    #     return moms
 
     def fill(self, value):
         """Set all moments to the given value"""
-        for nlm in self.iter_indices(redundant=False):
-            self._moments[nlm] = value
+        for n, l, m in self.iter_indices(redundant=False):
+            self[n, l, m] = value
 
     @property
     def vector(self):
@@ -200,10 +196,6 @@ class ZernikeMoments(base_moments.Moments):
         else:
             n, l, m = key
 
-        if m < 0:
-            m = -m
-            value = (-1)**m * value.conjugate()
-
         if m == 0:
             if value.imag > 1e-9:
                 logging.warning(
@@ -212,7 +204,9 @@ class ZernikeMoments(base_moments.Moments):
                 )
             value = np.real(value)
 
-        self._moments[n, l, m] = value
+        l_idx = l - abs(m)
+        self._moments[m][l_idx, n] = value
+        self._moments[-m][l_idx, n] = (-1)**m * value.conjugate()
 
     def iter_indices(self, redundant=True):
         yield from iter_indices(max_order=self._max_n, redundant=redundant)
@@ -227,11 +221,13 @@ class ZernikeMoments(base_moments.Moments):
 
     def moment(self, n: int, l: int, m: int) -> complex:
         """Get the n, l, m^th moment"""
-        if m < 0:
-            return (-1)**(-m) * self.moment(n, l, -m).conjugate()
+        if not even(n - l):
+            raise ValueError(f'n - l must be even, got {n} {l}')
 
-        assert_valid(n, l, m)
-        return self._moments[n, l, m]
+        try:
+            return self._moments[m][l - abs(m), n]
+        except (KeyError, IndexError):
+            assert_valid(n, l, m)
 
     def value_at(self, x: np.array, order: int = None) -> float:
         """Reconstruct the value at x from the moments
@@ -487,13 +483,12 @@ def get_jacobian_wrt_geom_moments(max_order: int, redundant=True):
                 raise IndexError(f'index {item} out of bounds for geometric moments of order {self._max_order}')
             return vector
 
-    O = max_order
-    tracker = DerivativeTracker(O)
-    num_moments = ZernikeMoments.num_moments(O, redundant=redundant)  # Number of zernike moments
-    num_geometric_moments = geometric.GeometricMoments.num_moments(O)
+    tracker = DerivativeTracker(max_order)
+    num_moments = ZernikeMoments.num_moments(max_order, redundant=redundant)  # Number of zernike moments
+    num_geometric_moments = geometric.GeometricMoments.num_moments(max_order)
     jacobian = np.zeros((num_moments, num_geometric_moments), dtype=complex)
 
-    for idx, (n, l, m) in enumerate(iter_indices(O, redundant=redundant)):
+    for idx, (n, l, m) in enumerate(iter_indices(max_order, redundant=redundant)):
         if m < 0:
             # These are taken care of during the positive m iteration
             continue
@@ -690,6 +685,8 @@ def linear_index(index: base_moments.Index, redundant=True) -> int:
     for linear, triple in enumerate(iter_indices(redundant=redundant)):
         if triple == index:
             return linear
+
+    assert False, "Should never reach here"
 
 
 def _domain_check(positions: np.array):
