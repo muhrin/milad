@@ -34,6 +34,10 @@ class State(metaclass=abc.ABCMeta):
         """Get the length of this state vector"""
         return len(self.vector)
 
+    @property
+    def builder(self) -> Optional['Function']:
+        return None
+
 
 StateLike = Union[np.ndarray, State]
 

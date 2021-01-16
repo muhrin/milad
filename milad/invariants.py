@@ -233,7 +233,6 @@ class MomentInvariant:
 def _numpy_apply(prefactors, indices: np.array, raw_moments: np.ndarray):
     """Fast method to get the invariant from a numpy array"""
     total = 0
-
     total += np.dot(prefactors, np.prod(raw_moments[indices[:, :, 0], indices[:, :, 1], indices[:, :, 2]], axis=1))
 
     return total
@@ -262,6 +261,7 @@ class MomentInvariants(functions.Function):
     input_type = base_moments.Moments
     output_type = np.ndarray
     supports_jacobian = True
+    dtype = None
 
     def __init__(self, *invariant: MomentInvariant):
         super().__init__()

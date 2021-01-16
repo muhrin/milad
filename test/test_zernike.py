@@ -147,3 +147,20 @@ def test_zernike_from_vector():
 
     from_vector = zernike.ZernikeMoments.from_vector(max_order, as_vector)
     assert np.allclose(from_vector.vector, as_vector)
+
+
+def test_zernike_builder():
+    """Test that the Zernike builder can create the moments from a vector and the inverse"""
+    num_points = 4
+    positions = generate.random_points_in_sphere(num_points, radius=.7)
+    max_order = 7
+
+    moms = zernike.from_deltas(max_order, positions)
+    builder = moms.builder
+
+    # Get the moments in vector form
+    vec = builder.inverse(moms)
+
+    # Now let's create a set of moments from the vector and check that it's all the same
+    recreated, _jac = builder(vec, jacobian=True)
+    assert recreated == moms
