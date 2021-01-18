@@ -22,12 +22,20 @@ class LeastSquaresOptimiser:
     def __init__(self):
         pass
 
-    def optimise(self, func: functions.Function, initial: functions.StateLike, jacobian='2-point', verbose=False):
+    def optimise(
+        self,
+        func: functions.Function,
+        initial: functions.StateLike,
+        jacobian='2-point',
+        verbose=False,
+        bounds=(-np.inf, np.inf)
+    ):
         """
         :param func: the function to optimise
         :param initial: the initial state
         :param jacobian: if 'native' the analytic Jacobian will be requested from 'func', otherwise this option is
             passed to optimize.least_squares
+        :param bounds: place bounds on the possible inputs to func
         :return:
         """
 
@@ -50,7 +58,7 @@ class LeastSquaresOptimiser:
         data = LeastSquaresOptimiser.Data(use_jacobian=jacobian == 'native', verbose=verbose)
 
         # Do it!
-        return optimize.least_squares(self._calc, x0_, jac=jac, kwargs=dict(func=fun, opt_data=data))
+        return optimize.least_squares(self._calc, x0_, jac=jac, kwargs=dict(func=fun, opt_data=data), bounds=bounds)
 
     def optimise_target(
         self,
@@ -58,7 +66,8 @@ class LeastSquaresOptimiser:
         initial: functions.StateLike,
         target: functions.StateLike,
         jacobian='2-point',
-        verbose=False
+        verbose=False,
+        bounds=(-np.inf, np.inf),
     ):
         """
         Optimise the function to a given target value.  This minimises the loss of the difference between the function
@@ -69,11 +78,16 @@ class LeastSquaresOptimiser:
         :param target: the output state
         :param jacobian: if 'native' the analytic Jacobian will be requested from 'func', otherwise this option is
             passed to optimize.least_squares
+        :param bounds: place bounds on the possible inputs to func
         :return:
         """
         # Calculate residuals to a particular target
         return self.optimise(
-            functions.Chain(func, functions.Residuals(target)), initial=initial, jacobian=jacobian, verbose=verbose
+            functions.Chain(func, functions.Residuals(target)),
+            initial=initial,
+            jacobian=jacobian,
+            verbose=verbose,
+            bounds=bounds
         )
 
     def _calc(
@@ -82,7 +96,8 @@ class LeastSquaresOptimiser:
         # pylint: disable=no-self-use
         res = func(state, jacobian=opt_data.use_jacobian)
         if opt_data.use_jacobian:
-            value, opt_data.last_jacobian = res
+            value, jac = res
+            opt_data.last_jacobian = jac.real
         else:
             value = res
 

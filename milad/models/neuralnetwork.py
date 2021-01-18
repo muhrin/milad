@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 import math
-from typing import Union, Callable, Sequence, Tuple
+from typing import Union, Callable, Sequence, Tuple, Optional, List
 
 import ase
 import torch
 import torch.nn.functional
+from torch.autograd import functional
 
+from milad import atomic
 from milad.play import asetools
 from milad import fingerprinting
 from milad import utils
@@ -14,16 +16,59 @@ __all__ = 'NeuralNetwork', 'create_fingerprint_set'
 
 
 def create_fingerprint_set(
-    descriptor: fingerprinting.MomentInvariantsDescriptors, systems: Sequence[ase.Atoms]
+    descriptor: fingerprinting.MomentInvariantsDescriptor,
+    systems: Sequence[ase.Atoms],
+    get_derivatives=False
 ) -> utils.FingerprintSet:
+    num_atomic_properties = atomic.AtomsCollection.num_atomic_properties()
+    fp_length = descriptor.fingerprint_len
+
     fingerprints = utils.FingerprintSet(descriptor.fingerprint_len)
     for system in systems:
         fps = []
+        fp_derivatives = []
         for env in asetools.extract_environments(system, cutoff=descriptor.cutoff):
-            fps.append(descriptor(asetools.ase2milad(env)))
-        fingerprints.add_system(system, fps)
+            if get_derivatives:
+                fingerprint, jacobian = descriptor(asetools.ase2milad(env), jacobian=True)
+                # Now, let's deal with the derivatives
+                derivatives = jacobian.reshape(fp_length, num_atomic_properties, -1).sum(2)
+
+                fps.append(fingerprint)
+                fp_derivatives.append(derivatives)
+            else:
+                fps.append(descriptor(asetools.ase2milad(env)))
+
+        fingerprints.add_system(system, fps, derivatives=fp_derivatives)
 
     return fingerprints
+
+
+class Prediction:
+    total_energy: torch.Tensor = None
+    forces: torch.Tensor = None
+
+
+class Predictions:
+
+    def __init__(self, dtype, device):
+        self._predictions: List[Prediction] = []
+        self._dtype = dtype
+        self._device = device
+
+    def __getitem__(self, item):
+        return self._predictions[item]
+
+    def append(self, prediction: Prediction):
+        self._predictions.append(prediction)
+
+    @property
+    def energies(self) -> torch.Tensor:
+        """Get total energies as a single tensor preserving gradients"""
+        return torch.stack(tuple(prediction.total_energy for prediction in self._predictions))
+
+    @property
+    def forces(self) -> Tuple[torch.Tensor]:
+        return tuple(prediction.forces for prediction in self._predictions)
 
 
 class FittingData:
@@ -34,29 +79,67 @@ class FittingData:
         tensor_kwargs = dict(dtype=dtype, device=device, requires_grad=requires_grad)
         fingerprints = tuple(torch.tensor(fps, **tensor_kwargs) for fps in fingerprint_set.fingerprints)
         energies = torch.tensor(fingerprint_set.get_potential_energies(normalise=False), **tensor_kwargs)
-        return FittingData(fingerprints, energies)
+        forces = tuple(
+            torch.tensor(forces, **tensor_kwargs) if forces is not None else None
+            for forces in fingerprint_set.get_forces()
+        )
+        derivatives = tuple(
+            torch.tensor(derivatives[:, :, :3], **tensor_kwargs) if derivatives is not None else None
+            for derivatives in fingerprint_set.fingerprint_derivatives
+        )
 
-    def __init__(self, fingerprints: Tuple[torch.Tensor], energies: torch.Tensor):
+        return FittingData(fingerprints, energies, forces=forces, derivatives=derivatives)
+
+    def __init__(
+        self,
+        fingerprints: Tuple[torch.Tensor],
+        energies: torch.Tensor,
+        forces: Optional[Tuple[torch.Tensor]] = None,
+        derivatives: Optional[Tuple[torch.Tensor]] = None
+    ):
+        """
+        Construct a set of fitting data.
+
+        :param fingerprints: a tuple containing a set of fingerprints for each atom in the structure
+        :param energies: the corresponding energy for each structure
+        :param forces: the (optional) forces for each atom in the structure
+        """
         self._fingerprints = fingerprints
         self._energies = energies
         self._num_atoms = torch.tensor(tuple(len(fps) for fps in fingerprints), device=fingerprints[0].device)
+        self._forces = forces
+        self._derivatives = derivatives
 
     def __getitem__(self, item) -> 'FittingData':
         if isinstance(item, slice):
-            return FittingData(self._fingerprints[item], self._energies[item])
+            return FittingData(
+                self._fingerprints[item], self._energies[item], self._forces[item], self._derivatives[item]
+            )
 
         fingerprints = (self._fingerprints[item],)
         energies = self._energies[item].reshape(1, 1)
-        return FittingData(fingerprints, energies)
+        forces = (self._forces[item],) if self._forces is not None else None
+        derivatives = (self._derivatives[item],) if self._derivatives is not None else None
+        return FittingData(fingerprints, energies, forces, derivatives=derivatives)
 
     @property
     def fingerprints(self) -> Tuple[torch.Tensor]:
+        """Fingerprints tensors.  One entry per system."""
         return self._fingerprints
 
     @property
     def energies(self) -> torch.Tensor:
         """Get the known energies"""
         return self._energies
+
+    @property
+    def forces(self) -> Optional[Tuple[torch.Tensor]]:
+        """Get the known forces if we have them"""
+        return self._forces
+
+    @property
+    def derivatives(self) -> Optional[Tuple[torch.Tensor]]:
+        return self._derivatives
 
     @property
     def num_atoms(self) -> torch.Tensor:
@@ -69,8 +152,24 @@ class FittingData:
 
 class LossFunction:
 
-    def get_loss(self, predicted: torch.Tensor, target: torch.Tensor, num_atoms: torch.Tensor):
-        return torch.nn.functional.mse_loss(predicted / num_atoms, target / num_atoms)
+    def get_loss(self, predictions: Predictions, fitting_data: FittingData):
+        energy_loss = torch.nn.functional.mse_loss(
+            predictions.energies / fitting_data.num_atoms, fitting_data.get_normalised_energies()
+        )
+
+        force_loss = None
+        if fitting_data.forces is not None:
+
+            for predicted_force, training_force in zip(predictions.forces, fitting_data.forces):
+                diff = training_force[0] - predicted_force[0]
+                if force_loss is None:
+                    force_loss = torch.dot(diff, diff)
+                else:
+                    force_loss += torch.dot(diff, diff)
+
+            force_loss = force_loss / 3.
+
+        return energy_loss + force_loss
 
 
 class Range:
@@ -185,6 +284,7 @@ class NeuralNetwork:
         progress_callback: Callable = None,
         learning_rate=5e-4,
         batchsize=16,
+        use_forces=False,
     ):
         if self._network is None:
             self._create_network(training_set.fingerprint_len)
@@ -192,7 +292,6 @@ class NeuralNetwork:
         training_data = self.create_fitting_data(training_set, requires_grad=True)
 
         # Scale the inputs and outputs to match the ranges
-        # self._fingerprint_scaler.input.expand(training_data.fingerprints)
         norm_energies = training_data.get_normalised_energies()
         self._energy_scaler.output.expand(norm_energies)
 
@@ -203,12 +302,22 @@ class NeuralNetwork:
             return False  # Don't stop
 
         optimiser = torch.optim.Adam(self._network.parameters(), lr=learning_rate)
-        loss = self._train(training_data, stopping_function, optimiser, batchsize, progress_callback)
+        loss = self._train(
+            training_data,
+            stopping_function,
+            optimiser,
+            batchsize,
+            use_forces=use_forces,
+            progress_callback=progress_callback,
+        )
         return training_data, loss
 
     def create_fitting_data(self, fingerprint_set: utils.FingerprintSet, requires_grad=False):
         return FittingData.from_fingerprint_set(
-            fingerprint_set, device=self._device, dtype=self._dtype, requires_grad=requires_grad
+            fingerprint_set,
+            device=self._device,
+            dtype=self._dtype,
+            requires_grad=requires_grad,
         )
 
     def _train(
@@ -217,6 +326,7 @@ class NeuralNetwork:
         should_stop: Callable,
         optimiser,
         batchsize,
+        use_forces=False,
         progress_callback: Callable = None,
     ):
         total_samples = len(training.fingerprints)
@@ -229,15 +339,15 @@ class NeuralNetwork:
                 end_idx = min(start_idx + batchsize, total_samples)
                 batch = training[start_idx:end_idx]
 
-                predicted_energies = self._make_prediction(*batch.fingerprints)
+                predictions = self._make_prediction2(batch, get_forces=use_forces)
 
                 optimiser.zero_grad()
-                loss = self.loss_function.get_loss(predicted_energies, batch.energies, batch.num_atoms)
+                loss = self.loss_function.get_loss(predictions, batch)
                 loss.backward(retain_graph=True)
                 optimiser.step()
 
-            predicted_energies = self._make_prediction(*training.fingerprints)
-            loss = self.loss_function.get_loss(predicted_energies, training.energies, training.num_atoms)
+            predictions = self._make_prediction2(training, get_forces=True)
+            loss = self.loss_function.get_loss(predictions, training)
 
             if progress_callback is not None:
                 progress_callback(self, epoch, training, loss)
@@ -245,14 +355,13 @@ class NeuralNetwork:
             if should_stop(epoch, training, loss):
                 break
 
-            # print("MADE STEP")
             epoch += 1
 
         return loss
 
     def loss(self, fitting_data: FittingData):
-        predicted_energies = self._make_prediction(*fitting_data.fingerprints)
-        return self.loss_function.get_loss(predicted_energies, fitting_data.energies, fitting_data.num_atoms)
+        predictions = self._make_prediction2(fitting_data, get_forces=True)
+        return self.loss_function.get_loss(predictions, fitting_data)
 
     def _make_prediction(self, *fingerprints: torch.Tensor, normalise=False) -> torch.Tensor:
         # Join all fingerprints as this is much faster going through the network
@@ -271,6 +380,37 @@ class NeuralNetwork:
 
         stacked = torch.stack(total_energies)
         return stacked
+
+    def _make_prediction2(self, fitting_data: FittingData, get_forces=False) -> Predictions:
+        # Join all fingerprints as this is much faster going through the network
+        all_fingerprints = torch.cat(fitting_data.fingerprints, 0)
+        local_energies = self._network(all_fingerprints)
+
+        # Now calculate total energy for each system
+        predictions = Predictions(device=self._device, dtype=self._dtype)
+        idx = 0
+        for system_idx, fps in enumerate(fitting_data.fingerprints):
+            prediction = Prediction()
+
+            natoms = fps.shape[0]
+            summed = torch.sum(local_energies[idx:idx + natoms])
+
+            prediction.total_energy = summed
+
+            if get_forces:
+                forces = []
+                for fp, deriv in zip(fps, fitting_data.derivatives[system_idx]):
+                    # Get the derivative of the energy wrt to input vector
+                    network_deriv = functional.jacobian(self._network, fp)
+                    predicted_force = -torch.matmul(network_deriv, deriv)
+                    forces.append(predicted_force[0])
+
+                prediction.forces = torch.stack(forces)
+
+            predictions.append(prediction)
+            idx += natoms
+
+        return predictions
 
     def _create_network(self, input_size):
         # Create the network

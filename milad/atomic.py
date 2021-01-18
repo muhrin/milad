@@ -21,15 +21,21 @@ class AtomsCollection(functions.PlainState):
     """
 
     @staticmethod
+    def num_atomic_properties() -> int:
+        """Returns the number of atomic properties i.e. variables that make up each atom.  Currently these are
+        the x, y, z positions and the atomic specie but this may change."""
+        return 4
+
+    @staticmethod
     def contains_num_atoms(state: functions.StateLike) -> int:
         length = len(state)
-        if (length % 4) != 0:
+        if (length % AtomsCollection.num_atomic_properties()) != 0:
             raise ValueError('AtomsCollection state vectors must be a multiple of 4')
-        return int(length / 4)
+        return int(length / AtomsCollection.num_atomic_properties())
 
     @staticmethod
     def total_length(num_atoms: int) -> int:
-        return 4 * num_atoms
+        return AtomsCollection.num_atomic_properties() * num_atoms
 
     def __init__(self, num: int, positions: np.array = None, numbers: np.array = None):
         super().__init__(self.total_length(num))
@@ -316,7 +322,7 @@ class ScalePositions(functions.Function):
 
     @property
     def inverse(self) -> Optional[functions.Function]:
-        return ScalePositions(1 / self._scale_factor)
+        return ScalePositions(1. / self._scale_factor)
 
     def output_length(self, in_state: AtomsCollection) -> int:
         return len(in_state)
@@ -441,6 +447,7 @@ class MapNumbers(functions.Function):
 
 class ApplyCutoff(functions.Function):
     """Given a collection of atoms exclude any that are further from the origin than the given cutoff"""
+    input_type = AtomsCollection
 
     def __init__(self, cutoff: float):
         super().__init__()
@@ -448,6 +455,8 @@ class ApplyCutoff(functions.Function):
 
     @property
     def inverse(self) -> Optional[functions.Function]:
+        """Naturally, this function is not fully invertible as atoms that have been cut off cannot be replaced the
+        inverse is just the identity"""
         return functions.Identity()
 
     def evaluate(self, in_atoms: AtomsCollection, get_jacobian=False):

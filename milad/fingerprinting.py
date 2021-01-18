@@ -9,16 +9,17 @@ from . import invariants
 from . import functions
 from . import zernike
 
-__all__ = 'MomentInvariantsDescriptors', 'descriptor', 'Fingerprinter', 'fingerprinter'
+__all__ = 'MomentInvariantsDescriptor', 'descriptor', 'Fingerprinter', 'fingerprinter'
 
 
-class MomentInvariantsDescriptors(functions.Function):
+class MomentInvariantsDescriptor(functions.Function):
     """Class that is responsible for producing fingerprints form atomic environments"""
 
     def __init__(
         self,
         feature_mapper: atomic.FeatureMapper,
         cutoff: float = None,
+        scale: bool = True,
         moments_calculator=None,
         invs: invariants.MomentInvariants = None,
         preprocess: functions.Function = None
@@ -27,10 +28,19 @@ class MomentInvariantsDescriptors(functions.Function):
         preprocess = preprocess or functions.Identity()
 
         # Now the actual fingerprinting
-        process = functions.Chain(feature_mapper)
         self._invariants = invs or invariants.read(invariants.COMPLEX_INVARIANTS)
         moments_calculator = moments_calculator or zernike.ZernikeMomentCalculator(self._invariants.max_order)
 
+        # Create the actual fingerprinting process
+        process = functions.Chain()
+        if cutoff is not None:
+            process.append(atomic.ApplyCutoff(cutoff))
+
+            if scale:
+                # Rescale positions to be in the range |r| < 1, the typical domain of orthogonality
+                process.append(atomic.ScalePositions(1. / cutoff))
+
+        process.append(feature_mapper)
         process.append(moments_calculator)
         process.append(self._invariants)
 
@@ -53,7 +63,7 @@ class MomentInvariantsDescriptors(functions.Function):
         return self._cutoff
 
     @property
-    def preprocess(self) -> functions.Chain:
+    def preprocess(self) -> functions.Function:
         """Return the preprocessing function"""
         return self._preprocess
 
@@ -128,37 +138,30 @@ def descriptor(
             }
         }
     :param cutoff:
-    :param scale:
+    :param scale: if True scale the environments by a factor of 1 / cutoff to fit within typical orthogonality region
     :param moments_calculator:
     :param invs:
     :return:
     """
     # Set up the preprocessing
-    preprocess = functions.Chain()
-
+    preprocess = None
     species = species or {}
 
     species_map = species.get('map', {})
     if species_map:
-        preprocess.append(atomic.MapNumbers(species=species_map['numbers'], map_to=species_map['range']))
-
-    if cutoff is not None:
-        preprocess.append(atomic.ApplyCutoff(cutoff))
-
-        if scale:
-            # Rescale everything to be in the range [-1, 1], the typical domain of orthogonality
-            preprocess.append(atomic.ScalePositions(1. / cutoff))
+        preprocess = atomic.MapNumbers(species=species_map['numbers'], map_to=species_map['range'])
 
     features = features or dict(type=functions.WeightedDelta, map_species_to=species_map.get('to', None))
-    return MomentInvariantsDescriptors(
+    return MomentInvariantsDescriptor(
         feature_mapper=atomic.FeatureMapper(**features),
         cutoff=cutoff,
+        scale=scale,
         moments_calculator=moments_calculator,
         invs=invs,
         preprocess=preprocess
     )
 
 
-# Alias for backwards compatibility
-Fingerprinter = MomentInvariantsDescriptors
+# Aliases for backwards compatibility
+Fingerprinter = MomentInvariantsDescriptor
 fingerprinter = descriptor

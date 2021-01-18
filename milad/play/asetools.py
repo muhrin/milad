@@ -287,7 +287,7 @@ class MiladFingerprint:
         return fingerprint
 
 
-def extract_environments(system: ase.Atoms, atom_centered=True, cutoff=5., yield_indexes=False):
+def extract_environments(system: ase.Atoms, atom_centered=True, cutoff=5., yield_indices=False):
     """Given an ase.Atoms this will extract atomic environments and yield them as new Atoms objects
 
     The central atom will always be at position 0 and the rest (if any) will follow.
@@ -295,6 +295,7 @@ def extract_environments(system: ase.Atoms, atom_centered=True, cutoff=5., yield
     :param system: the atoms object to extract environments from
     :param atom_centered: if True will centre the new environments on
     :param cutoff: a radial cuttoff for defining each environment
+    :param yield_indices: if True will yield a tuple (idx, Atoms) where idx is the global index of the central atom
     """
     # pylint: disable=too-many-locals
 
@@ -325,7 +326,7 @@ def extract_environments(system: ase.Atoms, atom_centered=True, cutoff=5., yield
                 env_symbols.append(neighbour_symbol)
 
         # Finally yield the environment
-        if yield_indexes:
+        if yield_indices:
             yield i, ase.Atoms(positions=env_positions, symbols=env_symbols)
         else:
             yield ase.Atoms(positions=env_positions, symbols=env_symbols)
@@ -334,7 +335,7 @@ def extract_environments(system: ase.Atoms, atom_centered=True, cutoff=5., yield
 class AseFingerprintsCalculator:
     """Convenience class for using ASE atoms objects with generic fingerprinting methods"""
 
-    def __init__(self, fingerprinter: fingerprinting.MomentInvariantsDescriptors):
+    def __init__(self, fingerprinter: fingerprinting.MomentInvariantsDescriptor):
         self._fingerprinter = fingerprinter
 
     @property

@@ -29,12 +29,12 @@ class StructureOptimiser:
     to match a structure to a given fingerprint.
     """
 
-    def __init__(self, descriptor: fingerprinting.MomentInvariantsDescriptors):
+    def __init__(self, descriptor: fingerprinting.MomentInvariantsDescriptor):
         super().__init__()
         self._descriptor = descriptor
 
     @property
-    def fingerprinter(self) -> fingerprinting.MomentInvariantsDescriptors:
+    def fingerprinter(self) -> fingerprinting.MomentInvariantsDescriptor:
         return self._descriptor
 
     def optimise(
@@ -148,7 +148,7 @@ def find_clusters(spec, num_clusters: int, **kwargs) -> np.ndarray:
 
 @find_clusters.register(base_moments.Moments)
 def _(moments: base_moments.Moments, num_clusters: int, query: base_moments.ReconstructionQuery,
-      fingerprinter: fingerprinting.MomentInvariantsDescriptors) -> np.ndarray:
+      fingerprinter: fingerprinting.MomentInvariantsDescriptor) -> np.ndarray:
     """Find clusters from moments.  This will take the moments and reconstruct values on a grid
     which will be used for the actual cluster determination"""
     # Calculate the grid values
@@ -177,7 +177,7 @@ def _(grid, num_clusters: int) -> np.ndarray:
 
 def find_peaks(
     moments: base_moments.Moments, num_peaks: int, query: base_moments.ReconstructionQuery,
-    fingerprinter: fingerprinting.MomentInvariantsDescriptors
+    fingerprinter: fingerprinting.MomentInvariantsDescriptor
 ):
     atom_positions = []
 
@@ -217,7 +217,7 @@ class Decoder:
 
     def __init__(
         self,
-        fingerprinter: fingerprinting.MomentInvariantsDescriptors,
+        fingerprinter: fingerprinting.MomentInvariantsDescriptor,
         moments_query=None,
         initial_finder=find_peaks,
         default_grid_size=31

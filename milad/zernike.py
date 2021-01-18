@@ -686,7 +686,7 @@ def linear_index(index: base_moments.Index, redundant=True) -> int:
         if triple == index:
             return linear
 
-    assert False, "Should never reach here"
+    assert False, 'Should never reach here'
 
 
 def _domain_check(positions: np.array):
