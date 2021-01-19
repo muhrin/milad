@@ -15,6 +15,10 @@ def random_points_in_sphere(num: int, radius=1., centre=False) -> np.array:
 
     if centre:
         points -= centeroid(points)
+        # Make sure that there aren't any outside of the radius now
+        radius_sq = (points**2).sum(1).max()
+        if radius_sq > r_sq:
+            points *= r_sq / radius_sq
 
     return points
 

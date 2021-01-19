@@ -86,6 +86,6 @@ def test_invariants_function(moment_invariants):
 
     # Now try the same thing using chain
     combined_fn = functions.Chain(moments_fn, invariants_fn)
-    phi2, jacobian = combined_fn(env, jacobian=True)
+    phi2, _jacobian = combined_fn(env, jacobian=True)
 
     assert np.all(phi == phi2)

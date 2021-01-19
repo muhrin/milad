@@ -14,6 +14,7 @@ __all__ = 'MomentInvariantsDescriptor', 'descriptor', 'Fingerprinter', 'fingerpr
 
 class MomentInvariantsDescriptor(functions.Function):
     """Class that is responsible for producing fingerprints form atomic environments"""
+    scaler = None
 
     def __init__(
         self,
@@ -25,7 +26,9 @@ class MomentInvariantsDescriptor(functions.Function):
         preprocess: functions.Function = None
     ):
         super().__init__()
-        preprocess = preprocess or functions.Identity()
+        self._preprocess = functions.Chain()
+        if preprocess is not None:
+            self._preprocess.append(preprocess)
 
         # Now the actual fingerprinting
         self._invariants = invs or invariants.read(invariants.COMPLEX_INVARIANTS)
@@ -38,17 +41,17 @@ class MomentInvariantsDescriptor(functions.Function):
 
             if scale:
                 # Rescale positions to be in the range |r| < 1, the typical domain of orthogonality
-                process.append(atomic.ScalePositions(1. / cutoff))
+                self.scaler = atomic.ScalePositions(1. / cutoff)
+                process.append(self.scaler)
 
         process.append(feature_mapper)
         process.append(moments_calculator)
         process.append(self._invariants)
 
         self._cutoff = cutoff
-        self._preprocess = preprocess
         self._process = process
         # Combine the two steps in one calculator
-        self._calculator = functions.Chain(preprocess, process)
+        self._calculator = functions.Chain(self._preprocess, self._process)
 
     @property
     def invariants(self) -> invariants.MomentInvariants:
@@ -63,7 +66,7 @@ class MomentInvariantsDescriptor(functions.Function):
         return self._cutoff
 
     @property
-    def preprocess(self) -> functions.Function:
+    def preprocess(self) -> functions.Chain:
         """Return the preprocessing function"""
         return self._preprocess
 

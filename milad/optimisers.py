@@ -39,8 +39,7 @@ class LeastSquaresOptimiser:
         :return:
         """
 
-        # SciPy can only deal with numpy arrays if we get one, all good, otherwise
-        # we have to rely on a builder
+        # SciPy can only deal with numpy arrays so if we get one, all good, otherwise we have to rely on a builder
         if isinstance(initial, np.ndarray):
             fun = func
             x0_ = initial

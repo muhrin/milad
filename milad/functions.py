@@ -313,12 +313,19 @@ class Identity(Function):
 
         return state
 
+    @property
+    def inverse(self) -> Optional['Function']:
+        return self
+
 
 class Chain(Function):
     """A function that is a chain of other functions."""
 
     def __init__(self, *functions):
         super().__init__()
+        for func in functions:
+            if not isinstance(func, Function):
+                raise TypeError(f'Expected Function, got {func.__class__.__name__}')
         self._functions: List[Function] = list(functions)
 
     def __len__(self):
@@ -345,14 +352,14 @@ class Chain(Function):
         return found
 
     @property
-    def input_type(self):
+    def input_type(self) -> Optional[type]:
         if not self._functions:
             return None
 
         return self._functions[0].input_type
 
     @property
-    def output_type(self):
+    def output_type(self) -> Optional[type]:
         if not self._functions:
             return None
 
@@ -360,6 +367,9 @@ class Chain(Function):
 
     @property
     def supports_jacobian(self):
+        if not self._functions:
+            return True
+
         return all(entry.supports_jacobian for entry in self._functions)
 
     @property
@@ -374,10 +384,15 @@ class Chain(Function):
 
         return inverse_chain
 
-    def append(self, function):
+    def append(self, function: Function):
+        if not isinstance(function, Function):
+            raise TypeError(f'Expected Function, got {function.__class__.__name__}')
         self._functions.append(function)
 
     def evaluate(self, state: StateLike, get_jacobian=False):
+        if not self._functions:
+            return Identity()(state, jacobian=get_jacobian)
+
         if len(self._functions) == 1:
             # Just pipe directly through
             return self._functions[-1](state, get_jacobian)
@@ -428,8 +443,7 @@ class Residuals(Function):
         return np.empty((self.output_length(in_state), len(in_state)), dtype=complex)
 
     def evaluate(self, state: State, get_jacobian=False) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
-        vector = get_bare_vector(state)
-        out_vector = vector - self._data
+        out_vector = get_bare_vector(state) - self._data
         if get_jacobian:
             return out_vector, np.identity(len(state), dtype=out_vector.dtype)
 

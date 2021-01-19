@@ -53,14 +53,14 @@ class AtomsCollection(functions.PlainState):
         np.copyto(atoms.vector, self.vector)
         return atoms
 
-    def linear_pos_idx(self, atom_idx) -> slice:
+    def linear_pos_idx(self, atom_idx: int) -> slice:
         """Get the slice of the linear vector containing the position of the atom with the given
         index"""
         if atom_idx < 0 or atom_idx >= self._num_atoms:
             raise IndexError(atom_idx)
         return slice(3 * atom_idx, 3 * (atom_idx + 1))
 
-    def linear_number_idx(self, atom_idx) -> int:
+    def linear_number_idx(self, atom_idx: int) -> int:
         """Get the index of the weight of the atom with the given index"""
         if atom_idx < 0 or atom_idx >= self._num_atoms:
             raise IndexError(atom_idx)

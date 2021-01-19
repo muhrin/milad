@@ -124,12 +124,25 @@ class FingerprintSet:
 
     @property
     def fingerprints(self) -> Sequence:
-        """Access the fingerprints"""
+        """Access all the fingerprints"""
         return tuple(info.fingerprints for info in self._system_info)
+
+    def has_all_derivatives(self):
+        try:
+            self.fingerprint_derivatives.index(None)
+            return False
+        except ValueError:
+            # None not found
+            return True
 
     @property
     def fingerprint_derivatives(self) -> Sequence:
+        """Access all the fingerprint derivatives"""
         return tuple(info.derivatives for info in self._system_info)
+
+    @property
+    def sizes(self):
+        return tuple(len(info.atoms) for info in self._system_info)
 
     def get_potential_energies(self, normalise=True) -> tuple:
         """Get the potential energies of all systems in the set"""
@@ -137,6 +150,14 @@ class FingerprintSet:
             return tuple(info.atoms.get_potential_energy() / len(info.atoms) for info in self._system_info)
 
         return tuple(info.atoms.get_potential_energy() for info in self._system_info)
+
+    def has_all_forces(self) -> bool:
+        try:
+            self.get_forces().index(None)
+            return False
+        except ValueError:
+            # None not found
+            return True
 
     def get_forces(self) -> Tuple[np.ndarray]:
         all_forces = []

@@ -10,74 +10,111 @@ __all__ = ('TrainingMonitor',)
 class TrainingMonitor:
     """Class that supports monitoring and plotting results of a neural network training procedure"""
 
+    class PlottingDataset:
+
+        def __init__(self, axes, scatter_kwargs: dict = None):
+            self._axes = axes
+            self._last_plt = None
+            self._values = []
+            self._scatter_kwargs = scatter_kwargs or {}
+
+        def append(self, value):
+            self._values.append(value)
+
+        def replot(self):
+            if self._last_plt is not None:
+                self._last_plt.remove()
+            self._last_plt = self._axes.scatter(list(range(len(self._values))), self._values, **self._scatter_kwargs)
+
     def __init__(self, validation_data: neuralnetwork.FittingData = None):
         fig = plt.figure(figsize=(12, 10))
-        ax = fig.add_subplot(111)
-        ax.set_yscale('log')
+        energy_axis = fig.add_subplot(111)
+        energy_axis.set_yscale('log')
         plt.ion()
 
         self.fig = fig
-        self.ax = ax
-        self._plt_training = None
-        self._plt_validation = None
+        self.ax = energy_axis
 
-        self.training_maes = []
-        self.validation_maes = []
+        self._energy_training = TrainingMonitor.PlottingDataset(
+            self.ax, scatter_kwargs=dict(
+                edgecolors='tab:orange',
+                alpha=0.6,
+                marker='o',
+                facecolors='none',
+            )
+        )
+        self._energy_validation = TrainingMonitor.PlottingDataset(
+            self.ax, scatter_kwargs=dict(c='tab:orange', alpha=0.6)
+        )
+
+        forces_axis = energy_axis.twinx()
+        forces_axis.set_yscale('log')
+
+        self._force_training = TrainingMonitor.PlottingDataset(
+            forces_axis, scatter_kwargs=dict(
+                edgecolors='tab:blue',
+                alpha=0.6,
+                facecolors='none',
+            )
+        )
+        self._force_validation = TrainingMonitor.PlottingDataset(
+            forces_axis, scatter_kwargs=dict(c='tab:blue', alpha=0.6)
+        )
 
         self._validation_data = validation_data
 
     def progress_callaback(self, network, step, _training, loss):
         # Calculate MSEs
-        training_rmsd = loss.cpu().item()**0.5
-        self.training_maes.append(training_rmsd)
-        if self._plt_training is not None:
-            self._plt_training.remove()
-        self._plt_training = self.ax.scatter(list(range(len(self.training_maes))), self.training_maes, c='r', alpha=0.3)
+        training_rmsd = loss.energy.cpu().item()**0.5
+        self._energy_training.append(training_rmsd)
+        self._energy_training.replot()
+
+        if loss.force is not None:
+            self._force_training.append(loss.force.cpu().item()**0.5)
+            self._force_training.replot()
 
         if self._validation_data:
             # Calculate the validation loss
-            validation_rmsd = network.loss(self._validation_data).cpu().item()**0.5
+            validation_loss = network.loss(self._validation_data)
+            validation_rmsd = validation_loss.energy.cpu().item()**0.5
+            self._energy_validation.append(validation_rmsd)
+            self._energy_validation.replot()
 
-            self.validation_maes.append(validation_rmsd)
+            if validation_loss.force is not None:
+                force_rmsd = validation_loss.force.cpu().item()**0.5
+                self._force_validation.append(force_rmsd)
+                self._force_validation.replot()
 
-            if self._plt_validation is not None:
-                self._plt_validation.remove()
-
-            self._plt_validation = self.ax.scatter(
-                list(range(len(self.validation_maes))), self.validation_maes, c='b', alpha=0.3
-            )
         self.fig.canvas.draw()
 
     def plot_energy_comparison(
         self, network: neuralnetwork.NeuralNetwork, training_data: neuralnetwork.FittingData,
         *fitting_data: neuralnetwork.FittingData
     ):
-        fig = plt.figure(figsize=(10, 10))
+        fig = plt.figure(figsize=(8, 8))
         ax = fig.gca()
 
         minimum, maximum = np.inf, -np.inf
 
         if training_data:
-            energies = network._make_prediction(*training_data.fingerprints)
+            predictions = network._make_prediction(training_data)
             known_energies = training_data.get_normalised_energies().cpu().detach().numpy()
-            ax.scatter(known_energies, (energies / training_data.num_atoms).cpu().detach().numpy(), c='r', alpha=0.3)
+            ax.scatter(known_energies, predictions.get_normalised_energies().cpu().detach().numpy(), c='r', alpha=0.3)
             minimum = min(minimum, known_energies.min())
             maximum = max(maximum, known_energies.max())
 
         for entry in fitting_data:
             # Any additional datasets the user wants to plot
-            energies = network._make_prediction(*entry.fingerprints)
+            predictions = network._make_prediction(entry)
             known_energies = entry.get_normalised_energies().cpu().detach().numpy()
-            ax.scatter(known_energies, (energies / entry.num_atoms).cpu().detach().numpy(), alpha=0.4)
+            ax.scatter(known_energies, predictions.get_normalised_energies().cpu().detach().numpy(), alpha=0.4)
             minimum = min(minimum, known_energies.min())
             maximum = max(maximum, known_energies.max())
 
         if self._validation_data:
-            energies = network._make_prediction(*self._validation_data.fingerprints)
+            predictions = network._make_prediction(self._validation_data)
             known_energies = self._validation_data.get_normalised_energies().cpu().detach().numpy()
-            ax.scatter(
-                known_energies, (energies / self._validation_data.num_atoms).cpu().detach().numpy(), c='b', alpha=0.8
-            )
+            ax.scatter(known_energies, predictions.get_normalised_energies().cpu().detach().numpy(), c='b', alpha=0.8)
             minimum = min(minimum, known_energies.min())
             maximum = max(maximum, known_energies.max())
 
@@ -92,9 +129,10 @@ class TrainingMonitor:
         ax.set_ylabel('No. of structures')
 
         all_datasets = [self._validation_data, *fitting_data]
-        for data in all_datasets:
-            energies = network._make_prediction(*data.fingerprints, normalise=True)
-            differences = data.get_normalised_energies().cpu().detach().numpy() - energies.cpu().detach().numpy()
+        for data_set in all_datasets:
+            target_energies = data_set.get_normalised_energies().cpu().detach().numpy()
+            predicted_energies = network._make_prediction(data_set).get_normalised_energies().cpu().detach().numpy()
+            differences = target_energies - predicted_energies
             ax.hist(differences, 100)
 
         return fig
