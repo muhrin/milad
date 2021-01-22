@@ -23,7 +23,8 @@ class MomentInvariantsDescriptor(functions.Function):
         scale: bool = True,
         moments_calculator=None,
         invs: invariants.MomentInvariants = None,
-        preprocess: functions.Function = None
+        preprocess: functions.Function = None,
+        apply_cutoff=True,
     ):
         super().__init__()
         self._preprocess = functions.Chain()
@@ -37,7 +38,8 @@ class MomentInvariantsDescriptor(functions.Function):
         # Create the actual fingerprinting process
         process = functions.Chain()
         if cutoff is not None:
-            process.append(atomic.ApplyCutoff(cutoff))
+            if apply_cutoff:
+                process.append(atomic.ApplyCutoff(cutoff))
 
             if scale:
                 # Rescale positions to be in the range |r| < 1, the typical domain of orthogonality
@@ -127,6 +129,7 @@ def descriptor(
     scale=True,
     moments_calculator=None,
     invs: invariants.MomentInvariants = None,
+    apply_cutoff=True,
 ):
     """
 
@@ -161,7 +164,8 @@ def descriptor(
         scale=scale,
         moments_calculator=moments_calculator,
         invs=invs,
-        preprocess=preprocess
+        preprocess=preprocess,
+        apply_cutoff=apply_cutoff,
     )
 
 

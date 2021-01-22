@@ -27,8 +27,10 @@ class LeastSquaresOptimiser:
         func: functions.Function,
         initial: functions.StateLike,
         jacobian='2-point',
+        bounds=(-np.inf, np.inf),
+        max_force_evals=None,
+        grad_tol=1e-6,
         verbose=False,
-        bounds=(-np.inf, np.inf)
     ):
         """
         :param func: the function to optimise
@@ -36,6 +38,9 @@ class LeastSquaresOptimiser:
         :param jacobian: if 'native' the analytic Jacobian will be requested from 'func', otherwise this option is
             passed to optimize.least_squares
         :param bounds: place bounds on the possible inputs to func
+        :param max_force_evals: the maximum number of force evaluations.  If not specified will be 50 * len(initial).
+        :param verbose: print during the optimisation
+
         :return:
         """
 
@@ -53,11 +58,21 @@ class LeastSquaresOptimiser:
         # but we don't support getting the Jacobian on it's own (it always comes
         # with a function evaluation and we don't want to call it twice so just
         # cache the result)
-        jac = self._jac if jacobian == 'native' else '2-point'
+        jac = self._jac if jacobian == 'native' else jacobian
         data = LeastSquaresOptimiser.Data(use_jacobian=jacobian == 'native', verbose=verbose)
 
+        max_force_evals = max_force_evals if max_force_evals is not None else 100 * len(initial)
+
         # Do it!
-        return optimize.least_squares(self._calc, x0_, jac=jac, kwargs=dict(func=fun, opt_data=data), bounds=bounds)
+        return optimize.least_squares(
+            self._calc,
+            x0_,
+            jac=jac,
+            kwargs=dict(func=fun, opt_data=data),
+            bounds=bounds,
+            gtol=grad_tol,
+            max_nfev=max_force_evals,
+        )
 
     def optimise_target(
         self,
@@ -65,8 +80,10 @@ class LeastSquaresOptimiser:
         initial: functions.StateLike,
         target: functions.StateLike,
         jacobian='2-point',
-        verbose=False,
         bounds=(-np.inf, np.inf),
+        max_force_evals=None,
+        grad_tol=1e-6,
+        verbose=False,
     ):
         """
         Optimise the function to a given target value.  This minimises the loss of the difference between the function
@@ -78,6 +95,8 @@ class LeastSquaresOptimiser:
         :param jacobian: if 'native' the analytic Jacobian will be requested from 'func', otherwise this option is
             passed to optimize.least_squares
         :param bounds: place bounds on the possible inputs to func
+        :param max_force_evals: the maximum number of force evaluations.  If not specified will be 50 * len(initial).
+        :param verbose: print during the optimisation
         :return:
         """
         # Calculate residuals to a particular target
@@ -86,7 +105,9 @@ class LeastSquaresOptimiser:
             initial=initial,
             jacobian=jacobian,
             verbose=verbose,
-            bounds=bounds
+            bounds=bounds,
+            grad_tol=grad_tol,
+            max_force_evals=max_force_evals
         )
 
     def _calc(

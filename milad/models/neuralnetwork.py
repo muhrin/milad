@@ -450,7 +450,7 @@ class NeuralNetwork:
             sequence.append(self._activations)
             prev_size = size
         # Add the output layer
-        sequence.extend((torch.nn.Linear(prev_size, 1, bias=False), self._energy_scaler))
+        sequence.extend((torch.nn.Linear(prev_size, 1, bias=True), self._energy_scaler))
 
         self._network = torch.nn.Sequential(*sequence)
         self._network.to(self._device, self._dtype)

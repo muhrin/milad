@@ -37,8 +37,9 @@ class AtomsCollection(functions.PlainState):
     def total_length(num_atoms: int) -> int:
         return AtomsCollection.num_atomic_properties() * num_atoms
 
-    def __init__(self, num: int, positions: np.array = None, numbers: np.array = None):
-        super().__init__(self.total_length(num))
+    def __init__(self, num: int, positions: np.array = None, numbers: np.array = None, dtype=None):
+        super().__init__(self.total_length(num), dtype=dtype)
+
         self._num_atoms = num
         if positions is not None:
             self.positions = positions
@@ -328,7 +329,7 @@ class ScalePositions(functions.Function):
         return len(in_state)
 
     def evaluate(self, atoms: AtomsCollection, get_jacobian=False):
-        out_atoms = AtomsCollection(atoms.num_atoms)
+        out_atoms = AtomsCollection(atoms.num_atoms, dtype=atoms.dtype)
         out_atoms.positions[:] = self._scale_factor * atoms.positions
         out_atoms.numbers[:] = atoms.numbers
 
@@ -478,7 +479,7 @@ class ApplyCutoff(functions.Function):
         if get_jacobian:
             jac = np.zeros((len(out_atoms), len(in_atoms)))
             for old_idx, new_idx in index_map.items():
-                jac[out_atoms.linear_pos_idx(new_idx), in_atoms.linear_pos_idx(old_idx)] = 1.
+                jac[out_atoms.linear_pos_idx(new_idx), in_atoms.linear_pos_idx(old_idx)] = np.eye(3)
                 jac[out_atoms.linear_number_idx(new_idx), in_atoms.linear_number_idx(old_idx)] = 1.
 
             return out_atoms, jac

@@ -45,8 +45,8 @@ StateLike = Union[np.ndarray, State]
 class PlainState(State):
     __slots__ = ('_array',)
 
-    def __init__(self, length):
-        self._array = np.zeros(length)
+    def __init__(self, length, dtype=None):
+        self._array = np.zeros(length, dtype=dtype)
 
     @property
     def vector(self) -> np.array:
@@ -60,6 +60,10 @@ class PlainState(State):
     @array.setter
     def array(self, arr: np.ndarray):
         self._array[:] = arr
+
+    @property
+    def dtype(self):
+        return self._array.dtype
 
 
 class Feature(State):

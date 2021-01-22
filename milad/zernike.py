@@ -139,11 +139,11 @@ class ZernikeMoments(base_moments.Moments):
         self._dtype = dtype
 
         self._moments = {}
-        self._moments[0] = np.empty((n_max + 1, n_max + 1), dtype=float)
+        self._moments[0] = np.empty((n_max + 1, n_max + 1), dtype=dtype)
         for m in inclusive(1, n_max):
             shape = (n_max - m + 1, n_max + 1)
-            self._moments[m] = np.empty(shape, dtype=complex)
-            self._moments[-m] = np.empty(shape, dtype=complex)
+            self._moments[m] = np.empty(shape, dtype=dtype)
+            self._moments[-m] = np.empty(shape, dtype=dtype)
 
     def __eq__(self, other: 'ZernikeMoments'):
         """Test if another set of moments are equal to this one"""
@@ -197,12 +197,15 @@ class ZernikeMoments(base_moments.Moments):
             n, l, m = key
 
         if m == 0:
-            if value.imag > 1e-9:
-                logging.warning(
-                    f'Trying to set value of moment {n},{l},{m} to {value}, '
-                    f'however these moment should always be real so discarding imaginary'
-                )
-            value = np.real(value)
+            try:
+                if value.imag > 1e-9:
+                    logging.warning(
+                        f'Trying to set value of moment {n},{l},{m} to {value}, '
+                        f'however these moment should always be real so discarding imaginary'
+                    )
+                value = np.real(value)
+            except AttributeError:
+                pass
 
         l_idx = l - abs(m)
         self._moments[m][l_idx, n] = value
