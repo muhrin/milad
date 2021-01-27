@@ -27,7 +27,7 @@ def test_zernike_reconstruct_deltas():
     # Now reconstruct a voxel grid
     spacing = np.linspace(-1., 1., n_samples)
     grid_points = []
-    for pos in np.array(np.meshgrid(spacing, spacing, spacing)).reshape(3, -1).T:
+    for pos in np.array(np.meshgrid(spacing, spacing, spacing)).reshape(3, -1).T:  # pylint: disable=not-an-iterable
         if np.linalg.norm(pos) > 1.:
             continue
         grid_points.append(pos)
@@ -100,14 +100,12 @@ def test_zernike_properties():
 def test_zernike_analytic():
     MAX_ORDER = 6
 
-    zern = sympy.IndexedBase('z', complex=True)  # Zernike moments
     geom = sympy.IndexedBase('m', real=True)  # Geometric moments
 
-    calculator = zernike.ZernikeMomentCalculator(MAX_ORDER)
     jacobian = zernike.get_jacobian_wrt_geom_moments(MAX_ORDER)
 
     # Let's build the Jacobian symbolically
-    for idx, (n, l, m) in enumerate(zernike.iter_indices(MAX_ORDER, redundant=False)):
+    for _idx, (n, l, m) in enumerate(zernike.iter_indices(MAX_ORDER, redundant=False)):
         eq = zernike.omega_nl_m(n, l, m, geom)
         for p in range(MAX_ORDER):
             for q in range(MAX_ORDER):
@@ -156,7 +154,7 @@ def test_zernike_builder():
     max_order = 7
 
     moms = zernike.from_deltas(max_order, positions)
-    builder = moms.builder
+    builder = moms.get_builder()
 
     # Get the moments in vector form
     vec = builder.inverse(moms)

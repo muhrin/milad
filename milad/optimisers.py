@@ -1,10 +1,15 @@
 # -*- coding: utf-8 -*-
+import collections
+import math
+
 import numpy as np
 from scipy import optimize
 
 from . import functions
 
 __all__ = ('LeastSquaresOptimiser',)
+
+OptimiserResult = collections.namedtuple('OptimiserResult', 'success message value rmsd')
 
 
 class LeastSquaresOptimiser:
@@ -25,16 +30,18 @@ class LeastSquaresOptimiser:
     def optimise(
         self,
         func: functions.Function,
-        initial: functions.StateLike,
+        initial: functions.State,
+        mask: functions.State = None,
         jacobian='2-point',
         bounds=(-np.inf, np.inf),
         max_force_evals=None,
-        grad_tol=1e-6,
+        grad_tol=1e-8,
         verbose=False,
-    ):
+    ) -> OptimiserResult:
         """
         :param func: the function to optimise
         :param initial: the initial state
+        :param mask: a mask of pre-set values whose degrees of freedom will not be present in the optimistaion vector
         :param jacobian: if 'native' the analytic Jacobian will be requested from 'func', otherwise this option is
             passed to optimize.least_squares
         :param bounds: place bounds on the possible inputs to func
@@ -43,14 +50,13 @@ class LeastSquaresOptimiser:
 
         :return:
         """
-
         # SciPy can only deal with numpy arrays so if we get one, all good, otherwise we have to rely on a builder
         if isinstance(initial, np.ndarray):
             fun = func
             x0_ = initial
         else:
             # Need to add a builder step
-            builder = initial.builder
+            builder = initial.get_builder(mask=mask)
             fun = functions.Chain(builder, func)
             x0_ = builder.inverse(initial)
 
@@ -64,7 +70,7 @@ class LeastSquaresOptimiser:
         max_force_evals = max_force_evals if max_force_evals is not None else 100 * len(initial)
 
         # Do it!
-        return optimize.least_squares(
+        res = optimize.least_squares(
             self._calc,
             x0_,
             jac=jac,
@@ -74,15 +80,24 @@ class LeastSquaresOptimiser:
             max_nfev=max_force_evals,
         )
 
+        # Now convert the result to our optimiser result format
+        return OptimiserResult(
+            success=res.success,
+            value=builder(res.x),
+            rmsd=math.sqrt(2. / len(x0_) * res.cost),
+            message=res.message,
+        )
+
     def optimise_target(
         self,
         func: functions.Function,
-        initial: functions.StateLike,
+        initial: functions.State,
         target: functions.StateLike,
+        mask: functions.State = None,
         jacobian='2-point',
         bounds=(-np.inf, np.inf),
         max_force_evals=None,
-        grad_tol=1e-6,
+        grad_tol=1e-8,
         verbose=False,
     ):
         """
@@ -103,24 +118,18 @@ class LeastSquaresOptimiser:
         return self.optimise(
             functions.Chain(func, functions.Residuals(target)),
             initial=initial,
+            mask=mask,
             jacobian=jacobian,
-            verbose=verbose,
             bounds=bounds,
             grad_tol=grad_tol,
-            max_force_evals=max_force_evals
+            max_force_evals=max_force_evals,
+            verbose=verbose,
         )
 
     def _calc(
         self, state: functions.StateLike, func: functions.Function, opt_data: 'LeastSquaresOptimiser.Data'
     ) -> np.ndarray:
-        # pylint: disable=no-self-use
-        res = func(state, jacobian=opt_data.use_jacobian)
-        if opt_data.use_jacobian:
-            value, jac = res
-            opt_data.last_jacobian = jac.real
-        else:
-            value = res
-
+        value = func(state)
         opt_data.last_state = state
         value = value.real
         if opt_data.verbose:
@@ -130,9 +139,6 @@ class LeastSquaresOptimiser:
     def _jac(
         self, state: functions.StateLike, func: functions.Function, opt_data: 'LeastSquaresOptimiser.Data'
     ) -> np.ndarray:
-        if np.all(opt_data.last_jacobian[0] == state):
-            return opt_data.last_jacobian[1]
-
-        # Reuse calc to do the function call and updating of the cache
-        self._calc(state, func, opt_data)
+        _, jac = func(state, jacobian=True)
+        opt_data.last_jacobian = jac.real
         return opt_data.last_jacobian

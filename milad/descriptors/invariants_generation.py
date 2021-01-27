@@ -4,6 +4,10 @@ from sympy.physics.quantum.cg import CG
 
 from milad import utils
 
+# We're using a lot of variable names that make sense from the mathematics but are not so programming friendly
+# so disable for now as we know what they mean
+# pylint: disable=invalid-name
+
 
 def composite_complex_moment_form(moments: sympy.Indexed, n: int, l: int, l_prime: int, j: int, k: int):
     """Get the composite moment form as defined by Lo and Don denoted as:
@@ -14,8 +18,8 @@ def composite_complex_moment_form(moments: sympy.Indexed, n: int, l: int, l_prim
         raise ValueError('j must be even, got {}'.format(j))
     eqn = None
 
-    for m in utils.inclusive(max(-l, k - l_prime), min(l, k + l_prime)):
-        term = CG(l, m, l_prime, k - m, j, k).doit() * moments[n, l, m] * moments[n, l, -m]
+    for m in utils.inclusive(max(-l, k - l_prime), min(l, k + l_prime), 1):
+        term = CG(l, m, l_prime, k - m, j, k).doit() * moments[n, l, m] * moments[n, l_prime, k - m]
         eqn = term if eqn is None else eqn + term
 
     assert eqn is not None
@@ -75,7 +79,7 @@ def invariants_single_complex_moment_forms(moments: sympy.Indexed, max_n: int):
     l = n, n - 2, n - 4, ..., 1
     """
     invariants = []
-    for n in utils.inclusive(1, max_n):
+    for n in utils.inclusive(1, max_n, 1):
         for l in utils.inclusive(n, 1, -2):
             invariant = composite_complex_moment_form(moments, n=n, l=l, l_prime=l, j=0, k=0)
             invariants.append(invariant)
@@ -89,7 +93,7 @@ def invariants_moment_form_complex_moment(moments: sympy.Indexed, max_n: int):
     c_n(l, l')_j c_{n'}
     """
     invariants = []
-    for n in utils.inclusive(1, max_n):
+    for n in utils.inclusive(1, max_n, 1):
         for n_prime in utils.inclusive(2, n, 2):
             for j in utils.inclusive(2, n_prime, 2):
                 for l in utils.inclusive(n, 1, -2):
@@ -109,7 +113,7 @@ def invariants_two_moment_forms(moments: sympy.Indexed, max_n: int):
     c_n(l, l')_j c_{n'}(l'', l''')_j
     """
     invariants = []
-    for n in utils.inclusive(1, max_n):
+    for n in utils.inclusive(1, max_n, 1):
         for n_prime in utils.inclusive(1, n):
             for j in utils.inclusive(2, n_prime, 2):
                 for l in utils.inclusive(n, 1, -2):

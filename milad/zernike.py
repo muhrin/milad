@@ -4,9 +4,11 @@
 import collections
 import logging
 import itertools
+import math
 import numbers
 import functools
-from typing import Union, Tuple, Iterator, Dict, Type
+import random
+from typing import Union, Tuple, Iterator, Dict, Optional
 
 import numpy as np
 import scipy
@@ -128,22 +130,21 @@ class ZernikeMoments(base_moments.Moments):
 
         return moms
 
-    @property
-    def builder(self: 'Union[ZernikeMoments, Type[ZernikeMoments]]'):
-        return ZernikeMomentsBuilder(self._max_n)
+    @classmethod
+    def rand(cls, n_max: int, num_range=(-5., 5.)):
+        moms = ZernikeMoments(n_max)
+        for indices in moms.iter_indices(redundant=False):
+            moms[indices] = random.uniform(*num_range) + 1j * random.uniform(*num_range)
+        return moms
 
     def __init__(self, n_max: int, dtype=complex):
         """Construct a Zernike moments object
         """
         self._max_n = n_max
         self._dtype = dtype
-
-        self._moments = {}
-        self._moments[0] = np.empty((n_max + 1, n_max + 1), dtype=dtype)
-        for m in inclusive(1, n_max):
-            shape = (n_max - m + 1, n_max + 1)
-            self._moments[m] = np.empty(shape, dtype=dtype)
-            self._moments[-m] = np.empty(shape, dtype=dtype)
+        self._moments = np.empty((n_max + 1, n_max + 1, 2 * (n_max + 1) + 1), dtype=dtype)
+        # Fill it with NaN so that it's easy to spot any values that haven't been set but should be
+        self._moments.fill(np.nan)
 
     def __eq__(self, other: 'ZernikeMoments'):
         """Test if another set of moments are equal to this one"""
@@ -160,22 +161,25 @@ class ZernikeMoments(base_moments.Moments):
     def max_order(self) -> int:
         return self._max_n
 
-    # @property
-    # def real(self):
-    #     moms = ZernikeMoments(self._max_n)
-    #     moms._moments = self._moments.real
-    #     return moms
-    #
-    # @property
-    # def imag(self):
-    #     moms = ZernikeMoments(self._max_n)
-    #     moms._moments = self._moments.imag
-    #     return moms
+    def get_builder(self, mask: 'Optional[ZernikeMoments]' = None):
+        return ZernikeMomentsBuilder(self._max_n, mask)
+
+    def get_mask(self) -> 'ZernikeMoments':
+        moms = ZernikeMoments(self._max_n, dtype=object)
+        moms.fill_none()
+        return moms
 
     def fill(self, value):
         """Set all moments to the given value"""
-        for n, l, m in self.iter_indices(redundant=False):
-            self[n, l, m] = value
+        self._moments.fill(value)
+
+    def fill_none(self):
+        """Set all moments to None"""
+        self._moments.fill(None)
+
+    def fill_zero(self):
+        """Set all moments to 0 + 0j"""
+        self._moments.fill(0 + 0j)
 
     @property
     def vector(self):
@@ -207,9 +211,13 @@ class ZernikeMoments(base_moments.Moments):
             except AttributeError:
                 pass
 
-        l_idx = l - abs(m)
-        self._moments[m][l_idx, n] = value
-        self._moments[-m][l_idx, n] = (-1)**m * value.conjugate()
+        self._moments[n, l, l + m] = value
+        self._moments[n, l, l - m] = (-1)**m * value.conjugate()
+
+    def iter(self, redundant=True):
+        """Iterate tuples containing the moment indices and value"""
+        for indices in self.iter_indices(redundant=redundant):
+            yield indices, self[indices]
 
     def iter_indices(self, redundant=True):
         yield from iter_indices(max_order=self._max_n, redundant=redundant)
@@ -228,9 +236,15 @@ class ZernikeMoments(base_moments.Moments):
             raise ValueError(f'n - l must be even, got {n} {l}')
 
         try:
-            return self._moments[m][l - abs(m), n]
+            return self._moments[n, l, l + m]
         except (KeyError, IndexError):
             assert_valid(n, l, m)
+            if n > self._max_n:
+                raise ValueError(
+                    f'requested n value ({n}) is greater than the maximum order of these moments ({self._max_n})'
+                )
+
+            raise ValueError(f'Invalid moments: n={n} l={l} m={m}')
 
     def value_at(self, x: np.array, order: int = None) -> float:
         """Reconstruct the value at x from the moments
@@ -242,6 +256,7 @@ class ZernikeMoments(base_moments.Moments):
         return self.reconstruct(self.create_reconstruction_query(x, order), order, zero_outside_domain=False)
 
     def reconstruct(self, query: ZernikeReconstructionQuery, order=None, zero_outside_domain=True):
+        """Given a reconstruction query this will return the values of the function at the specified grid values"""
         order = order if order is not None else self._max_n
         moments = query.moments
 
@@ -254,7 +269,7 @@ class ZernikeMoments(base_moments.Moments):
         else:
             calculated_values = values
 
-        for n, l, m in iter_indices(max_order=order):
+        for n, l, m in iter_indices(max_order=order, redundant=False):
             omega = self.moment(n, l, m)
             z = sum_chi_nlm(n, l, m, moments)
             calculated_values += omega * z
@@ -270,8 +285,52 @@ class ZernikeMoments(base_moments.Moments):
 
         return values.real
 
+    def visualise(self, viewer='plotly_widget', query: ZernikeReconstructionQuery = None, num_points=31):
+        if viewer == 'plotly_widget':
+            # Only do imports here so some of these tools aren't needed for the rest of milad
+            import ipywidgets
+            import plotly.graph_objects as go
+            from milad import plotlytools
+
+            if query is None:
+                grid_points = self.get_grid(num_points, restrict_to_domain=False)
+                query = self.create_reconstruction_query(grid_points, self.max_order)
+            else:
+                grid_points = query.points
+
+            grid_values = self.reconstruct(query, zero_outside_domain=True)
+
+            default_isomin = (grid_values.max() - grid_values.min()) * 0.7 + grid_values.min()
+            default_isomax = grid_values.max()
+
+            isosurface = plotlytools.isosurface(
+                grid_points,
+                grid_values,
+                isomin=grid_values.mean(),
+                opacity=0.5,
+                autocolorscale=True,
+            )
+            fig = go.Figure(data=[isosurface])
+            widget = go.FigureWidget(fig)
+
+            @ipywidgets.interact(
+                opacity=(0., 1., 0.01),
+                isomin=(grid_values.min(), grid_values.max(), 1.),
+                isomax=(grid_values.min(), grid_values.max(), 1.)
+            )
+            def update(opacity, isomin=default_isomin, isomax=default_isomax):
+                with widget.batch_update():
+                    isosurface = widget.data[0]
+                    isosurface.opacity = opacity
+                    isosurface.isomin = isomin
+                    isosurface.isomax = isomax
+
+            return widget
+
+        raise ValueError(f"Unknown viewer '{viewer}'")
+
     @classmethod
-    def create_reconstruction_query(cls, points: np.ndarray, order=None) -> ZernikeReconstructionQuery:
+    def create_reconstruction_query(cls, points: np.ndarray, order) -> ZernikeReconstructionQuery:
         """Create a query object that can be passed to self.value_at to reconstruct the Zernike functions
         at the given query points.  This is useful if the same point (or grid of points) is used multiple
         times as this precomputation can be done once and reused.
@@ -298,7 +357,7 @@ class ZernikeMoments(base_moments.Moments):
     def _get_indices_in_domain(points: np.ndarray) -> np.ndarray:
         """Calculate the lengths squared and get the corresponding indexes"""
         length_sq = (points**2).sum(axis=1)
-        return np.argwhere(length_sq <= 1)
+        return np.argwhere(length_sq < 1)
 
 
 class ZernikeMomentsBuilder(functions.Function):
@@ -306,29 +365,47 @@ class ZernikeMomentsBuilder(functions.Function):
     input_type = np.ndarray
     supports_jacobian = True
 
-    def __init__(self, n_max: int):
+    def __init__(self, n_max: int, mask: Optional[ZernikeMoments] = None):
         super().__init__()
         self._n_max = n_max
+        if mask is None:
+            self._mask = ZernikeMoments(n_max, dtype=object)
+            self._mask.fill_none()  # All values with None are not masked
+        else:
+            self._mask = mask
+
+    def apply_mask(self, moms: ZernikeMoments):
+        """Given a set of moments this will set any values present from the mask"""
+        for zernike_index, value in self._mask.iter(redundant=False):
+            if value is not None:
+                moms[zernike_index] = value
 
     @property
     def inverse(self) -> 'ZernikeMomentsBuilder.Inverse':
-        return ZernikeMomentsBuilder.Inverse(self._n_max)
+        return ZernikeMomentsBuilder.Inverse(self)
 
     def evaluate(self, state: np.ndarray, get_jacobian=False):
         indices_list = tuple(self.iter_indices())
+        if len(state) != len(indices_list):
+            raise ValueError(
+                f'Got input vector of length {len(state)} but was expecting one of length {len(indices_list)}'
+            )
+
+        # Create the moments and optionally a Jacobian
         moms = ZernikeMoments(self._n_max)
-        moms.fill(0 + 0j)
+        moms.fill_zero()
+        self.apply_mask(moms)
         jac = np.zeros((len(moms), len(indices_list)), dtype=complex) if get_jacobian else None
 
         # Let's create the complex moments
-        for idx, ind, num_type in indices_list:
-            moms[ind] += num_type * state[idx]
+        for idx, (zernike_idx, num_type) in enumerate(indices_list):
+            moms[zernike_idx] += num_type * state[idx]
 
             if get_jacobian:
-                n, l, m = ind
-                lin_idx = linear_index(ind)
+                n, l, m = zernike_idx
+                lin_idx = linear_index(zernike_idx)
                 jac[lin_idx, idx] += 1 * num_type
-                if ind.m > 0:
+                if zernike_idx.m > 0:
                     lin_idx = linear_index((n, l, -m))
                     jac[lin_idx, idx] += (-1)**m * (1 if num_type == 1. else -1j)
 
@@ -338,19 +415,20 @@ class ZernikeMomentsBuilder(functions.Function):
         return moms
 
     def iter_indices(self):
-        yield from self._iter_indices(self._n_max)
+        # Skip all the ones that are masked
+        for zidx, num_type in self._iter_indices(self._n_max):
+            if self._mask[zidx] is None:
+                yield zidx, num_type
 
     @classmethod
     def _iter_indices(self, n_max: int):
-        linear_idx = 0
         # First deal with m = 0 as these are all real
         for n in inclusive(0, n_max):
             for l in inclusive(n):
                 if not even(n - l):
                     continue
 
-                yield linear_idx, ZernikeIndex(n, l, 0), 1.
-                linear_idx += 1
+                yield ZernikeIndex(n, l, 0), 1.
 
         # Now deal with m > 0, these have both a real and imaginary part
         for num_type in (1., 1j):
@@ -360,24 +438,23 @@ class ZernikeMomentsBuilder(functions.Function):
                         continue
 
                     for m in inclusive(1, l, 1):
-                        yield linear_idx, ZernikeIndex(n, l, m), num_type
-                        linear_idx += 1
+                        yield ZernikeIndex(n, l, m), num_type
 
     class Inverse(functions.Function):
-        supports_jacobian = False
         """Turn a set a Zernike moments into a vector"""
+        supports_jacobian = False
 
-        def __init__(self, n_max: int):
+        def __init__(self, forward: 'ZernikeMomentsBuilder'):
             super().__init__()
-            self._n_max = n_max
+            self._forward = forward
 
-        def iter_indices(self):
-            yield from ZernikeMomentsBuilder._iter_indices(self._n_max)
+        def inverse(self) -> 'ZernikeMomentsBuilder':
+            return self._forward
 
         def evaluate(self, state: ZernikeMoments, get_jacobian=False) -> np.ndarray:
             moms = []
-            for _idx, indices, num_type in self.iter_indices():
-                mom = state[indices.n, indices.l, indices.m]
+            for indices, num_type in self._forward.iter_indices():
+                mom = state[indices]
                 moms.append(mom.real if num_type == 1. else mom.imag)
 
             return np.array(moms)
@@ -576,7 +653,7 @@ def sum_chi_nlm(n: int, l: int, m: int, geom_moments: np.ndarray) -> Union[compl
 
 def sum1(n: int, l: int, m: int, geom_moments: np.ndarray) -> Union[complex, np.array]:
     """Calculate the Zernike geometric moment conversion factors"""
-    k = int((n - l) / 2)  # n - l is always even
+    k = int(math.floor((n - l) / 2))  # n - l is always even
     total = 0.
     for nu in inclusive(k):
         total += q_kl_nu(k, l, nu) * sum2(n=n, l=l, m=m, nu=nu, geom_moments=geom_moments)
@@ -612,7 +689,7 @@ def sum4(n: int, l: int, m: int, nu: int, alpha: int, beta: int, geom_moments: n
 def sum5(n: int, l: int, m: int, nu: int, alpha: int, beta: int, u: int,
          geom_moments: np.ndarray) -> Union[complex, np.array]:
     total = 0.
-    for mu in inclusive(int((l - m) / 2.)):
+    for mu in inclusive(int(math.floor((l - m) / 2.))):
         total += (-1) ** mu * 2 ** (-2 * mu) * binomial_coeff(l, mu) * \
                  binomial_coeff(l - mu, m + mu) * \
                  sum6(n=n, l=l, m=m, nu=nu, alpha=alpha, beta=beta, u=u, mu=mu,

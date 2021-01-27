@@ -127,14 +127,14 @@ def geometric_moments(state: functions.State, max_order: int, jacobian: Optional
 @geometric_moments.register
 def _(d: functions.WeightedDelta, max_order: int, jacobian: Optional[np.array]) -> np.ndarray:
     dtype = d.vector.dtype
-    O = max_order
+    order = max_order
 
-    moms = np.empty((O + 1, 3), dtype=dtype)
+    moms = np.empty((order + 1, 3), dtype=dtype)
     moms[0] = 1  # 0^th power always 1.
     moms[1] = d.pos  # 1^st power always the position itself
 
     # Calculate each x, y, z raise to powers up to the upper bound
-    for power in utils.inclusive(2, O):
+    for power in utils.inclusive(2, order, 1):
         moms[power] = np.multiply(moms[power - 1, :], d.pos)
 
     moments = d.weight * utils.outer_product(moms[:, 0], moms[:, 1], moms[:, 2])
@@ -142,21 +142,21 @@ def _(d: functions.WeightedDelta, max_order: int, jacobian: Optional[np.array]) 
     if jacobian is not None:
         # Easier if we view the jacobian in moment-matrix form
         jacobian_mtx = jacobian.view()
-        jacobian_mtx.shape = (O + 1, O + 1, O + 1, 4)
+        jacobian_mtx.shape = (order + 1, order + 1, order + 1, 4)
 
         # Here we perform differentiation on the coordinate parts e.g.:
         # d/dx (x^p y^q z^r) = p x^(p - 1) y^q z^r
         # But we have all these powers already stored in the moments matrix so reuse them
         jacobian_mtx[0, :, :, 0] = 0.
-        for p in utils.inclusive(1, O):
+        for p in utils.inclusive(1, order, 1):
             jacobian_mtx[p, :, :, d.X] = p * moments[p - 1, :, :]
 
         jacobian_mtx[:, 0, :, 1] = 0.
-        for q in utils.inclusive(1, O):
+        for q in utils.inclusive(1, order, 1):
             jacobian_mtx[:, q, :, d.Y] = q * moments[:, q - 1, :]
 
         jacobian_mtx[:, :, 0, 2] = 0.
-        for r in utils.inclusive(1, O):
+        for r in utils.inclusive(1, order, 1):
             jacobian_mtx[:, :, r, d.Z] = r * moments[:, :, r - 1]
 
         # The weigh part.  Because w appears as a prefactor to all of these, to do the

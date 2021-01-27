@@ -34,8 +34,7 @@ class State(metaclass=abc.ABCMeta):
         """Get the length of this state vector"""
         return len(self.vector)
 
-    @property
-    def builder(self) -> Optional['Function']:
+    def get_builder(self, mask=None) -> Optional['Function']:  # pylint: no-self-use, disable=unused-argument
         return None
 
 
@@ -440,7 +439,7 @@ class Residuals(Function):
         super().__init__()
         self._data = get_bare_vector(data)
 
-    def output_length(self, in_state: State) -> int:
+    def output_length(self, in_state: State) -> int:  # pylint: disable=unused-argument
         return len(self._data)
 
     def empty_jacobian(self, in_state: State) -> np.array:

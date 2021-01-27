@@ -36,7 +36,7 @@ class Moments(functions.State, metaclass=abc.ABCMeta):
     def __getitem__(self, index: Index):
         """Get the moment of the given index"""
 
-    def to_matrix(self) -> np.array:
+    def to_matrix(self) -> np.array:  # pylint: disable=no-self-use
         """Return the moments in a matrix.  Not all moment classes support this as they may have
         special indexing schemes in which case an AttributeError will be raised"""
         raise AttributeError('Does not support conversion to matrix')
@@ -86,7 +86,7 @@ class Moments(functions.State, metaclass=abc.ABCMeta):
         # Reshape into n * n * n array
         return grid, grid_vals.reshape((grid.shape[1:]))
 
-    def reconstruct(self, query: ReconstructionQuery, order=None, zero_outside_domain=True):
+    def reconstruct(self, query: ReconstructionQuery, order=None, zero_outside_domain=True):  # pylint: disable=unused-argument
         return self.value_at(query.points)
 
     @classmethod
@@ -105,7 +105,7 @@ class Moments(functions.State, metaclass=abc.ABCMeta):
         return grid_points
 
     @classmethod
-    def create_reconstruction_query(cls, points, order) -> ReconstructionQuery:
+    def create_reconstruction_query(cls, points, order: int) -> ReconstructionQuery:  # pylint: disable=unused-argument
         return ReconstructionQuery(points)
 
 
