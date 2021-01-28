@@ -3,7 +3,7 @@
 
 import abc
 import collections
-from typing import Tuple, List, Dict
+from typing import Tuple, List, Dict, Iterator, Union
 
 import numpy as np
 
@@ -36,6 +36,10 @@ class Moments(functions.State, metaclass=abc.ABCMeta):
     def __getitem__(self, index: Index):
         """Get the moment of the given index"""
 
+    @abc.abstractmethod
+    def __setitem__(self, index: Union[int, Tuple], value):
+        """Set the moment of the given index"""
+
     def to_matrix(self) -> np.array:  # pylint: disable=no-self-use
         """Return the moments in a matrix.  Not all moment classes support this as they may have
         special indexing schemes in which case an AttributeError will be raised"""
@@ -55,6 +59,10 @@ class Moments(functions.State, metaclass=abc.ABCMeta):
         """Get a linearised index from the passed triple index"""
 
     @abc.abstractmethod
+    def iter_indices(self) -> Iterator[Index]:
+        """Iterate through the valid indices of these moments"""
+
+    @abc.abstractmethod
     def value_at(self, x: np.array, max_order: int = None):
         """Reconstruct the value at x from the moments
 
@@ -62,6 +70,10 @@ class Moments(functions.State, metaclass=abc.ABCMeta):
         :param max_order: the maximum order to go up to (defaults to the maximum order of these
             moments)
         """
+
+    @abc.abstractmethod
+    def get_mask(self, fill=None) -> 'Moments':
+        """Get an empty set of moments all set to None that can be used as a mask to fix values e.g. for optimisation"""
 
     def grid_values(self, num_samples: int, zero_outside_domain=True):
         """Get a grid and corresponding values of the moments reconstructed at the gridpoints"""

@@ -2,7 +2,7 @@
 """Module for calculating geometric moments"""
 import functools
 import numbers
-from typing import Union, Tuple, Optional
+from typing import Union, Tuple, Optional, Iterator
 
 import numpy as np
 import sympy
@@ -41,6 +41,10 @@ class GeometricMoments(base_moments.Moments):
         """Get the moment of the given index"""
         return self._moments[index]
 
+    def __setitem__(self, index: base_moments.Index, value):
+        """Get the moment of the given index"""
+        self._moments[index] = value
+
     @property
     def dtype(self) -> type:
         try:
@@ -72,6 +76,13 @@ class GeometricMoments(base_moments.Moments):
         size = self.max_order + 1
         return size * size * index[0] + size * index[1] + index[2]
 
+    def iter_indices(self) -> Iterator[base_moments.Index]:
+        """Iterate through the valid indices of these moments"""
+        for p in utils.inclusive(self.max_order):
+            for q in utils.inclusive(self.max_order):
+                for r in utils.inclusive(self.max_order):
+                    yield base_moments.Index(p, q, r)
+
     def value_at(self, x: np.array, max_order: int = None):
         """Reconstruct the value at x from the moments
 
@@ -87,6 +98,14 @@ class GeometricMoments(base_moments.Moments):
                     value += self._moments[p, q, r] * (x**(p, q, r)).prod(axis=-1)
 
         return value
+
+    def get_mask(self, fill=None) -> 'GeometricMoments':
+        geom_moms = np.empty(self._moments.shape, dtype=object)
+        if fill is None:
+            geom_moms.fill(None)
+        else:
+            np.copyto(geom_moms, self._moments)
+        return GeometricMoments(geom_moms)
 
 
 def linear_index(max_order: int, index: base_moments.Index) -> int:

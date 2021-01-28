@@ -148,7 +148,7 @@ class AtomsCollectionBuilder(functions.Function):
         return 4 * self._num_atoms
 
     def evaluate(self, state: functions.State, get_jacobian=False) -> AtomsCollection:
-        vector = functions.get_bare_vector(state)
+        vector = functions.get_bare(state)
         if len(vector) != self.input_length:
             raise ValueError(f'Expected input of length {self.input_length} but got {len(vector)}')
 
@@ -350,6 +350,7 @@ class CentreAtomsCollection(functions.Function):
     output_type = AtomsCollection
     supports_jacobian = False
 
+    @property
     def inverse(self) -> Optional[functions.Function]:
         """It is not possible to 'uncenter' a set of atoms (as we dont' keep track of where the previous centre was)
         and so the inverse of this function simply does nothing."""
@@ -460,7 +461,7 @@ class ApplyCutoff(functions.Function):
         inverse is just the identity"""
         return functions.Identity()
 
-    def evaluate(self, in_atoms: AtomsCollection, get_jacobian=False):
+    def evaluate(self, in_atoms: AtomsCollection, get_jacobian=False):  # pylint: disable=arguments-differ
         index_map = {}
         # Find all those that are within the cutoff
         for idx in range(in_atoms.num_atoms):

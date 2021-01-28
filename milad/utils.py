@@ -165,7 +165,7 @@ class FingerprintSet:
             try:
                 forces = info.atoms.get_array('force')
             except KeyError:
-                forces = None
+                forces = info.atoms.get_forces()
             all_forces.append(forces)
 
         return tuple(all_forces)

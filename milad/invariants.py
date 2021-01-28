@@ -244,7 +244,7 @@ def _parallel_apply(prefactors, indices, moments):
 
     This is slower version of above but compatible with moments that aren't numpy arrays"""
     total = 0.
-    for idx in numba.prange(len(prefactors)):
+    for idx in numba.prange(len(prefactors)):  # pylint: disable=not-an-iterable
         factor = prefactors[idx]
         entry = indices[idx]
 
@@ -281,6 +281,10 @@ class MomentInvariants(functions.Function):
     def __getitem__(self, item) -> Union['MomentInvariants', MomentInvariant]:
         if isinstance(item, slice):
             return MomentInvariants(*self._invariants[item])
+        if isinstance(item, tuple):
+            if len(item) == 1:
+                return MomentInvariants(self._invariants[item[0]])
+            return MomentInvariants(*operator.itemgetter(*item)(self._invariants))
 
         return self._invariants[item]
 
@@ -289,7 +293,7 @@ class MomentInvariants(functions.Function):
         """Get the maximum order of all the invariants"""
         return self._max_order
 
-    def output_length(self, in_state: functions.State) -> int:
+    def output_length(self, in_state: functions.State) -> int:  # pylint: disable=unused-argument
         return len(self._invariants)
 
     def apply(self, moms: np.array, normalise=False, results=None) -> list:
@@ -301,7 +305,7 @@ class MomentInvariants(functions.Function):
         self._invariants.append(invariant)
         self._max_order = max(self._max_order, invariant.max_order)
 
-    def evaluate(self, moments: base_moments.Moments, get_jacobian=False) -> np.ndarray:
+    def evaluate(self, moments: base_moments.Moments, get_jacobian=False) -> np.ndarray:  # pylint: disable=arguments-differ
         vector = np.empty(len(self._invariants), dtype=np.promote_types(moments.vector.dtype, float))
         if get_jacobian:
             jac = np.zeros((len(self._invariants), len(moments)), dtype=vector.dtype)
@@ -319,6 +323,14 @@ class MomentInvariants(functions.Function):
             return vector, jac
 
         return vector
+
+    def find_up_to(self, max_order: int) -> tuple:
+        """Return the indices of individual invariants that only contain moments up to (inclusive) the maximum order.
+        This can also be used as:
+            invariants[invariants.find_to_up(5)]
+        to get a moment invariants function with those invariants
+        """
+        return tuple(idx for idx in range(len(self._invariants)) if self._invariants[idx].max_order <= max_order)
 
 
 def apply_invariants(invariants: List[MomentInvariant], moms: np.array, normalise=False, results=None) -> list:

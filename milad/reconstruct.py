@@ -90,7 +90,7 @@ class StructureOptimiser:
         # Preprocess the starting structure and get the corresponding flattened array
         preprocess = self._descriptor.preprocess
         preprocessed = preprocess(initial_configuration)
-        starting_vec = functions.get_bare_vector(atoms_builder.inverse(preprocessed))
+        starting_vec = functions.get_bare(atoms_builder.inverse(preprocessed))
 
         result = optimize.least_squares(
             calc,

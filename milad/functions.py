@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import abc
 import logging
+import numbers
 from typing import List, Union, Tuple, Callable, Any, Iterable, Type, Optional
 
 import numpy as np
@@ -34,7 +35,7 @@ class State(metaclass=abc.ABCMeta):
         """Get the length of this state vector"""
         return len(self.vector)
 
-    def get_builder(self, mask=None) -> Optional['Function']:  # pylint: no-self-use, disable=unused-argument
+    def get_builder(self, mask=None) -> Optional['Function']:  # pylint: disable=no-self-use, disable=unused-argument
         return None
 
 
@@ -258,20 +259,17 @@ class Function(metaclass=abc.ABCMeta):
                 raise RuntimeError(f"{name}.evaulate didn't return Jacobian despite being asked to")
 
             _LOGGER.debug(
-                '%s: |input|: %s, |output|: %s, |jac|: %s', name, np.mean(get_bare_vector(state)),
-                np.mean(get_bare_vector(result[0])), np.mean(result[1])
+                '%s: |input|: %s, |output|: %s, |jac|: %s', name, np.mean(get_bare(state)),
+                np.mean(get_bare(result[0])), np.mean(result[1])
             )
         else:
             try:
-                if np.isnan(get_bare_vector(result)).any():
+                if np.isnan(get_bare(result)).any():
                     raise ValueError(f'{name}.evaulate produce a result with a NaN entry')
             except TypeError:
                 pass  # The types stored in the array don't support isnan ufunc
 
-            _LOGGER.debug(
-                '%s: |input|: %s, |output|: %s', name, np.mean(get_bare_vector(state)),
-                np.mean(get_bare_vector(result))
-            )
+            _LOGGER.debug('%s: |input|: %s, |output|: %s', name, np.mean(get_bare(state)), np.mean(get_bare(result)))
 
         for func in self._callbacks:
             if jacobian:
@@ -437,7 +435,7 @@ class Residuals(Function):
 
     def __init__(self, data: np.array):
         super().__init__()
-        self._data = get_bare_vector(data)
+        self._data = get_bare(data)
 
     def output_length(self, in_state: State) -> int:  # pylint: disable=unused-argument
         return len(self._data)
@@ -446,7 +444,7 @@ class Residuals(Function):
         return np.empty((self.output_length(in_state), len(in_state)), dtype=complex)
 
     def evaluate(self, state: State, get_jacobian=False) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
-        out_vector = get_bare_vector(state) - self._data
+        out_vector = get_bare(state) - self._data
         if get_jacobian:
             return out_vector, np.identity(len(state), dtype=out_vector.dtype)
 
@@ -474,10 +472,11 @@ class Native(Function):
 # endregion
 
 
-def get_bare_vector(state: Union[np.ndarray, State]) -> np.array:
-    if isinstance(state, np.ndarray):
-        return state
+def get_bare(state: Union[np.ndarray, State]) -> Union[np.array, numbers.Number]:
+    """This will return either a numpy array (through state.vector) if it is a state class, otherwise it will just
+    return what it is passed.  The idea is that what is returned should be able to be operated on using standard
+    mathematical operations."""
     if isinstance(state, State):
         return state.vector
 
-    raise TypeError(f"Unknown state type: '{state.__class__.__name__}'")
+    return state
