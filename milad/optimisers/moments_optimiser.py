@@ -27,7 +27,7 @@ class MomentsOptimiser:
         jacobian='native',
         bounds=(-np.inf, np.inf),
         target_rmsd=1e-5,
-        max_force_evals=1000,
+        max_func_evals=1000,
         func_tol=1e-7,
         grad_tol=1e-7,
         max_retries=5,
@@ -97,7 +97,7 @@ class MomentsOptimiser:
             mask=mask,
             jacobian=jacobian,
             bounds=bounds,
-            max_force_evals=max_force_evals,
+            max_force_evals=max_func_evals,
             cost_tol=func_tol,
             grad_tol=grad_tol,
             verbose=verbose

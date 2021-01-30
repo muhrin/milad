@@ -36,6 +36,9 @@ class State(metaclass=abc.ABCMeta):
         return len(self.vector)
 
     def get_builder(self, mask=None) -> Optional['Function']:  # pylint: disable=no-self-use, disable=unused-argument
+        """Optionally returns a builder that will convert a one dimensional array to an object of this type.
+        Useful for optimisation or other algorithms that can't/don't want to deal with the internal structure of this
+        object"""
         return None
 
 
@@ -257,19 +260,12 @@ class Function(metaclass=abc.ABCMeta):
         if jacobian:
             if not isinstance(result, tuple):
                 raise RuntimeError(f"{name}.evaulate didn't return Jacobian despite being asked to")
-
-            _LOGGER.debug(
-                '%s: |input|: %s, |output|: %s, |jac|: %s', name, np.mean(get_bare(state)),
-                np.mean(get_bare(result[0])), np.mean(result[1])
-            )
         else:
             try:
                 if np.isnan(get_bare(result)).any():
                     raise ValueError(f'{name}.evaulate produce a result with a NaN entry')
             except TypeError:
                 pass  # The types stored in the array don't support isnan ufunc
-
-            _LOGGER.debug('%s: |input|: %s, |output|: %s', name, np.mean(get_bare(state)), np.mean(get_bare(result)))
 
         for func in self._callbacks:
             if jacobian:

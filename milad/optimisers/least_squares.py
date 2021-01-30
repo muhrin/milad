@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import collections
 import math
+from typing import Tuple, Optional
 
 import numpy as np
 from scipy import optimize
@@ -10,6 +11,8 @@ from milad import functions
 __all__ = ('LeastSquaresOptimiser',)
 
 OptimiserResult = collections.namedtuple('OptimiserResult', 'success message value rmsd n_func_eval n_jac_eval')
+
+BoundsType = Tuple[Optional[functions.StateLike], Optional[functions.StateLike]]
 
 
 class LeastSquaresOptimiser:
@@ -21,20 +24,19 @@ class LeastSquaresOptimiser:
         def __init__(self, use_jacobian=False, verbose=False):
             self.use_jacobian = use_jacobian
             self.verbose = verbose
-            self.last_state = None  # The last state that we evaluated the function at
-            self.last_jacobian = None
 
-    def optimise(   # pylint: disable=too-many-locals
-        self,
-        func: functions.Function,
-        initial: functions.State,
-        mask: functions.State = None,
-        jacobian='2-point',
-        bounds=(-np.inf, np.inf),
-        max_force_evals=None,
-        cost_tol=1e-6,
-        grad_tol=1e-8,
-        verbose=False,
+    def optimise(  # pylint: disable=too-many-locals
+            self,
+            func: functions.Function,
+            initial: functions.StateLike,
+            mask: functions.StateLike = None,
+            jacobian='2-point',
+            bounds: BoundsType = (-np.inf, np.inf),
+            max_force_evals=None,
+            x_tol=1e-8,
+            cost_tol=1e-6,
+            grad_tol=1e-8,
+            verbose=False,
     ) -> OptimiserResult:
         """
         :param func: the function to optimise
@@ -44,6 +46,7 @@ class LeastSquaresOptimiser:
             passed to optimize.least_squares
         :param bounds: place bounds on the possible inputs to func
         :param max_force_evals: the maximum number of force evaluations.  If not specified will be 50 * len(initial).
+        :param x_tol: tolerance for termination by change of the independent variables.
         :param cost_tol: tolerance in change of cost function.  If the difference between one step and another goes
             below this value the optimisation will stop
         :param verbose: print during the optimisation
@@ -59,6 +62,13 @@ class LeastSquaresOptimiser:
             builder = initial.get_builder(mask=mask)
             fun = functions.Chain(builder, func)
             x0_ = builder.inverse(initial)
+            bounds = list(bounds)
+            # Convert the bounds
+            if isinstance(bounds[0], type(initial)):
+                bounds[0] = builder.inverse(bounds[0])
+            if isinstance(bounds[1], type(initial)):
+                bounds[1] = builder.inverse(bounds[1])
+            bounds = tuple(bounds)
 
         # Annoyingly scipy least_squares calls the function and the separately
         # but we don't support getting the Jacobian on it's own (it always comes
@@ -76,6 +86,7 @@ class LeastSquaresOptimiser:
             jac=jac,
             kwargs=dict(func=fun, opt_data=data),
             bounds=bounds,
+            xtol=x_tol,
             ftol=cost_tol,
             gtol=grad_tol,
             max_nfev=max_force_evals,
@@ -98,8 +109,9 @@ class LeastSquaresOptimiser:
         target: functions.StateLike,
         mask: functions.State = None,
         jacobian='2-point',
-        bounds=(-np.inf, np.inf),
+        bounds: BoundsType = (-np.inf, np.inf),
         max_force_evals=None,
+        x_tol=1e-8,
         cost_tol=1e-6,
         grad_tol=1e-8,
         verbose=False,
@@ -115,6 +127,7 @@ class LeastSquaresOptimiser:
             passed to optimize.least_squares
         :param bounds: place bounds on the possible inputs to func
         :param max_force_evals: the maximum number of force evaluations.  If not specified will be 50 * len(initial).
+        :param x_tol: tolerance for termination by change of the independent variables.
         :param cost_tol: tolerance in change of cost function.  If the difference between one step and another goes
             below this value the optimisation will stop
         :param verbose: print during the optimisation
@@ -127,6 +140,7 @@ class LeastSquaresOptimiser:
             mask=mask,
             jacobian=jacobian,
             bounds=bounds,
+            x_tol=x_tol,
             cost_tol=cost_tol,
             grad_tol=grad_tol,
             max_force_evals=max_force_evals,
@@ -137,9 +151,7 @@ class LeastSquaresOptimiser:
     def _calc(
         state: functions.StateLike, func: functions.Function, opt_data: 'LeastSquaresOptimiser.Data'
     ) -> np.ndarray:
-        value = func(state)
-        opt_data.last_state = state
-        value = value.real
+        value = func(state).real
         if opt_data.verbose:
             print('|Max| {}'.format(np.abs(value).max()))
         return value
@@ -148,6 +160,7 @@ class LeastSquaresOptimiser:
     def _jac(
         state: functions.StateLike, func: functions.Function, opt_data: 'LeastSquaresOptimiser.Data'
     ) -> np.ndarray:
-        _, jac = func(state, jacobian=True)
-        opt_data.last_jacobian = jac.real
-        return opt_data.last_jacobian
+        value, jac = func(state, jacobian=True)
+        if opt_data.verbose:
+            print('|Max| {}'.format(np.abs(value).max()))
+        return jac.real

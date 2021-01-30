@@ -3,11 +3,13 @@
 Module containing functions and objects related to manipulating collections of atoms
 """
 import logging
+import random
 from typing import Optional, Type, Tuple, Union
 
 import numpy as np
 
 from . import functions
+from . import generate
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -92,6 +94,9 @@ class AtomsCollection(functions.PlainState):
     def numbers(self, new_numbers: np.array):
         self._array[3 * self._num_atoms:] = new_numbers
 
+    def get_builder(self, mask: 'Optional[AtomsCollection]' = None):
+        return AtomsCollectionBuilder(self._num_atoms)
+
 
 class AtomsCollectionBuilder(functions.Function):
     """Take a vector as an input and build the corresponding atoms collection from it"""
@@ -99,11 +104,15 @@ class AtomsCollectionBuilder(functions.Function):
     output_type = AtomsCollection
     supports_jacobian = True
 
-    def __init__(self, num_atoms: int):
+    def __init__(self, num_atoms: int, mask: AtomsCollection = None):
         super().__init__()
         self._num_atoms = num_atoms
-        self._mask = np.empty(4 * num_atoms, dtype=object)
-        self._mask.fill(None)
+        if mask is None:
+            self._mask = AtomsCollection(num_atoms, dtype=object)
+            self._mask.positions[:] = None
+            self._mask.numbers[:] = None
+        else:
+            self._mask = mask
 
     @property
     def num_atoms(self) -> int:
@@ -111,7 +120,7 @@ class AtomsCollectionBuilder(functions.Function):
         return self._num_atoms
 
     @property
-    def mask(self) -> np.ndarray:
+    def mask(self) -> AtomsCollection:
         """Return the mask of fixed values (free values will have None entries)"""
         return self._mask
 
@@ -135,73 +144,66 @@ class AtomsCollectionBuilder(functions.Function):
 
     @property
     def input_length(self) -> int:
-        return (self._mask == None).sum()  # pylint: disable=singleton-comparison
+        return (self._mask.vector == None).sum()  # pylint: disable=singleton-comparison
 
     @property
     def inverse(self) -> 'AtomsCollectionBuilder.Inverse':
-        return AtomsCollectionBuilder.Inverse(self._num_atoms, self._mask)
+        return AtomsCollectionBuilder.Inverse(self)
 
-    def empty_output(self, in_state: functions.State) -> functions.State:
-        return AtomsCollection(self._num_atoms)
-
-    def output_length(self, in_state: functions.State) -> int:
+    def output_length(self, _in_state: functions.State) -> int:
         return 4 * self._num_atoms
 
-    def evaluate(self, state: functions.State, get_jacobian=False) -> AtomsCollection:
+    def apply_mask(self, atoms: AtomsCollection):
+        """Given an atom collection this will set any values specified in the mask"""
+        indices = np.argwhere(self._mask.vector != None)  # pylint: disable=singleton-comparison
+        if indices:
+            copy_to(atoms.vector, indices, self._mask.vector)
+
+    def evaluate(self,
+                 state: functions.State,
+                 get_jacobian=False) -> Union[AtomsCollection, Tuple[AtomsCollection, np.ndarray]]:
         vector = functions.get_bare(state)
         if len(vector) != self.input_length:
             raise ValueError(f'Expected input of length {self.input_length} but got {len(vector)}')
 
-        atoms_collection = AtomsCollection(self._num_atoms)
-        fixed_indexes = np.where(self._mask != None)  # pylint: disable=singleton-comparison
-        atoms_collection.vector[fixed_indexes] = self._mask[fixed_indexes]
-        # Copy over from the new vector
-        atoms_collection.vector[np.where(self._mask == None)[0]] = vector  # pylint: disable=singleton-comparison
+        atoms = AtomsCollection(self._num_atoms)
+        self.apply_mask(atoms)
+
+        # Get the unmasked indices
+        indices = np.argwhere(self._mask.vector == None)  # pylint: disable=singleton-comparison
+        copy_to(atoms.vector, indices, vector)
 
         if get_jacobian:
             jacobian = np.zeros((self.output_length(state), len(state)))
-            input_idx = 0
+            for in_idx, out_idx in enumerate(indices):
+                jacobian[out_idx, in_idx] = 1.
 
-            for idx, entry in enumerate(self._mask):
-                if entry is None:
-                    jacobian[idx, input_idx] = 1.
-                    input_idx += 1
+            return atoms, jacobian
 
-            return atoms_collection, jacobian
-
-        return atoms_collection
+        return atoms
 
     class Inverse(functions.Function):
         input_type = AtomsCollection
         supports_jacobian = False
 
-        def __init__(self, num_atoms: int, mask):
+        def __init__(self, builder: 'AtomsCollectionBuilder'):
             super().__init__()
-            self._num_atoms = num_atoms
-            self._mask = mask
+            self._builder = builder
 
         @property
         def inverse(self) -> 'AtomsCollectionBuilder':
-            builder = AtomsCollectionBuilder(self._num_atoms)
-            builder._mask = self._mask
-            return builder
+            return self._builder
 
-        def output_length(self, in_state: AtomsCollection) -> int:
-            return (self._mask == None).sum()
+        def output_length(self, _in_state: AtomsCollection) -> int:
+            return self._builder.input_length
 
         def evaluate(self, state: AtomsCollection, get_jacobian=False) -> np.ndarray:
-            out_vector = np.empty(self.output_length(state))
             output_length = self.output_length(state)
-            if len(out_vector) != output_length:
+            if self.output_length(state) != output_length:
                 raise ValueError(f'Expected input of length {output_length} but got {state.vector.size}')
 
-            current_idx = 0
-            for idx, mask in enumerate(self._mask):
-                if mask is None:
-                    out_vector[current_idx] = state.vector[idx]
-                    current_idx += 1
-
-            return out_vector
+            indices = np.argwhere(self._builder.mask.vector == None)  # pylint: disable=singleton-comparison
+            return state.vector[indices].reshape(-1)
 
 
 class FeatureMapper(functions.Function):
@@ -212,7 +214,7 @@ class FeatureMapper(functions.Function):
 
     def __init__(
         self,
-        type: Type[functions.Feature] = functions.WeightedDelta,
+        type: Type[functions.Feature] = functions.WeightedDelta,  # pylint: disable=redefined-builtin
         kwargs: dict = None,
         map_species_to: Union[int, str] = None
     ):
@@ -246,13 +248,10 @@ class FeatureMapper(functions.Function):
 
         raise TypeError(map_to)
 
-    def empty_output(self, in_state: AtomsCollection) -> functions.Features:
-        return functions.Features()
-
     def output_length(self, in_state: AtomsCollection) -> int:
         return in_state.num_atoms * self._feature_type.LENGTH
 
-    def evaluate(self, atoms: AtomsCollection, get_jacobian=False) -> functions.Features:
+    def evaluate(self, atoms: AtomsCollection, get_jacobian=False) -> functions.Features:  # pylint: disable=arguments-differ
         features = functions.Features()
 
         jac = None if not get_jacobian else np.zeros((self.output_length(atoms), len(atoms)))
@@ -293,10 +292,11 @@ class FeatureMapper(functions.Function):
             super().__init__()
             self._mapper = mapper
 
-        def output_length(self, features: functions.Features) -> int:
+        @staticmethod
+        def output_length(features: functions.Features) -> int:
             return AtomsCollection.total_length(len(features.features))
 
-        def evaluate(self, features: functions.Features, get_jacobian=False):
+        def evaluate(self, features: functions.Features, get_jacobian=False):  # pylint: disable=arguments-differ
             atoms_collection = AtomsCollection(len(features.features))
 
             for idx, feature in enumerate(features.features):
@@ -318,17 +318,15 @@ class ScalePositions(functions.Function):
         super().__init__()
         self._scale_factor = scale_factor
 
-    def empty_output(self, in_state: AtomsCollection) -> AtomsCollection:
-        return AtomsCollection(in_state.num_atoms)
-
     @property
     def inverse(self) -> Optional[functions.Function]:
         return ScalePositions(1. / self._scale_factor)
 
-    def output_length(self, in_state: AtomsCollection) -> int:
+    @staticmethod
+    def output_length(in_state: AtomsCollection) -> int:
         return len(in_state)
 
-    def evaluate(self, atoms: AtomsCollection, get_jacobian=False):
+    def evaluate(self, atoms: AtomsCollection, get_jacobian=False):  # pylint: disable=arguments-differ
         out_atoms = AtomsCollection(atoms.num_atoms, dtype=atoms.dtype)
         out_atoms.positions[:] = self._scale_factor * atoms.positions
         out_atoms.numbers[:] = atoms.numbers
@@ -356,10 +354,11 @@ class CentreAtomsCollection(functions.Function):
         and so the inverse of this function simply does nothing."""
         return functions.Identity()
 
-    def output_length(self, in_state: AtomsCollection) -> int:
+    @staticmethod
+    def output_length(in_state: AtomsCollection) -> int:
         return len(in_state)
 
-    def evaluate(self, in_atoms: AtomsCollection, get_jacobian=False) -> AtomsCollection:
+    def evaluate(self, in_atoms: AtomsCollection, get_jacobian=False) -> AtomsCollection:  # pylint: disable=arguments-differ
         out_atoms = AtomsCollection(in_atoms.num_atoms)
 
         centre = np.sum(in_atoms.positions) / in_atoms.num_atoms
@@ -381,6 +380,7 @@ class MapNumbers(functions.Function):
             # Assume it's a scalar and everything is being mapped to a single number
             map_to = (map_to, map_to)
 
+        species = set(species)
         self._numbers = list(sorted(species))
         self._mapped_range = map_to
         self._range_size = map_to[1] - map_to[0]
@@ -395,13 +395,11 @@ class MapNumbers(functions.Function):
     def inverse(self) -> Optional['functions.Function']:
         return MapNumbers.Inverse(set(self._numbers), self._mapped_range)
 
-    def empty_output(self, in_state: AtomsCollection) -> AtomsCollection:
-        return AtomsCollection(in_state.num_atoms)
-
-    def output_length(self, in_state: AtomsCollection) -> int:
+    @staticmethod
+    def output_length(in_state: AtomsCollection) -> int:
         return len(in_state)
 
-    def evaluate(self, in_atoms: AtomsCollection, get_jacobian=False) -> AtomsCollection:
+    def evaluate(self, in_atoms: AtomsCollection, get_jacobian=False) -> AtomsCollection:  # pylint: disable=arguments-differ
         out_atoms = in_atoms.copy()
 
         # Now adjust the numbers
@@ -411,8 +409,9 @@ class MapNumbers(functions.Function):
             except ValueError:
                 pass
             else:
-                new_numbers = (num_idx / len(self._numbers)) * self._range_size + self._mapped_range[0]
-                out_atoms.numbers[idx] = new_numbers + self._half_bin
+                if num is not None:
+                    new_numbers = (num_idx / len(self._numbers)) * self._range_size + self._mapped_range[0]
+                    out_atoms.numbers[idx] = new_numbers + self._half_bin
 
         return out_atoms
 
@@ -424,18 +423,16 @@ class MapNumbers(functions.Function):
             self._mapped_range = mapped_range
             self._range_size = mapped_range[1] - mapped_range[0]
 
-        def output_length(self, in_state: AtomsCollection) -> int:
+        @staticmethod
+        def output_length(in_state: AtomsCollection) -> int:
             return len(in_state)
 
-        def empty_output(self, in_state: AtomsCollection) -> AtomsCollection:
-            return AtomsCollection(in_state.num_atoms)
-
-        def evaluate(self, in_atoms: AtomsCollection, get_jacobian=False) -> AtomsCollection:
+        def evaluate(self, in_atoms: AtomsCollection, get_jacobian=False) -> AtomsCollection:  # pylint: disable=arguments-differ
             out_atoms = in_atoms.copy()
 
             # Now adjust the numbers
             for idx, num in enumerate(out_atoms.numbers):
-                if num >= self._mapped_range[0] and num <= self._mapped_range[1]:
+                if self._mapped_range[0] <= num <= self._mapped_range[1]:
                     rescaled = (num - self._mapped_range[0]) / self._range_size * len(self._numbers)
                     out_atoms.numbers[idx] = self._numbers[int(rescaled)]
                 else:
@@ -486,3 +483,19 @@ class ApplyCutoff(functions.Function):
             return out_atoms, jac
 
         return out_atoms
+
+
+def random_atom_collection_in_sphere(num: int, radius=1., centre=False, numbers=1.) -> AtomsCollection:
+    pts = generate.random_points_in_sphere(num, radius=radius, centre=centre)
+    atoms = AtomsCollection(num, positions=pts)
+    if isinstance(numbers, tuple):
+        atoms.numbers[:] = random.choices(numbers, k=num)
+    else:
+        atoms.numbers[:] = numbers
+
+    return atoms
+
+
+def copy_to(array: np.ndarray, indices: np.ndarray, source: np.ndarray):
+    for idx, value in zip(indices, source):
+        array[idx] = value
