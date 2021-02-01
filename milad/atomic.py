@@ -94,6 +94,12 @@ class AtomsCollection(functions.PlainState):
     def numbers(self, new_numbers: np.array):
         self._array[3 * self._num_atoms:] = new_numbers
 
+    def get_mask(self, fill=None):
+        """Get a mask for this atom collection.  Typically used during optimisation."""
+        mask = AtomsCollection(self.num_atoms, dtype=object)
+        mask.vector.fill(fill)
+        return mask
+
     def get_builder(self, mask: 'Optional[AtomsCollection]' = None):
         return AtomsCollectionBuilder(self._num_atoms)
 

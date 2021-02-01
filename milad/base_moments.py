@@ -117,7 +117,14 @@ class Moments(functions.State, metaclass=abc.ABCMeta):
         return grid_points
 
     @classmethod
-    def create_reconstruction_query(cls, points, order: int) -> ReconstructionQuery:  # pylint: disable=unused-argument
+    def create_reconstruction_query_from_grid(
+        cls, order: int, num_sample: int, restrict_to_domain=True
+    ) -> ReconstructionQuery:
+        grid = cls.get_grid(num_sample, restrict_to_domain=restrict_to_domain)
+        return cls.create_reconstruction_query(grid, order=order)
+
+    @classmethod
+    def create_reconstruction_query(cls, points: np.ndarray, order: int) -> ReconstructionQuery:  # pylint: disable=unused-argument
         return ReconstructionQuery(points)
 
 

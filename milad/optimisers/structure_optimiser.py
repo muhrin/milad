@@ -36,6 +36,7 @@ class StructureOptimiser:
         verbose=False,
     ) -> StructureOptimisationResult:
         """
+        :param descriptor: the descriptor with the settings used to generate the fingerprint
         :param fingerprint: the fingerprint to decode back into an atoms collection
         :param initial: the starting atoms configuration
         :param x_tol: tolerance for termination by the change of independent variables.

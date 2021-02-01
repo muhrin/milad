@@ -2,141 +2,22 @@
 import functools
 import collections
 import logging
-from typing import Tuple, Optional
 
-import math
 import numpy as np
 import rmsd as rmsdlib
-from scipy import optimize
 from sklearn import cluster
 
 from . import atomic
 from . import base_moments
 from . import exceptions
 from . import fingerprinting
-from . import functions
+from . import optimisers
 
-__all__ = ('StructureOptimiser',)
+__all__ = ('Decoder',)
 
 _LOGGER = logging.getLogger(__name__)
 
 StructureOptimisationResult = collections.namedtuple('StructureOptimisationResult', 'success atoms message rmsd')
-
-
-class StructureOptimiser:
-    """
-    The structure optimiser takes a fingerprinting function and performs a least squares optimistaion
-    to match a structure to a given fingerprint.
-    """
-
-    def __init__(self, descriptor: fingerprinting.MomentInvariantsDescriptor):
-        super().__init__()
-        self._descriptor = descriptor
-
-    @property
-    def fingerprinter(self) -> fingerprinting.MomentInvariantsDescriptor:
-        return self._descriptor
-
-    def optimise(
-        self,
-        fingerprint: functions.StateLike,
-        initial_configuration: atomic.AtomsCollection,
-        xtol=1e-5,
-        max_evaluations=5000,
-        atoms_builder: atomic.AtomsCollectionBuilder = None,
-    ) -> StructureOptimisationResult:
-        """
-        :param fingerprint: the fingerprint to decode back into an atoms collection
-        :param initial_configuration: the starting atoms configuration
-        :param xtol: stopping criterion for the fitting algorithm
-        :param max_evaluations: the maximum number of allowed fingerprint evaluations
-        :param atoms_builder: an optional atoms builder that can be used to freeze certain degrees of freedom
-        :return: a structure optimisation result
-        """
-        preprocess = self._descriptor.preprocess
-
-        if atoms_builder:
-            preprocessed = preprocess(initial_configuration)
-            fixed_indices = np.argwhere(atoms_builder.mask != None)  # pylint: disable=singleton-comparison
-            builder = atomic.AtomsCollectionBuilder(initial_configuration.num_atoms)
-            builder.mask[fixed_indices] = preprocessed.array[fixed_indices]
-            atoms_builder = builder
-        else:
-            atoms_builder = atomic.AtomsCollectionBuilder(initial_configuration.num_atoms)
-
-        # We're going to need a residuals function
-        residuals = functions.Chain(atoms_builder, self._descriptor.process, functions.Residuals(fingerprint))
-
-        previous_result: Optional[Tuple] = None
-
-        def calc(state: functions.StateLike):
-            global previous_result
-            # Calculate residuals and Jacobian
-            res, jac = residuals(state, jacobian=True)
-            print(f'Decoding max(|R|)): {np.abs(res).max()}')
-
-            _LOGGER.info('Decoding max(|R|)): %d', np.abs(res).max())
-            previous_result = state.copy(), jac.real
-            return res.real
-
-        def jac(state: functions.StateLike):
-            global previous_result
-            if np.all(previous_result[0] == state):
-                return previous_result[1]
-
-            _, jacobian = residuals(state, jacobian=True)
-            return jacobian.real
-
-        # Preprocess the starting structure and get the corresponding flattened array
-        preprocess = self._descriptor.preprocess
-        preprocessed = preprocess(initial_configuration)
-        starting_vec = functions.get_bare(atoms_builder.inverse(preprocessed))
-
-        result = optimize.least_squares(
-            calc,
-            x0=starting_vec,
-            jac=jac,
-            bounds=self._get_bounds(atoms_builder),
-            xtol=xtol,
-            max_nfev=max_evaluations,
-        )
-
-        # Build the atoms from the vector and then 'un-preprocess' it (likely scale size and map species)
-        final_atoms = preprocess.inverse(atoms_builder(result.x))
-
-        # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html
-        # scipy uses the cost function:
-        # F(x) = 0.5 * sum(rho(f_i(x)**2), i = 0, ..., m - 1)
-        # and so the RMSD is sqrt(2 / len(x) * F(x))
-        rmsd = math.sqrt(2 / len(starting_vec) * result.cost)
-        return StructureOptimisationResult(success=result.success, atoms=final_atoms, message=result.message, rmsd=rmsd)
-
-    def _get_bounds(self, builder: atomic.AtomsCollectionBuilder) -> Tuple[np.ndarray, np.ndarray]:
-        preprocess = self._descriptor.preprocess
-
-        species_range = (-np.inf, np.inf)
-        positions_range = (-np.inf, np.inf)
-        results = preprocess.find_type(atomic.MapNumbers)
-        if results:
-            species_range = results[0][1].mapped_range
-        if self._descriptor.cutoff is not None:
-            positions_range = (-self._descriptor.cutoff, self._descriptor.cutoff)
-
-        # Create a dummy atoms we can use  for figuring out the range of the vector
-        num_atoms = builder.num_atoms
-        atoms = atomic.AtomsCollection(num_atoms)
-
-        # Lower bounds
-        atoms.positions = positions_range[0]
-        atoms.numbers = species_range[0]
-        lower = builder.inverse(atoms)
-
-        # Upper
-        atoms.positions = positions_range[1]
-        atoms.numbers = species_range[1]
-        upper = builder.inverse(atoms)
-
-        return lower, upper
 
 
 @functools.singledispatch
@@ -176,7 +57,7 @@ def _(grid, num_clusters: int) -> np.ndarray:
 
 def find_peaks(
     moments: base_moments.Moments, num_peaks: int, query: base_moments.ReconstructionQuery,
-    fingerprinter: fingerprinting.MomentInvariantsDescriptor
+    descriptor: fingerprinting.MomentInvariantsDescriptor
 ):
     atom_positions = []
 
@@ -187,11 +68,15 @@ def find_peaks(
 
         # Get that position in the grid
         atom_pos = query.points[max_idx]
-        atom_positions.append(atom_pos)
-
         # Build an atoms collection with a single atom at that position
         single_atom = atomic.AtomsCollection(1, positions=[atom_pos], numbers=[1.])
-        single_moments = fingerprinter.get_moments(single_atom, preprocess=False)
+        if descriptor.scaler is not None:
+            single_atom = descriptor.scaler.inverse(single_atom)
+
+        atom_positions.append(single_atom.positions[0])
+
+        # Get the moments so we can subtract this from the grid
+        single_moments = descriptor.get_moments(single_atom, preprocess=False)
 
         # Get the grid for just that atom on its own
         atom_grid = single_moments.reconstruct(query, zero_outside_domain=True)
@@ -213,6 +98,7 @@ def create_atoms_collection(clusters: cluster.KMeans, atomic_numbers=1.):
 
 
 class Decoder:
+    """This class decodes a structure from a set of moment invariants"""
 
     def __init__(
         self,
@@ -222,13 +108,17 @@ class Decoder:
         default_grid_size=31
     ):
         self._descriptor = descriptor
-        self._optimiser = StructureOptimiser(descriptor)
+        self._optimiser = optimisers.StructureOptimiser()
         self._moments_query = moments_query
         self._initial_finder = initial_finder
         self._default_grid_size = default_grid_size
 
     def decode(
-        self, phi, moments: base_moments.Moments, num_atoms: int, atomic_numbers=None
+        self,
+        invariants: np.ndarray,
+        moments: base_moments.Moments,
+        num_atoms: int,
+        atomic_numbers=1.
     ) -> StructureOptimisationResult:
         if self._moments_query is None:
             query = moments.create_reconstruction_query(moments.get_grid(self._default_grid_size), moments.max_order)
@@ -240,23 +130,12 @@ class Decoder:
         if positions.min() < -1 or positions.max() > 1:
             raise exceptions.ReconstructionError('Clustering algorithm returned centres that are out of bounds')
 
-        if self._descriptor.cutoff is not None:
-            # Scale back up to real size
-            positions *= self._descriptor.cutoff
-
-        from_centres = atomic.AtomsCollection(num_atoms, positions=positions, numbers=atomic_numbers or 1.)
-
+        initial_guess = atomic.AtomsCollection(num_atoms, positions=positions, numbers=atomic_numbers or 1.)
         # Remap the starting configuration back to the correct size
-        preprocess = self._descriptor.preprocess
-        initial_guess = preprocess.inverse(from_centres)
+        if self._descriptor.scaler is not None:
+            initial_guess = self._descriptor.scaler.inverse(initial_guess)
 
-        builder = None
-        if atomic_numbers:
-            # Fix the atomic numbers
-            builder = atomic.AtomsCollectionBuilder(num_atoms)
-            builder.numbers = atomic_numbers
-
-        return self._optimiser.optimise(phi, initial_guess, atoms_builder=builder)
+        return self._optimiser.optimise(descriptor=self._descriptor, fingerprint=invariants, initial=initial_guess)
 
 
 def get_best_rms(reference: atomic.AtomsCollection, probe: atomic.AtomsCollection) -> float:

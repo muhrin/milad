@@ -365,8 +365,9 @@ def prepare_molecule(*molecules: ase.Atoms) -> float:
     the maximum radius found from any of the molecules"""
     max_radius_sq = 0.
     for molecule in molecules:
-        com = molecule.get_center_of_mass()
-        molecule.set_positions(molecule.positions - com)
+        centroid = molecule.positions.sum(axis=0) / len(molecule)
+        # centroid = molecule.get_center_of_mass()
+        molecule.set_positions(molecule.positions - centroid)
         new_positions = molecule.positions
         max_dist_sq = max(np.dot(pos, pos) for pos in new_positions)
         max_radius_sq = max(max_radius_sq, max_dist_sq)

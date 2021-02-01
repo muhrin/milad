@@ -24,7 +24,7 @@ _LOGGER = logging.getLogger(__name__)
 
 # pylint: disable=invalid-name
 
-__all__ = 'ZernikeMoments', 'from_deltas', 'from_gaussians'
+__all__ = 'ZernikeMoments', 'ZernikeMomentCalculator', 'from_deltas', 'from_gaussians'
 
 
 def from_deltas(max_order: int, positions: np.array, weights: Union[numbers.Number, np.array] = 1.) -> 'ZernikeMoments':
