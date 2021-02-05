@@ -57,12 +57,13 @@ def test_invariant_derivative(moment_invariants):
     # Take a random invariant and make sure that derivatives are getting calculated accurately
     invariant = random.choice(moment_invariants)
 
-    m = sympy.IndexedBase('m')  # Symbols for moments
+    # Symbols for moments
+    m = sympy.IndexedBase('m')  # pylint: disable=invalid-name
     phi = invariant.apply(m)  # Analytic expression for moments
     derivatives = invariant.derivatives()
 
     for indices, entry in derivatives.items():
-        dm = m[indices]
+        dm = m[indices]  # pylint: disable=invalid-name
         dphi_dm_analytic = phi.diff(dm)
         dphi_dm_calculated = entry.apply(m)
 
@@ -70,22 +71,49 @@ def test_invariant_derivative(moment_invariants):
 
 
 def test_invariants_function(moment_invariants):
-    NUM_POINTS = 10
-    MAX_ORDER = 10
+    num_points = 10
+    max_order = 10
 
     invariants_fn = milad.invariants.MomentInvariants(*moment_invariants)
-    moments_fn = geometric.GeometricMomentsCalculator(MAX_ORDER)
+    moments_fn = geometric.GeometricMomentsCalculator(max_order)
 
-    pts = generate.random_points_in_sphere(NUM_POINTS)
+    pts = generate.random_points_in_sphere(num_points)
     env = functions.Features(*map(functions.WeightedDelta, pts))
     moments = moments_fn(env)
     phi = invariants_fn(moments)
 
     # The 1st moment is always the total mass
-    assert phi[0] == NUM_POINTS
+    assert phi[0] == num_points
 
     # Now try the same thing using chain
     combined_fn = functions.Chain(moments_fn, invariants_fn)
     phi2, _jacobian = combined_fn(env, jacobian=True)
 
     assert np.all(phi == phi2)
+
+
+def test_invariants_derivatives_correctness(complex_invariants):
+    complex_invariants = complex_invariants[:10]
+    # The moments
+    m = sympy.IndexedBase('m', complex=True)  # pylint: disable=invalid-name
+    # Fill with symbols
+    zernike_moms = milad.ZernikeMoments.from_indexed(m, complex_invariants.max_order, dtype=object)
+
+    phi, jac = complex_invariants(zernike_moms, jacobian=True)
+
+    for i, inv in enumerate(phi):
+        for j, (mom_idx, mom) in enumerate(zernike_moms.iter(redundant=True)):
+            # Perform symbolic derivative
+            diff = sympy.diff(inv, mom).expand()
+
+            # Get derivative from the Jacobian
+            from_jac = jac[i, j]
+            if not isinstance(from_jac, int):
+                from_jac = from_jac.expand()
+
+            # Compare
+            difference = diff - from_jac
+            if not diff == from_jac:
+                # If they differ, check that it's by a meaningful amount
+                coeffs = np.array(tuple(difference.as_coefficients_dict().values()))
+                np.testing.assert_array_almost_equal(coeffs, 0., decimal=10)

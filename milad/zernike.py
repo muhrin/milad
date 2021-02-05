@@ -75,8 +75,8 @@ def from_geometric_moments(
 class ZernikeReconstructionQuery(base_moments.ReconstructionQuery):
     """A query object for Zernike moments that allows for faster reconstructions by caching the reconstruction grid"""
 
-    def __init__(self, points: np.ndarray, moments: np.ndarray):
-        super().__init__(points)
+    def __init__(self, max_order: int, points: np.ndarray, moments: np.ndarray):
+        super().__init__(max_order, points)
         self._moments = moments
         self._valid_idxs = None
         self._moments_in_domain = None
@@ -106,6 +106,13 @@ ZernikeIndex = collections.namedtuple('ZernikeIndex', 'n l m')
 
 class ZernikeMoments(base_moments.Moments):
     """A container class for calculated Zernike moments"""
+
+    @classmethod
+    def from_indexed(cls, indexed, max_order: int, dtype=float) -> 'ZernikeMoments':
+        moments = cls(max_order, dtype=dtype)
+        for (n, l, m) in moments.iter_indices():
+            moments._moments[n, l, l + m] = indexed[n, l, m]
+        return moments
 
     @classmethod
     def linear_index(cls, index: base_moments.Index, redundant=True) -> int:
@@ -194,7 +201,7 @@ class ZernikeMoments(base_moments.Moments):
             mom = random.uniform(*num_range)
             if m != 0:
                 # Only l != 0 moments have a complex part
-                mom += +1j * random.uniform(*num_range)
+                mom += 1j * random.uniform(*num_range)
             self._set_moment(n, l, m, mom)
 
         return self
@@ -232,9 +239,12 @@ class ZernikeMoments(base_moments.Moments):
                     value = np.real(value)
                 except AttributeError:
                     pass
+            else:
+                # Set the -m counterpart directly
+                self._moments[n, l, l - m] = (-1)**m * value.conjugate()
 
+            # This will be reached for all m values
             self._moments[n, l, l + m] = value
-            self._moments[n, l, l - m] = (-1)**m * value.conjugate()
 
     def iter(self, redundant=True):
         """Iterate tuples containing the moment indices and value"""
@@ -279,7 +289,7 @@ class ZernikeMoments(base_moments.Moments):
 
     def reconstruct(self, query: ZernikeReconstructionQuery, order=None, zero_outside_domain=True):
         """Given a reconstruction query this will return the values of the function at the specified grid values"""
-        order = order if order is not None else self._max_n
+        order = order if order is not None else query.max_order
         moments = query.moments
 
         values = np.zeros(query.points.shape[0], dtype=self.dtype)
@@ -307,8 +317,10 @@ class ZernikeMoments(base_moments.Moments):
 
         return values.real
 
-    def visualise(self, viewer='plotly_widget', query: ZernikeReconstructionQuery = None, num_points=31):
-        if viewer == 'plotly_widget':
+    def visualise(
+        self, viewer='plotly_widget', query: ZernikeReconstructionQuery = None, max_order=None, num_points=31
+    ):
+        if viewer.startswith('plotly_widget'):
             # Only do imports here so some of these tools aren't needed for the rest of milad
             import ipywidgets
             import plotly.graph_objects as go
@@ -320,19 +332,29 @@ class ZernikeMoments(base_moments.Moments):
             else:
                 grid_points = query.points
 
-            grid_values = self.reconstruct(query, zero_outside_domain=True)
+            grid_values = self.reconstruct(query, max_order, zero_outside_domain=True)
 
             default_isomin = (grid_values.max() - grid_values.min()) * 0.7 + grid_values.min()
             default_isomax = grid_values.max()
 
-            isosurface = plotlytools.isosurface(
-                grid_points,
-                grid_values,
-                isomin=grid_values.mean(),
-                opacity=0.5,
-                autocolorscale=True,
-            )
-            fig = go.Figure(data=[isosurface])
+            if viewer.endswith('volume'):
+                data = plotlytools.volume(
+                    grid_points,
+                    grid_values,
+                    isomin=grid_values.mean(),
+                    opacity=0.1,
+                    autocolorscale=True,
+                )
+            else:
+                data = plotlytools.isosurface(
+                    grid_points,
+                    grid_values,
+                    isomin=grid_values.mean(),
+                    opacity=0.5,
+                    autocolorscale=True,
+                )
+
+            fig = go.Figure(data=[data])
             widget = go.FigureWidget(fig)
 
             @ipywidgets.interact(
@@ -352,15 +374,15 @@ class ZernikeMoments(base_moments.Moments):
         raise ValueError(f"Unknown viewer '{viewer}'")
 
     @classmethod
-    def create_reconstruction_query(cls, points: np.ndarray, order) -> ZernikeReconstructionQuery:
+    def create_reconstruction_query(cls, points: np.ndarray, max_order: int) -> ZernikeReconstructionQuery:
         """Create a query object that can be passed to self.value_at to reconstruct the Zernike functions
         at the given query points.  This is useful if the same point (or grid of points) is used multiple
         times as this precomputation can be done once and reused.
 
         :param points: the point to get the value at
-        :param order: the maximum order to go up to (defaults to the order of these moments)
+        :param max_order: the maximum order to go up to (defaults to the order of these moments)
         """
-        return ZernikeReconstructionQuery(points, cls._get_geometric_moments(points, order))
+        return ZernikeReconstructionQuery(max_order, points, cls._get_geometric_moments(points, max_order))
 
     @classmethod
     def _get_geometric_moments(cls, point: np.array, order: int) -> np.ndarray:

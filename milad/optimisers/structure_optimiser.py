@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 import collections
-from typing import Tuple
+from typing import Tuple, Union
 
 import numpy as np
 
 from milad import atomic
+from milad import base_moments
 from milad import fingerprinting
 from . import least_squares
 
@@ -25,7 +26,7 @@ class StructureOptimiser:
     def optimise(
         self,
         descriptor: fingerprinting.MomentInvariantsDescriptor,
-        fingerprint: np.ndarray,
+        target: Union[np.ndarray, base_moments.Moments],
         initial: atomic.AtomsCollection,
         jacobian='native',
         mask: atomic.AtomsCollection = None,
@@ -37,7 +38,7 @@ class StructureOptimiser:
     ) -> StructureOptimisationResult:
         """
         :param descriptor: the descriptor with the settings used to generate the fingerprint
-        :param fingerprint: the fingerprint to decode back into an atoms collection
+        :param target: the fingerprint to decode back into an atoms collection
         :param initial: the starting atoms configuration
         :param x_tol: tolerance for termination by the change of independent variables.
         :param cost_tol: stopping criterion for the fitting algorithm
@@ -45,19 +46,26 @@ class StructureOptimiser:
         :param atoms_builder: an optional atoms builder that can be used to freeze certain degrees of freedom
         :return: a structure optimisation result
         """
+        if isinstance(target, base_moments.Moments):
+            calc = descriptor.process[:-1]
+        elif isinstance(target, np.ndarray):
+            calc = descriptor.process
+        else:
+            raise TypeError(f'Unsupported type {target.__class__.__name__}')
+
         preprocess = descriptor.preprocess
         preprocessed = preprocess(initial)
         if mask is not None:
             mask = preprocess(mask)
 
         result = self._least_squares_optimiser.optimise_target(
-            func=descriptor.process,
+            func=calc,
             initial=preprocessed,
-            target=fingerprint,
+            target=target,
             mask=mask,
             jacobian=jacobian,
             bounds=self._get_bounds(initial.num_atoms, descriptor),
-            max_force_evals=max_func_evals,
+            max_func_evals=max_func_evals,
             x_tol=x_tol,
             cost_tol=cost_tol,
             grad_tol=grad_tol,

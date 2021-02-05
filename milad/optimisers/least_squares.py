@@ -30,9 +30,9 @@ class LeastSquaresOptimiser:
             func: functions.Function,
             initial: functions.StateLike,
             mask: functions.StateLike = None,
-            jacobian='2-point',
+            jacobian='native',
             bounds: BoundsType = (-np.inf, np.inf),
-            max_force_evals=None,
+            max_func_evals=10000,
             x_tol=1e-8,
             cost_tol=1e-6,
             grad_tol=1e-8,
@@ -41,11 +41,11 @@ class LeastSquaresOptimiser:
         """
         :param func: the function to optimise
         :param initial: the initial state
-        :param mask: a mask of pre-set values whose degrees of freedom will not be present in the optimistaion vector
+        :param mask: a mask of pre-set values whose degrees of freedom will not be present in the optimisation vector
         :param jacobian: if 'native' the analytic Jacobian will be requested from 'func', otherwise this option is
             passed to optimize.least_squares
         :param bounds: place bounds on the possible inputs to func
-        :param max_force_evals: the maximum number of force evaluations.  If not specified will be 50 * len(initial).
+        :param max_func_evals: the maximum number of function evaluations.  If not specified will be 50 * len(initial).
         :param x_tol: tolerance for termination by change of the independent variables.
         :param cost_tol: tolerance in change of cost function.  If the difference between one step and another goes
             below this value the optimisation will stop
@@ -77,7 +77,7 @@ class LeastSquaresOptimiser:
         jac = self._jac if jacobian == 'native' else jacobian
         data = LeastSquaresOptimiser.Data(use_jacobian=jacobian == 'native', verbose=verbose)
 
-        max_force_evals = max_force_evals if max_force_evals is not None else 100 * len(initial)
+        max_func_evals = max_func_evals if max_func_evals is not None else 100 * len(initial)
 
         # Do it!
         res = optimize.least_squares(
@@ -89,7 +89,7 @@ class LeastSquaresOptimiser:
             xtol=x_tol,
             ftol=cost_tol,
             gtol=grad_tol,
-            max_nfev=max_force_evals,
+            max_nfev=max_func_evals,
         )
 
         # Now convert the result to our optimiser result format
@@ -108,9 +108,9 @@ class LeastSquaresOptimiser:
         initial: functions.State,
         target: functions.StateLike,
         mask: functions.State = None,
-        jacobian='2-point',
+        jacobian='native',
         bounds: BoundsType = (-np.inf, np.inf),
-        max_force_evals=None,
+        max_func_evals=10000,
         x_tol=1e-8,
         cost_tol=1e-6,
         grad_tol=1e-8,
@@ -126,7 +126,7 @@ class LeastSquaresOptimiser:
         :param jacobian: if 'native' the analytic Jacobian will be requested from 'func', otherwise this option is
             passed to optimize.least_squares
         :param bounds: place bounds on the possible inputs to func
-        :param max_force_evals: the maximum number of force evaluations.  If not specified will be 50 * len(initial).
+        :param max_func_evals: the maximum number of force evaluations.  If not specified will be 50 * len(initial).
         :param x_tol: tolerance for termination by change of the independent variables.
         :param cost_tol: tolerance in change of cost function.  If the difference between one step and another goes
             below this value the optimisation will stop
@@ -143,7 +143,7 @@ class LeastSquaresOptimiser:
             x_tol=x_tol,
             cost_tol=cost_tol,
             grad_tol=grad_tol,
-            max_force_evals=max_force_evals,
+            max_func_evals=max_func_evals,
             verbose=verbose,
         )
 
@@ -151,9 +151,13 @@ class LeastSquaresOptimiser:
     def _calc(
         state: functions.StateLike, func: functions.Function, opt_data: 'LeastSquaresOptimiser.Data'
     ) -> np.ndarray:
-        value = func(state).real
+        value = functions.get_bare(func(state))
         if opt_data.verbose:
             print('|Max| {}'.format(np.abs(value).max()))
+
+        if np.iscomplexobj(value):
+            return np.concatenate((value.real, value.imag))
+
         return value
 
     @staticmethod
@@ -163,4 +167,8 @@ class LeastSquaresOptimiser:
         value, jac = func(state, jacobian=True)
         if opt_data.verbose:
             print('|Max| {}'.format(np.abs(value).max()))
+
+        if np.iscomplexobj(value):
+            return np.concatenate((jac.real, jac.imag))
+
         return jac.real

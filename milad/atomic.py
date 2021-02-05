@@ -52,7 +52,7 @@ class AtomsCollection(functions.PlainState):
         return f'{len(self)} {str(self.numbers)}'
 
     def copy(self) -> 'AtomsCollection':
-        atoms = AtomsCollection(self._num_atoms)
+        atoms = AtomsCollection(self._num_atoms, dtype=self.dtype)
         np.copyto(atoms.vector, self.vector)
         return atoms
 
@@ -101,7 +101,7 @@ class AtomsCollection(functions.PlainState):
         return mask
 
     def get_builder(self, mask: 'Optional[AtomsCollection]' = None):
-        return AtomsCollectionBuilder(self._num_atoms)
+        return AtomsCollectionBuilder(self._num_atoms, mask=mask)
 
 
 class AtomsCollectionBuilder(functions.Function):
@@ -161,8 +161,8 @@ class AtomsCollectionBuilder(functions.Function):
 
     def apply_mask(self, atoms: AtomsCollection):
         """Given an atom collection this will set any values specified in the mask"""
-        indices = np.argwhere(self._mask.vector != None)  # pylint: disable=singleton-comparison
-        if indices:
+        indices = np.argwhere(self._mask.vector != None).reshape(-1)  # pylint: disable=singleton-comparison
+        if len(indices) != 0:
             copy_to(atoms.vector, indices, self._mask.vector)
 
     def evaluate(self,
@@ -176,7 +176,7 @@ class AtomsCollectionBuilder(functions.Function):
         self.apply_mask(atoms)
 
         # Get the unmasked indices
-        indices = np.argwhere(self._mask.vector == None)  # pylint: disable=singleton-comparison
+        indices = np.argwhere(self._mask.vector == None).reshape(-1)  # pylint: disable=singleton-comparison
         copy_to(atoms.vector, indices, vector)
 
         if get_jacobian:
@@ -260,7 +260,7 @@ class FeatureMapper(functions.Function):
     def evaluate(self, atoms: AtomsCollection, get_jacobian=False) -> functions.Features:  # pylint: disable=arguments-differ
         features = functions.Features()
 
-        jac = None if not get_jacobian else np.zeros((self.output_length(atoms), len(atoms)))
+        jac = np.zeros((self.output_length(atoms), len(atoms))) if get_jacobian else None
 
         # Create the features one by one and add them to the features vector
         idx = 0  # Keep track of where we are in the features vector
@@ -443,7 +443,7 @@ class MapNumbers(functions.Function):
                     out_atoms.numbers[idx] = self._numbers[int(rescaled)]
                 else:
                     _LOGGER.warning(
-                        'Got a species number that is no in the range: %n <= %n <= %n', self._mapped_range[0], num,
+                        'Got a species number that is no in the range: %i <= %i <= %i', self._mapped_range[0], num,
                         self._mapped_range[1]
                     )
 
@@ -503,5 +503,5 @@ def random_atom_collection_in_sphere(num: int, radius=1., centre=False, numbers=
 
 
 def copy_to(array: np.ndarray, indices: np.ndarray, source: np.ndarray):
-    for idx, value in zip(indices, source):
-        array[idx] = value
+    for idx in indices:
+        array[idx] = source[idx]

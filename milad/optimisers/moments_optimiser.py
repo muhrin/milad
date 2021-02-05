@@ -27,10 +27,10 @@ class MomentsOptimiser:
         jacobian='native',
         bounds=(-np.inf, np.inf),
         target_rmsd=1e-5,
-        max_func_evals=1000,
-        func_tol=1e-7,
-        grad_tol=1e-7,
-        max_retries=5,
+        max_func_evals=5000,
+        cost_tol=1e-5,
+        grad_tol=1e-8,
+        max_retries=3,
         verbose=False,
     ) -> least_squares.OptimiserResult:
         # Copy the start point
@@ -62,8 +62,8 @@ class MomentsOptimiser:
                     mask=mask,
                     jacobian=jacobian,
                     bounds=bounds,
-                    max_force_evals=128,
-                    cost_tol=100 * func_tol,
+                    max_func_evals=128,
+                    cost_tol=100 * cost_tol,
                     grad_tol=100 * grad_tol,
                     verbose=verbose
                 )
@@ -81,6 +81,7 @@ class MomentsOptimiser:
                     break
 
                 # Going to have to try again: generate new moments of this order
+                current_moments.randomise(indices=(order - 1, None, None))
                 current_moments.randomise(indices=(order, None, None))
                 retries += 1
                 if verbose:
@@ -97,8 +98,8 @@ class MomentsOptimiser:
             mask=mask,
             jacobian=jacobian,
             bounds=bounds,
-            max_force_evals=max_func_evals,
-            cost_tol=func_tol,
+            max_func_evals=max_func_evals,
+            cost_tol=cost_tol,
             grad_tol=grad_tol,
             verbose=verbose
         )

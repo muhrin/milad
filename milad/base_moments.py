@@ -14,8 +14,13 @@ Index = Tuple[int, int, int]  # A three dimensional moment index
 
 class ReconstructionQuery:
 
-    def __init__(self, points: np.ndarray):
+    def __init__(self, max_order: int, points: np.ndarray):
+        self._max_order = max_order
         self._points = points
+
+    @property
+    def max_order(self) -> int:
+        return self._max_order
 
     @property
     def points(self):
@@ -26,6 +31,13 @@ class Moments(functions.State, metaclass=abc.ABCMeta):
     """A class representing three dimensional moments"""
 
     # pylint: disable=invalid-name
+
+    @classmethod
+    def from_indexed(cls, indexed, max_order: int, dtype=float) -> 'Moments':
+        moments = cls(max_order, dtype=dtype)
+        for idx in moments.iter_indices():
+            moments[idx] = indexed.__getitem__(idx)
+        return moments
 
     @property
     @abc.abstractmethod
@@ -121,11 +133,11 @@ class Moments(functions.State, metaclass=abc.ABCMeta):
         cls, order: int, num_sample: int, restrict_to_domain=True
     ) -> ReconstructionQuery:
         grid = cls.get_grid(num_sample, restrict_to_domain=restrict_to_domain)
-        return cls.create_reconstruction_query(grid, order=order)
+        return cls.create_reconstruction_query(grid, order)
 
     @classmethod
-    def create_reconstruction_query(cls, points: np.ndarray, order: int) -> ReconstructionQuery:  # pylint: disable=unused-argument
-        return ReconstructionQuery(points)
+    def create_reconstruction_query(cls, points: np.ndarray, order: int) -> ReconstructionQuery:
+        return ReconstructionQuery(order, points)
 
 
 ProductTerm = collections.namedtuple('ProductTerm', 'index terms')

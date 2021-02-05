@@ -263,7 +263,7 @@ class MomentInvariants(functions.Function):
     supports_jacobian = True
     dtype = None
 
-    def __init__(self, *invariant: MomentInvariant):
+    def __init__(self, *invariant: MomentInvariant, are_real=True):
         super().__init__()
         for entry in invariant:
             if not isinstance(entry, MomentInvariant):
@@ -271,6 +271,7 @@ class MomentInvariants(functions.Function):
 
         self._invariants: List[MomentInvariant] = list(invariant)
         self._max_order = -1
+        self._real = are_real
 
     def __len__(self):
         return len(self._invariants)
@@ -291,9 +292,15 @@ class MomentInvariants(functions.Function):
     @property
     def max_order(self) -> int:
         """Get the maximum order of all the invariants"""
+        if self._max_order == -1:
+            max_order = 0
+            for inv in self._invariants:
+                max_order = max(max_order, inv.max_order)
+            self._max_order = max_order
+
         return self._max_order
 
-    def output_length(self, in_state: functions.State) -> int:  # pylint: disable=unused-argument
+    def output_length(self, _in_state: functions.State) -> int:  # pylint: disable=unused-argument
         return len(self._invariants)
 
     def apply(self, moms: np.array, normalise=False, results=None) -> list:
@@ -307,6 +314,7 @@ class MomentInvariants(functions.Function):
 
     def evaluate(self, moments: base_moments.Moments, get_jacobian=False) -> np.ndarray:  # pylint: disable=arguments-differ
         vector = np.empty(len(self._invariants), dtype=np.promote_types(moments.vector.dtype, float))
+        jac = None
         if get_jacobian:
             jac = np.zeros((len(self._invariants), len(moments)), dtype=vector.dtype)
 
@@ -319,7 +327,12 @@ class MomentInvariants(functions.Function):
                     in_index = moments.linear_index(index)
                     jac[idx, in_index] = dphi.apply(moments)
 
+        if self._real:
+            vector = vector.real
+
         if get_jacobian:
+            # Don't take 'real' of the Jacobian as if the moments are complex then the Jacobian
+            # should be complex even though our output values are real
             return vector, jac
 
         return vector

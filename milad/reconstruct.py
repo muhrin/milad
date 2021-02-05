@@ -135,10 +135,16 @@ class Decoder:
         if self._descriptor.scaler is not None:
             initial_guess = self._descriptor.scaler.inverse(initial_guess)
 
-        return self._optimiser.optimise(descriptor=self._descriptor, fingerprint=invariants, initial=initial_guess)
+        return self._optimiser.optimise(descriptor=self._descriptor, target=invariants, initial=initial_guess)
 
 
-def get_best_rms(reference: atomic.AtomsCollection, probe: atomic.AtomsCollection) -> float:
+def get_best_rms(
+    reference: atomic.AtomsCollection,
+    probe: atomic.AtomsCollection,
+    max_attempts: int = 1000,
+    max_retries=20,
+    threshold=1e-7,
+) -> float:
     """
     Get the best RMSs fitting between two molecules.  This will first use an algorithm to make a decent guess at the
     best permutational ordering of atoms and then try a brute force search.
@@ -151,16 +157,28 @@ def get_best_rms(reference: atomic.AtomsCollection, probe: atomic.AtomsCollectio
     from . import rdkittools
 
     # Find a decent re-ordering of the atoms
-    reorder_map = rmsdlib.reorder_hungarian(reference.numbers, probe.numbers, reference.positions, probe.positions)
-    reordered = atomic.AtomsCollection(
-        reference.num_atoms,
-        positions=probe.positions[reorder_map],
-        numbers=probe.numbers[reorder_map],
-    )
+    try:
+        reorder_map = rmsdlib.reorder_hungarian(reference.numbers, probe.numbers, reference.positions, probe.positions)
+    except ValueError:
+        pass
+    else:
+        probe = atomic.AtomsCollection(
+            reference.num_atoms,
+            positions=probe.positions[reorder_map],
+            numbers=probe.numbers[reorder_map],
+        )
 
     # Now ask rdkit to find the best.
     # This will try a brute-force permutation search starting with the one we just defined which is likely to be
     # the best
     reference = rdkittools.milad2rdkit(reference)
-    probe = rdkittools.milad2rdkit(reordered)
-    return rdMolAlign.GetBestRMS(probe, reference)
+    probe = rdkittools.milad2rdkit(probe)
+    try:
+        best = np.inf
+        for _ in range(max_retries):
+            best = min(rdMolAlign.GetBestRMS(probe, reference, maxMatches=max_attempts), best)
+            if best < threshold:
+                break
+        return best
+    except RuntimeError:
+        return np.inf

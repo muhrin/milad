@@ -11,7 +11,7 @@ def test_moments_optimiser(complex_invariants):
     # Create some Zernike moments from delta functions
     moms = zernike.from_deltas(complex_invariants.max_order, pts)
     # Create the invariants vector
-    target = complex_invariants(moms).real
+    target = complex_invariants(moms)
 
     # Make settings very loose so this is fast, we're just testing the logic here...
     optimiser = optimisers.MomentsOptimiser()
@@ -20,7 +20,7 @@ def test_moments_optimiser(complex_invariants):
         target=target,
         initial=zernike.ZernikeMoments.rand(complex_invariants.max_order),
         target_rmsd=1e-2,
-        func_tol=1e-2,
+        cost_tol=1e-2,
         grad_tol=1e-2,
         verbose=False,
     )
