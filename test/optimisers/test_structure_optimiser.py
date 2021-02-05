@@ -41,8 +41,8 @@ def test_structure_optimiser_invariants(complex_invariants):
         descriptor=descriptor,
         target=fingerprint,
         initial=initial,
-        x_tol=1e-5,
-        verbose=True,
+        x_tol=1e-4,
+        verbose=False,
     )
     print(result.message)
     assert result.rmsd < 1e-3

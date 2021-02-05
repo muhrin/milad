@@ -168,7 +168,47 @@ class LeastSquaresOptimiser:
         if opt_data.verbose:
             print('|Max| {}'.format(np.abs(value).max()))
 
-        if np.iscomplexobj(value):
-            return np.concatenate((jac.real, jac.imag))
+        return split_jacobian(jac, complex_inputs=False, complex_outputs=np.iscomplexobj(value))
 
-        return jac.real
+
+def split_jacobian(jacobian: np.ndarray, complex_inputs: bool, complex_outputs: bool) -> np.ndarray:
+    """Assuming that the function is analytic split the Jacobian into parts corresponding to a combination of
+    complex inputs/outputs.  The layout of the return Jacobian is:
+
+    | d Re(f)   d Re(f) |
+    | -------   ------- |
+    | d Re(x)   d Im(x) |
+    |                   |
+    | d Im(f)   d Im(f) |
+    | -------   ------- |
+    | d Re(x)   d Im(x) |
+
+    If the function has complex inputs and real outputs then only the first row is return.
+    If the function has real inputs and complex outputs then only the first column is return.
+    Otherwise the full Jacobian is returned.
+    """
+    if not complex_inputs and not complex_outputs:
+        return jacobian.real
+
+    orig_size = jacobian.shape
+    new_size = list(orig_size)
+    if complex_outputs:
+        new_size[0] *= 2
+    if complex_inputs:
+        new_size[1] *= 2
+
+    jac = np.empty(new_size)
+    # Input: Real, Output: Real
+    jac[:orig_size[0], :orig_size[1]] = jacobian.real
+    if complex_outputs:
+        # Input: Real, Output: Imag
+        jac[orig_size[0]:, :orig_size[1]] = jacobian.imag
+    if complex_inputs:
+        complex_part = jacobian * 1j
+        # Input: Imag, Output: Real
+        jac[:orig_size[0], orig_size[1]:] = complex_part.real
+        if complex_outputs:
+            # Input: Imag, Output: Imag
+            jac[:orig_size[0], :orig_size[1]] = complex_part.real
+
+    return jac
