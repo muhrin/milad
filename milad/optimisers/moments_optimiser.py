@@ -81,7 +81,6 @@ class MomentsOptimiser:
                     break
 
                 # Going to have to try again: generate new moments of this order
-                current_moments.randomise(indices=(order - 1, None, None))
                 current_moments.randomise(indices=(order, None, None))
                 retries += 1
                 if verbose:

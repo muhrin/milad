@@ -459,7 +459,7 @@ class Native(Function):
         return self._jac is not None
 
     def evaluate(self, state: State, get_jacobian=False) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
-        if self.supports_jacobian:
+        if get_jacobian:
             return self._fn(state), self._jac(state)
 
         return self._fn(state)
@@ -476,3 +476,14 @@ def get_bare(state: Union[np.ndarray, State]) -> Union[np.array, numbers.Number]
         return state.vector
 
     return state
+
+
+def copy_to(
+    dest: np.ndarray,
+    indices: np.ndarray,
+    source: np.ndarray,
+    source_indices=None,
+):
+    source_indices = source_indices or tuple(range(len(source)))
+    for desc_idx, source_idx in zip(indices, source_indices):
+        dest[desc_idx] = source[source_idx]

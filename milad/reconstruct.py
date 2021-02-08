@@ -63,7 +63,7 @@ def find_peaks(
 
     current_grid = moments.reconstruct(query, zero_outside_domain=True)
     for _ in range(num_peaks):
-        # Fing the index of the maximum value in the current grid
+        # Find the index of the maximum value in the current grid
         max_idx = current_grid.argmax()
 
         # Get that position in the grid
@@ -89,6 +89,51 @@ def find_peaks(
         current_grid[remove_idxs] = 0.
 
     return np.array(atom_positions)
+
+
+def find_peaks2(
+    moments: base_moments.Moments, num_peaks: int, query: base_moments.ReconstructionQuery,
+    descriptor: fingerprinting.MomentInvariantsDescriptor
+):
+    atom_positions = []
+    atom_numbers = []
+    optimiser = optimisers.StructureOptimiser()
+
+    orig_grid = moments.reconstruct(query, zero_outside_domain=True)
+    current_grid = orig_grid
+    for _ in range(num_peaks):
+        # Find the index of the maximum value in the current grid
+        max_idx = current_grid.argmax()
+
+        # Get that position in the grid
+        atom_positions.append(query.points[max_idx] / descriptor.cutoff)
+        atom_numbers.append(1.)
+
+        # Build an atoms collection with a single atom at that position
+        current_atoms = atomic.AtomsCollection(len(atom_positions), positions=atom_positions, numbers=atom_numbers)
+
+        res = optimiser.optimise(
+            descriptor,
+            target=moments,
+            initial=current_atoms,
+        )
+        atom_positions = res.value.positions
+        atom_numbers = res.value.numbers
+
+        # Get the moments so we can subtract this from the grid
+        current_moments = descriptor.get_moments(res.value)
+
+        # Get the grid for just that atom on its own
+        this_grid = current_moments.reconstruct(query, zero_outside_domain=True)
+
+        # Subract off the single atom grid
+        current_grid = orig_grid - this_grid
+
+        # Now remove the signal of the atom from the grid
+        # remove_idxs = np.argwhere(atom_grid >= (0.5 * atom_grid.max()))
+        # current_grid[remove_idxs] = 0.
+
+    return res.value
 
 
 def create_atoms_collection(clusters: cluster.KMeans, atomic_numbers=1.):

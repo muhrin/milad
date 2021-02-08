@@ -161,9 +161,9 @@ class AtomsCollectionBuilder(functions.Function):
 
     def apply_mask(self, atoms: AtomsCollection):
         """Given an atom collection this will set any values specified in the mask"""
-        indices = np.argwhere(self._mask.vector != None).reshape(-1)  # pylint: disable=singleton-comparison
+        indices = tuple(np.argwhere(self._mask.vector != None).reshape(-1))  # pylint: disable=singleton-comparison
         if len(indices) != 0:
-            copy_to(atoms.vector, indices, self._mask.vector)
+            functions.copy_to(atoms.vector, indices, self._mask.vector, indices)
 
     def evaluate(self,
                  state: functions.State,
@@ -177,7 +177,7 @@ class AtomsCollectionBuilder(functions.Function):
 
         # Get the unmasked indices
         indices = np.argwhere(self._mask.vector == None).reshape(-1)  # pylint: disable=singleton-comparison
-        copy_to(atoms.vector, indices, vector)
+        functions.copy_to(atoms.vector, indices, vector)
 
         if get_jacobian:
             jacobian = np.zeros((self.output_length(state), len(state)))
@@ -500,8 +500,3 @@ def random_atom_collection_in_sphere(num: int, radius=1., centre=False, numbers=
         atoms.numbers[:] = numbers
 
     return atoms
-
-
-def copy_to(array: np.ndarray, indices: np.ndarray, source: np.ndarray):
-    for idx in indices:
-        array[idx] = source[idx]

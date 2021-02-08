@@ -21,8 +21,9 @@ class LeastSquaresOptimiser:
     class Data:
         """Data used during an optimisation"""
 
-        def __init__(self, use_jacobian=False, verbose=False):
+        def __init__(self, use_jacobian, complex_input: bool, verbose=False):
             self.use_jacobian = use_jacobian
+            self.complex_input = complex_input
             self.verbose = verbose
 
     def optimise(  # pylint: disable=too-many-locals
@@ -57,6 +58,7 @@ class LeastSquaresOptimiser:
         if isinstance(initial, np.ndarray):
             fun = func
             x0_ = initial
+            builder = None
         else:
             # Need to add a builder step
             builder = initial.get_builder(mask=mask)
@@ -70,12 +72,19 @@ class LeastSquaresOptimiser:
                 bounds[1] = builder.inverse(bounds[1])
             bounds = tuple(bounds)
 
+        complex_input = False
+        if np.iscomplexobj(x0_):
+            complex_input = True
+            x0_ = split_state(x0_)
+
         # Annoyingly scipy least_squares calls the function and the separately
         # but we don't support getting the Jacobian on it's own (it always comes
         # with a function evaluation and we don't want to call it twice so just
         # cache the result)
         jac = self._jac if jacobian == 'native' else jacobian
-        data = LeastSquaresOptimiser.Data(use_jacobian=jacobian == 'native', verbose=verbose)
+        data = LeastSquaresOptimiser.Data(
+            use_jacobian=jacobian == 'native', complex_input=complex_input, verbose=verbose
+        )
 
         max_func_evals = max_func_evals if max_func_evals is not None else 100 * len(initial)
 
@@ -92,10 +101,18 @@ class LeastSquaresOptimiser:
             max_nfev=max_func_evals,
         )
 
+        if complex_input:
+            value = join_state(res.x)
+        else:
+            value = res.x
+
+        if builder is not None:
+            value = builder(value)
+
         # Now convert the result to our optimiser result format
         return OptimiserResult(
             success=res.success,
-            value=builder(res.x),
+            value=value,
             rmsd=math.sqrt(2. / len(res.x) * res.cost),
             message=res.message,
             n_func_eval=res.nfev,
@@ -151,24 +168,46 @@ class LeastSquaresOptimiser:
     def _calc(
         state: functions.StateLike, func: functions.Function, opt_data: 'LeastSquaresOptimiser.Data'
     ) -> np.ndarray:
+        if opt_data.complex_input:
+            state = join_state(state)
+
         value = functions.get_bare(func(state))
         if opt_data.verbose:
             print('|Max| {}'.format(np.abs(value).max()))
 
-        if np.iscomplexobj(value):
-            return np.concatenate((value.real, value.imag))
-
-        return value
+        return split_state(value)
 
     @staticmethod
     def _jac(
         state: functions.StateLike, func: functions.Function, opt_data: 'LeastSquaresOptimiser.Data'
     ) -> np.ndarray:
+        if opt_data.complex_input:
+            state = join_state(state)
+
         value, jac = func(state, jacobian=True)
         if opt_data.verbose:
             print('|Max| {}'.format(np.abs(value).max()))
 
-        return split_jacobian(jac, complex_inputs=False, complex_outputs=np.iscomplexobj(value))
+        split = split_jacobian(jac, complex_inputs=opt_data.complex_input, complex_outputs=np.iscomplexobj(value))
+
+        return split
+
+
+def join_state(state: np.ndarray) -> np.ndarray:
+    half_size = int(len(state) / 2)
+    out_state = state[:half_size] + 1j * state[half_size:]
+    return out_state
+
+
+def split_state(state: np.ndarray) -> np.ndarray:
+    """Split is a state vector that is (potentially) complex.  If it is the vector is double in rows to be
+    (reals, imags), otherwise the vector is simply returned unaltered."""
+    if np.iscomplexobj(state):
+        if isinstance(state, np.ndarray):
+            return np.concatenate((state.real, state.imag))
+        return np.array((state.real, state.imag))
+
+    return state
 
 
 def split_jacobian(jacobian: np.ndarray, complex_inputs: bool, complex_outputs: bool) -> np.ndarray:
@@ -186,11 +225,16 @@ def split_jacobian(jacobian: np.ndarray, complex_inputs: bool, complex_outputs: 
     If the function has complex inputs and real outputs then only the first row is return.
     If the function has real inputs and complex outputs then only the first column is return.
     Otherwise the full Jacobian is returned.
+
+    See the Cauchy-Riemann equations for more details:
+    https://en.wikipedia.org/wiki/Cauchy%E2%80%93Riemann_equations
     """
     if not complex_inputs and not complex_outputs:
         return jacobian.real
 
     orig_size = jacobian.shape
+    if len(orig_size) == 1:
+        orig_size = (orig_size[0], 1)
     new_size = list(orig_size)
     if complex_outputs:
         new_size[0] *= 2
@@ -209,6 +253,6 @@ def split_jacobian(jacobian: np.ndarray, complex_inputs: bool, complex_outputs: 
         jac[:orig_size[0], orig_size[1]:] = complex_part.real
         if complex_outputs:
             # Input: Imag, Output: Imag
-            jac[:orig_size[0], :orig_size[1]] = complex_part.real
+            jac[orig_size[0]:, orig_size[1]:] = complex_part.imag
 
     return jac

@@ -9,6 +9,8 @@ import numpy as np
 
 from . import functions
 
+__all__ = 'Moments', 'Index', 'ReconstructionQuery'
+
 Index = Tuple[int, int, int]  # A three dimensional moment index
 
 
@@ -110,7 +112,12 @@ class Moments(functions.State, metaclass=abc.ABCMeta):
         # Reshape into n * n * n array
         return grid, grid_vals.reshape((grid.shape[1:]))
 
-    def reconstruct(self, query: ReconstructionQuery, order=None, zero_outside_domain=True):  # pylint: disable=unused-argument
+    def reconstruct(
+        self,
+        query: ReconstructionQuery,
+        order=None,  # pylint: disable=unused-argument
+        zero_outside_domain=True  # pylint: disable=unused-argument
+    ):
         return self.value_at(query.points)
 
     @classmethod

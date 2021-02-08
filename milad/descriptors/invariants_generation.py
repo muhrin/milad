@@ -16,13 +16,17 @@ def composite_complex_moment_form(moments: sympy.Indexed, n: int, l: int, l_prim
     """
     if not utils.even(j):
         raise ValueError('j must be even, got {}'.format(j))
+    if not utils.even(n - l):
+        raise ValueError(f'n - l must be even got {n} - {l}')
+    if not utils.even(n - l_prime):
+        raise ValueError(f'n - l_prime must be even got {n} - {l_prime}')
     eqn = None
 
-    for m in utils.inclusive(max(-l, k - l_prime), min(l, k + l_prime), 1):
+    for m in utils.inclusive(max(-l, k - l_prime), min(l, k + l_prime)):
         term = CG(l, m, l_prime, k - m, j, k).doit() * moments[n, l, m] * moments[n, l_prime, k - m]
         eqn = term if eqn is None else eqn + term
 
-    assert eqn is not None
+    assert eqn is not None, (max(-l, k - l_prime), min(l, k + l_prime))
     return eqn
 
 
@@ -31,9 +35,14 @@ def moment_form_complex_moment(moments: sympy.Indexed, n: int, n_prime: int, l: 
 
     c_s(l, l')_j c_{n'}
     """
+    if not j >= 0:
+        raise ValueError(f"'j' must be >= 0, got {j}")
+    if not utils.even(n_prime - j):
+        raise ValueError(f'n_prime - j must be even got {n_prime} - {j}')
+
     eqn = None
 
-    for k in utils.inclusive(-j, j):
+    for k in utils.inclusive(-j, j, 1):
         term = (-1)**(j - k) * composite_complex_moment_form(moments, n, l, l_prime, j, k) * moments[n_prime, j, -k]
         eqn = term if eqn is None else eqn + term
 
@@ -113,9 +122,9 @@ def invariants_two_moment_forms(moments: sympy.Indexed, max_n: int):
     c_n(l, l')_j c_{n'}(l'', l''')_j
     """
     invariants = []
-    for n in utils.inclusive(1, max_n, 1):
-        for n_prime in utils.inclusive(1, n):
-            for j in utils.inclusive(2, n_prime, 2):
+    for n in utils.inclusive(0, max_n, 1):
+        for n_prime in utils.inclusive(0, n):
+            for j in utils.inclusive(0, n_prime, 2):
                 for l in utils.inclusive(n, 1, -2):
                     for l_prime in utils.inclusive(l, max(l - j, 1), -2):
                         for l_prime_prime in utils.inclusive(n_prime, 1, -2):

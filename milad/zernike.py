@@ -108,10 +108,11 @@ class ZernikeMoments(base_moments.Moments):
     """A container class for calculated Zernike moments"""
 
     @classmethod
-    def from_indexed(cls, indexed, max_order: int, dtype=float) -> 'ZernikeMoments':
+    def from_indexed(cls, indexed, max_order: int, dtype=None) -> 'ZernikeMoments':
+        dtype = dtype or type(indexed[0, 0, 0])
         moments = cls(max_order, dtype=dtype)
         for (n, l, m) in moments.iter_indices():
-            moments._moments[n, l, l + m] = indexed[n, l, m]
+            moments._set_moment(n, l, m, indexed[n, l, m], set_minus_m=False)
         return moments
 
     @classmethod
@@ -128,12 +129,12 @@ class ZernikeMoments(base_moments.Moments):
 
     @classmethod
     def from_vector(cls, n_max: int, vec: np.array, redundant=True) -> 'ZernikeMoments':
-        moms = ZernikeMoments(n_max)
+        moms = ZernikeMoments(n_max, dtype=vec.dtype)
 
         for (n, l, m), value in zip(iter_indices(redundant=redundant), vec):
             if n > n_max:
                 break
-            moms[n, l, m] = value
+            moms._set_moment(n, l, m, value, set_minus_m=not redundant)  # pylint: disable=protected-access
 
         return moms
 
@@ -211,7 +212,7 @@ class ZernikeMoments(base_moments.Moments):
         """Return this set of moments as a vector"""
         return self.to_vector(redundant=True)
 
-    def to_vector(self, redundant=True):
+    def to_vector(self, redundant=True) -> np.ndarray:
         """Return this set of moments as a vector"""
         return np.array([self[indices] for indices in self.iter_indices(redundant=redundant)], dtype=self._dtype)
 
@@ -222,7 +223,7 @@ class ZernikeMoments(base_moments.Moments):
         for n, l, m in iter_indices_extended(key, self._max_n, redundant=False):
             self._set_moment(n, l, m, value)
 
-    def _set_moment(self, n: int, l: int, m: int, value):
+    def _set_moment(self, n: int, l: int, m: int, value, set_minus_m=True):
         """Set an individual moment.  This will automatically set the corresponding -m value"""
         if value is None:
             # Special case, usually happens if this is a mask
@@ -239,7 +240,7 @@ class ZernikeMoments(base_moments.Moments):
                     value = np.real(value)
                 except AttributeError:
                     pass
-            else:
+            elif set_minus_m:
                 # Set the -m counterpart directly
                 self._moments[n, l, l - m] = (-1)**m * value.conjugate()
 
@@ -350,7 +351,7 @@ class ZernikeMoments(base_moments.Moments):
                     grid_points,
                     grid_values,
                     isomin=grid_values.mean(),
-                    opacity=0.5,
+                    opacity=0.1,
                     autocolorscale=True,
                 )
 
@@ -359,8 +360,8 @@ class ZernikeMoments(base_moments.Moments):
 
             @ipywidgets.interact(
                 opacity=(0., 1., 0.01),
-                isomin=(grid_values.min(), grid_values.max(), 1.),
-                isomax=(grid_values.min(), grid_values.max(), 1.)
+                isomin=(grid_values.min(), grid_values.max(), 0.5),
+                isomax=(grid_values.min(), grid_values.max(), 0.5)
             )
             def update(opacity, isomin=default_isomin, isomax=default_isomax):
                 with widget.batch_update():
@@ -843,6 +844,7 @@ def iter_indices_extended(key: Tuple[int, Tuple], max_order: int, redundant=Fals
 
 def triple_index(linear: int, redundant=True) -> ZernikeIndex:
     """Get the triple index from the given lexicographic index"""
+    entry = None
     for entry, _ in zip(iter_indices(redundant=redundant), range(linear + 1)):
         pass
     return entry
