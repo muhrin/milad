@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import collections
 import math
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Callable
 
 import numpy as np
 from scipy import optimize
@@ -16,15 +16,17 @@ BoundsType = Tuple[Optional[functions.StateLike], Optional[functions.StateLike]]
 
 
 class LeastSquaresOptimiser:
-    """Uses scipy optimize.least_squares to perform optimistaion"""
+    """Uses scipy optimize.least_squares to perform optimisation"""
 
     class Data:
         """Data used during an optimisation"""
 
-        def __init__(self, use_jacobian, complex_input: bool, verbose=False):
+        def __init__(self, use_jacobian, complex_input: bool, verbose=False, builder=None, callback: Callable = None):
             self.use_jacobian = use_jacobian
             self.complex_input = complex_input
             self.verbose = verbose
+            self.builder = builder
+            self.callback = callback
 
     def optimise(  # pylint: disable=too-many-locals
             self,
@@ -37,6 +39,7 @@ class LeastSquaresOptimiser:
             x_tol=1e-8,
             cost_tol=1e-6,
             grad_tol=1e-8,
+            callback: Callable = None,
             verbose=False,
     ) -> OptimiserResult:
         """
@@ -83,7 +86,11 @@ class LeastSquaresOptimiser:
         # cache the result)
         jac = self._jac if jacobian == 'native' else jacobian
         data = LeastSquaresOptimiser.Data(
-            use_jacobian=jacobian == 'native', complex_input=complex_input, verbose=verbose
+            use_jacobian=jacobian == 'native',
+            complex_input=complex_input,
+            verbose=verbose,
+            builder=builder,
+            callback=callback,
         )
 
         max_func_evals = max_func_evals if max_func_evals is not None else 100 * len(initial)
@@ -131,8 +138,9 @@ class LeastSquaresOptimiser:
         x_tol=1e-8,
         cost_tol=1e-6,
         grad_tol=1e-8,
+        callback: Callable = None,
         verbose=False,
-    ):
+    ) -> OptimiserResult:
         """
         Optimise the function to a given target value.  This minimises the loss of the difference between the function
         and the target.
@@ -161,6 +169,7 @@ class LeastSquaresOptimiser:
             cost_tol=cost_tol,
             grad_tol=grad_tol,
             max_func_evals=max_func_evals,
+            callback=callback,
             verbose=verbose,
         )
 
@@ -175,6 +184,13 @@ class LeastSquaresOptimiser:
         if opt_data.verbose:
             print('|Max| {}'.format(np.abs(value).max()))
 
+        if opt_data.callback is not None:
+            if opt_data.builder is None:
+                inp = state
+            else:
+                inp = opt_data.builder(state)
+            opt_data.callback(inp, value, None)
+
         return split_state(value)
 
     @staticmethod
@@ -187,6 +203,13 @@ class LeastSquaresOptimiser:
         value, jac = func(state, jacobian=True)
         if opt_data.verbose:
             print('|Max| {}'.format(np.abs(value).max()))
+
+        if opt_data.callback is not None:
+            if opt_data.builder is None:
+                inp = state
+            else:
+                inp = opt_data.builder(state)
+            opt_data.callback(inp, value, jac)
 
         split = split_jacobian(jac, complex_inputs=opt_data.complex_input, complex_outputs=np.iscomplexobj(value))
 

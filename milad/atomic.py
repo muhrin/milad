@@ -4,7 +4,7 @@ Module containing functions and objects related to manipulating collections of a
 """
 import logging
 import random
-from typing import Optional, Type, Tuple, Union
+from typing import Optional, Type, Tuple, Union, List
 
 import numpy as np
 
@@ -391,6 +391,10 @@ class MapNumbers(functions.Function):
         self._mapped_range = map_to
         self._range_size = map_to[1] - map_to[0]
         self._half_bin = self._range_size / (2 * len(self._numbers))
+
+    @property
+    def numbers(self) -> List[int]:
+        return self._numbers
 
     @property
     def mapped_range(self) -> Tuple[float, float]:

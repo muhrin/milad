@@ -363,7 +363,7 @@ class ZernikeMoments(base_moments.Moments):
                 isomin=(grid_values.min(), grid_values.max(), 0.5),
                 isomax=(grid_values.min(), grid_values.max(), 0.5)
             )
-            def update(opacity, isomin=default_isomin, isomax=default_isomax):
+            def update(opacity=0.1, isomin=default_isomin, isomax=default_isomax):
                 with widget.batch_update():
                     isosurface = widget.data[0]
                     isosurface.opacity = opacity
@@ -506,12 +506,11 @@ class ZernikeMomentsBuilder(functions.Function):
             return np.array(moms)
 
 
-class ZernikeMomentCalculator(functions.Function):
+class ZernikeMomentCalculator(base_moments.MomentsCalculator):
     """Calculate Zernike moments.
 
     Takes as input geometric moments or any state vector that is a valid input to GeometricMomentsCalculator
     """
-
     output_type = ZernikeMoments
     supports_jacobian = True
     dtype = complex
@@ -586,6 +585,10 @@ class ZernikeMomentCalculator(functions.Function):
             self._chi = chi
 
         return self._chi
+
+    def create_random(self, max_order: int = None) -> ZernikeMoments:
+        max_order = max_order or self._max_order
+        return ZernikeMoments.rand(max_order)
 
 
 def get_jacobian_wrt_geom_moments(max_order: int, redundant=True):

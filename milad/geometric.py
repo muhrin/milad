@@ -113,7 +113,7 @@ def linear_index(max_order: int, index: base_moments.Index) -> int:
     return size * size * index[0] + size * index[1] + index[2]
 
 
-class GeometricMomentsCalculator(functions.Function):
+class GeometricMomentsCalculator(base_moments.MomentsCalculator):
     """Function that calculates geometric moments up to some maximum order"""
 
     supports_jacobian = False
@@ -122,7 +122,7 @@ class GeometricMomentsCalculator(functions.Function):
         super().__init__()
         self._max_order = max_order
 
-    def output_length(self, in_state: functions.State) -> int:
+    def output_length(self, _in_state: functions.State) -> int:
         return GeometricMoments.num_moments(self._max_order)
 
     def evaluate(self, features: functions.State, get_jacobian=False) -> GeometricMoments:
@@ -136,6 +136,11 @@ class GeometricMomentsCalculator(functions.Function):
             return moments, out_jacobian
 
         return moments
+
+    def create_random(self, max_order: int = None):
+        max_val = 5.
+        max_order = max_order or self._max_order
+        return GeometricMoments(max_val * (2 * np.random.rand(max_order, max_order, max_order) - 1))
 
 
 @functools.singledispatch

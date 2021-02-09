@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from typing import Optional, Type, Tuple, Union
+from typing import Optional, Tuple, List
 
 import numpy as np
 
@@ -19,23 +19,26 @@ class MomentInvariantsDescriptor(functions.Function):
     def __init__(
         self,
         feature_mapper: atomic.FeatureMapper,
+        moments_calculator: base_moments.MomentsCalculator,
+        invs: invariants.MomentInvariants,
         cutoff: float = None,
         scale: bool = True,
-        moments_calculator=None,
-        invs: invariants.MomentInvariants = None,
-        preprocess: functions.Function = None,
+        species_mapper: atomic.MapNumbers = None,
         apply_cutoff=True,
     ):
         super().__init__()
+
+        # PREPROCESSING
         self._preprocess = functions.Chain()
-        if preprocess is not None:
-            self._preprocess.append(preprocess)
+        self._species_mapper = species_mapper
+        if self._species_mapper is not None:
+            self._preprocess.append(self._species_mapper)
 
         # Now the actual fingerprinting
-        self._invariants = invs or invariants.read(invariants.COMPLEX_INVARIANTS)
-        moments_calculator = moments_calculator or zernike.ZernikeMomentCalculator(self._invariants.max_order)
+        self._invariants = invs
 
-        # Create the actual fingerprinting process
+        # PROCESSING
+        # Create the actual fingerprinting process which is a chain of functions
         process = functions.Chain()
         if cutoff is not None:
             if apply_cutoff:
@@ -52,6 +55,7 @@ class MomentInvariantsDescriptor(functions.Function):
 
         self._cutoff = cutoff
         self._process = process
+        self._moments_calculator = moments_calculator
         # Combine the two steps in one calculator
         self._calculator = functions.Chain(self._preprocess, self._process)
 
@@ -76,6 +80,18 @@ class MomentInvariantsDescriptor(functions.Function):
     def process(self) -> functions.Chain:
         """Return the processing function"""
         return self._process
+
+    @property
+    def moments_calculator(self) -> base_moments.MomentsCalculator:
+        return self._moments_calculator
+
+    @property
+    def species(self) -> Optional[List[int]]:
+        """Get the species (as integers) supported by this descriptor.  Returns None if there is no restriction"""
+        if self._species_mapper is None:
+            return None
+
+        return self._species_mapper.numbers
 
     def get_moments(self, atoms: atomic.AtomsCollection, preprocess=True) -> base_moments.Moments:
         if preprocess:
@@ -127,7 +143,7 @@ def descriptor(
     species: Optional[dict] = None,
     cutoff: float = None,
     scale=True,
-    moments_calculator=None,
+    moments_calculator: base_moments.MomentsCalculator = None,
     invs: invariants.MomentInvariants = None,
     apply_cutoff=True,
 ):
@@ -145,26 +161,30 @@ def descriptor(
         }
     :param cutoff:
     :param scale: if True scale the environments by a factor of 1 / cutoff to fit within typical orthogonality region
-    :param moments_calculator:
-    :param invs:
+    :param moments_calculator: the moment calculator to use
+    :param invs: the invariants to use
     :return:
     """
     # Set up the preprocessing
-    preprocess = None
     species = species or {}
-
     species_map = species.get('map', {})
     if species_map:
-        preprocess = atomic.MapNumbers(species=species_map['numbers'], map_to=species_map['range'])
+        species_mapper = atomic.MapNumbers(species=species_map['numbers'], map_to=species_map['range'])
+    else:
+        species_mapper = None
+
+    # Default to Zernike moments if not supplied
+    invs = invs or invariants.read(invariants.COMPLEX_INVARIANTS)
+    moments_calculator = moments_calculator or zernike.ZernikeMomentCalculator(invs.max_order)
 
     features = features or dict(type=functions.WeightedDelta, map_species_to=species_map.get('to', None))
     return MomentInvariantsDescriptor(
         feature_mapper=atomic.FeatureMapper(**features),
-        cutoff=cutoff,
-        scale=scale,
         moments_calculator=moments_calculator,
         invs=invs,
-        preprocess=preprocess,
+        cutoff=cutoff,
+        scale=scale,
+        species_mapper=species_mapper,
         apply_cutoff=apply_cutoff,
     )
 

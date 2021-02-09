@@ -151,6 +151,13 @@ ProductTerm = collections.namedtuple('ProductTerm', 'index terms')
 Product = collections.namedtuple('Product', 'coeff terms')
 
 
+class MomentsCalculator(functions.Function, metaclass=abc.ABCMeta):
+
+    @abc.abstractmethod
+    def create_random(self, max_order: int = None):
+        """Create a random set of moments (optionally) up to a certain order."""
+
+
 class MomentsPolynomial:
     """Represents a polyonimal of moments.  The terms are products of moments with a prefactor"""
     __slots__ = ('_terms',)

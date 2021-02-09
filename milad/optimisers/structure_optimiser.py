@@ -1,22 +1,27 @@
 # -*- coding: utf-8 -*-
+import argparse
 import collections
-from typing import Tuple, Union
+import functools
+from typing import Tuple, Union, List
 
 import numpy as np
 
 from milad import atomic
 from milad import base_moments
 from milad import fingerprinting
+from milad.play import asetools
 from . import least_squares
 
-__all__ = ('StructureOptimiser',)
+__all__ = ('StructureOptimiser', 'StructureOptimisationResult')
 
-StructureOptimisationResult = collections.namedtuple('StructureOptimisationResult', 'success atoms message rmsd')
+StructureOptimisationResult = collections.namedtuple(
+    'OptimiserResult', 'success message value rmsd n_func_eval n_jac_eval traj'
+)
 
 
 class StructureOptimiser:
     """
-    The structure optimiser takes a fingerprinting function and performs a least squares optimistaion
+    The structure optimiser takes a fingerprinting function and performs a least squares optimisation
     to match a structure to a given fingerprint.
     """
 
@@ -24,16 +29,20 @@ class StructureOptimiser:
         self._least_squares_optimiser = least_squares.LeastSquaresOptimiser()
 
     def optimise(
+        # pylint: disable=too-many-locals
         self,
         descriptor: fingerprinting.MomentInvariantsDescriptor,
         target: Union[np.ndarray, base_moments.Moments],
         initial: atomic.AtomsCollection,
         jacobian='native',
         mask: atomic.AtomsCollection = None,
+        bounds: Tuple[atomic.AtomsCollection, atomic.AtomsCollection] = None,
         x_tol=1e-8,
         cost_tol=1e-5,
         grad_tol=1e-8,
         max_func_evals=5000,
+        preprocess=True,
+        get_trajectory=False,
         verbose=False,
     ) -> StructureOptimisationResult:
         """
@@ -43,9 +52,12 @@ class StructureOptimiser:
         :param x_tol: tolerance for termination by the change of independent variables.
         :param cost_tol: stopping criterion for the fitting algorithm
         :param max_func_evals: the maximum number of allowed fingerprint evaluations
-        :param atoms_builder: an optional atoms builder that can be used to freeze certain degrees of freedom
+        :param preprocess: if True will apply the descriptor preprocessor to initial and the mask and then
+            'un-preprocess' the output
         :return: a structure optimisation result
         """
+        outcome = argparse.Namespace()
+
         if isinstance(target, base_moments.Moments):
             calc = descriptor.process[:-1]
         elif isinstance(target, np.ndarray):
@@ -53,30 +65,60 @@ class StructureOptimiser:
         else:
             raise TypeError(f'Unsupported type {target.__class__.__name__}')
 
-        preprocess = descriptor.preprocess
-        preprocessed = preprocess(initial)
-        if mask is not None:
-            mask = preprocess(mask)
+        preprocessor = descriptor.preprocess
+
+        if preprocess:
+            initial = preprocessor(initial)
+            if mask is not None:
+                mask = preprocessor(mask)
+
+        bounds = bounds or self.get_bounds(initial.num_atoms, descriptor)
+
+        # Deal with saving of trajectory
+        save_traj_fn = None
+        if get_trajectory:
+            outcome.traj = []
+            save_traj_fn = functools.partial(self._save_trajectory, outcome.traj, preprocessor if preprocess else None)
+        else:
+            outcome.traj = None
 
         result = self._least_squares_optimiser.optimise_target(
             func=calc,
-            initial=preprocessed,
+            initial=initial,
             target=target,
             mask=mask,
             jacobian=jacobian,
-            bounds=self._get_bounds(initial.num_atoms, descriptor),
+            bounds=bounds,
             max_func_evals=max_func_evals,
             x_tol=x_tol,
             cost_tol=cost_tol,
             grad_tol=grad_tol,
+            callback=save_traj_fn,
             verbose=verbose
         )
-        # Build the atoms from the vector and then 'un-preprocess' it (likely scale size and map species)
-        return result._replace(value=preprocess.inverse(result.value))
+
+        outcome.__dict__.update(result._asdict())
+
+        if preprocess:
+            # 'Un-preprocess' the output (map atomic species into integers)
+            outcome.value = preprocessor.inverse(result.value)
+
+        return StructureOptimisationResult(**outcome.__dict__)
 
     @staticmethod
-    def _get_bounds(num_atoms: int,
-                    descriptor: fingerprinting.MomentInvariantsDescriptor) \
+    def _save_trajectory(trajectory: List, preprocessor, state: atomic.AtomsCollection, _value: np.ndarray, jacobian):
+        if jacobian is not None:
+            # Don't bother saving on Jacobian calls
+            return
+
+        if preprocessor is not None:
+            state = preprocessor.inverse(state)
+
+        trajectory.append(asetools.milad2ase(state))
+
+    @staticmethod
+    def get_bounds(num_atoms: int,
+                   descriptor: fingerprinting.MomentInvariantsDescriptor) \
             -> Tuple[atomic.AtomsCollection, atomic.AtomsCollection]:
         lower = atomic.AtomsCollection(num_atoms)
         upper = atomic.AtomsCollection(num_atoms)

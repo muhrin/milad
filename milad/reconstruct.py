@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
+import argparse
 import functools
 import collections
 import logging
+import random
 
 import numpy as np
 import rmsd as rmsdlib
+from scipy.spatial import distance
 from sklearn import cluster
 
 from . import atomic
@@ -56,12 +59,26 @@ def _(grid, num_clusters: int) -> np.ndarray:
 
 
 def find_peaks(
-    moments: base_moments.Moments, num_peaks: int, query: base_moments.ReconstructionQuery,
-    descriptor: fingerprinting.MomentInvariantsDescriptor
+    num_peaks: int,
+    moments: base_moments.Moments,
+    descriptor: fingerprinting.MomentInvariantsDescriptor,
+    query: base_moments.ReconstructionQuery = None,
+    grid_size=31,
+):
+    current_grid = moments.reconstruct(query, zero_outside_domain=True)
+    query = query or moments.create_reconstruction_query(moments.get_grid(grid_size), moments.max_order)
+    return find_peaks_from_grid(num_peaks, current_grid, descriptor, query)
+
+
+def find_peaks_from_grid(
+    num_peaks: int,
+    grid,
+    descriptor: fingerprinting.MomentInvariantsDescriptor,
+    query: base_moments.ReconstructionQuery,
 ):
     atom_positions = []
 
-    current_grid = moments.reconstruct(query, zero_outside_domain=True)
+    current_grid = grid.copy()
     for _ in range(num_peaks):
         # Find the index of the maximum value in the current grid
         max_idx = current_grid.argmax()
@@ -91,17 +108,39 @@ def find_peaks(
     return np.array(atom_positions)
 
 
-def find_peaks2(
-    moments: base_moments.Moments, num_peaks: int, query: base_moments.ReconstructionQuery,
-    descriptor: fingerprinting.MomentInvariantsDescriptor
-):
+def find_atoms(
+    # pylint: disable=too-many-locals
+    num_atoms: int,
+    moments: base_moments.Moments,
+    descriptor: fingerprinting.MomentInvariantsDescriptor,
+    query: base_moments.ReconstructionQuery = None,
+    grid_size=31,
+) -> atomic.AtomsCollection:
+    """
+    Given a set of moments this will try to extract atom positions and species by successively placing a new atom
+    on the current peak in reconstruction grid.  After this the a new grid is calculated and subtracted from the
+    original.
+
+    :param moments:
+    :param descriptor:
+    :param num_atoms: the number of atoms to find
+    :param query: the reconstruction query to use.
+    :param grid_size: the size of reconstruction grid to use.  Only used if no reconstruction query is passed.
+    :return:
+    """
+    query = query or moments.create_reconstruction_query(moments.get_grid(grid_size), moments.max_order)
+
     atom_positions = []
     atom_numbers = []
     optimiser = optimisers.StructureOptimiser()
 
+    # Calculate the original moments grid
     orig_grid = moments.reconstruct(query, zero_outside_domain=True)
     current_grid = orig_grid
-    for _ in range(num_peaks):
+
+    preprocess = False
+
+    while True:
         # Find the index of the maximum value in the current grid
         max_idx = current_grid.argmax()
 
@@ -109,29 +148,36 @@ def find_peaks2(
         atom_positions.append(query.points[max_idx] / descriptor.cutoff)
         atom_numbers.append(1.)
 
-        # Build an atoms collection with a single atom at that position
+        # Build an atoms collection with the current set of atoms
         current_atoms = atomic.AtomsCollection(len(atom_positions), positions=atom_positions, numbers=atom_numbers)
 
+        # Locally optimise the atomic positions
         res = optimiser.optimise(
             descriptor,
             target=moments,
             initial=current_atoms,
+            preprocess=preprocess,
         )
-        atom_positions = res.value.positions
-        atom_numbers = res.value.numbers
+
+        if num_atoms == current_atoms.num_atoms:
+            # Reached the number of atoms limit
+            break
 
         # Get the moments so we can subtract this from the grid
-        current_moments = descriptor.get_moments(res.value)
+        current_moments = descriptor.get_moments(res.value, preprocess=preprocess)
 
-        # Get the grid for just that atom on its own
+        # Get the grid for this set of atoms
         this_grid = current_moments.reconstruct(query, zero_outside_domain=True)
 
-        # Subract off the single atom grid
+        # Subtract off the current grid
         current_grid = orig_grid - this_grid
 
         # Now remove the signal of the atom from the grid
-        # remove_idxs = np.argwhere(atom_grid >= (0.5 * atom_grid.max()))
-        # current_grid[remove_idxs] = 0.
+        remove_idxs = np.argwhere(current_grid >= (0.5 * current_grid.max()))
+        current_grid[remove_idxs] = 0.
+
+        atom_positions = list(res.value.positions)
+        atom_numbers = list(res.value.numbers)
 
     return res.value
 
@@ -142,45 +188,139 @@ def create_atoms_collection(clusters: cluster.KMeans, atomic_numbers=1.):
     return atomic.AtomsCollection(num_atoms, positions=clusters.cluster_centers_, numbers=atomic_numbers)
 
 
+DecoderResult = collections.namedtuple(
+    'DecoderResult', 'success message value rmsd moments_reconstruction initial_reconstruction atoms_reconstruction'
+)
+
+
 class Decoder:
     """This class decodes a structure from a set of moment invariants"""
 
     def __init__(
         self,
         descriptor: fingerprinting.MomentInvariantsDescriptor,
-        moments_query=None,
-        initial_finder=find_peaks,
-        default_grid_size=31
+        query: base_moments.ReconstructionQuery,
     ):
         self._descriptor = descriptor
+        self._query = query
+
         self._optimiser = optimisers.StructureOptimiser()
-        self._moments_query = moments_query
-        self._initial_finder = initial_finder
-        self._default_grid_size = default_grid_size
+        self._moments_optimiser = optimisers.MomentsOptimiser()
+        self._structure_optimiser = optimisers.StructureOptimiser()
 
-    def decode(
-        self,
-        invariants: np.ndarray,
-        moments: base_moments.Moments,
-        num_atoms: int,
-        atomic_numbers=1.
-    ) -> StructureOptimisationResult:
-        if self._moments_query is None:
-            query = moments.create_reconstruction_query(moments.get_grid(self._default_grid_size), moments.max_order)
-        else:
-            query = self._moments_query
+    def decode(self, fingerprint: np.ndarray, num_atoms: int, verbose=False, get_trajectory=False) -> DecoderResult:
+        decode_result = argparse.Namespace()
 
-        # Get the clusters from the moments, the positions will be in the range [-1, 1]
-        positions = self._initial_finder(moments, num_atoms, query, self._descriptor)
-        if positions.min() < -1 or positions.max() > 1:
-            raise exceptions.ReconstructionError('Clustering algorithm returned centres that are out of bounds')
+        # Generate an initial configuration using a structure with randomly placed atoms
+        initial_atoms = self.create_random_atoms(num_atoms)
 
-        initial_guess = atomic.AtomsCollection(num_atoms, positions=positions, numbers=atomic_numbers or 1.)
-        # Remap the starting configuration back to the correct size
-        if self._descriptor.scaler is not None:
-            initial_guess = self._descriptor.scaler.inverse(initial_guess)
+        # Reconstruct the moments
+        result = self._moments_optimiser.optimise(
+            self._descriptor.invariants, target=fingerprint, initial=self._descriptor.get_moments(initial_atoms)
+        )
 
-        return self._optimiser.optimise(descriptor=self._descriptor, target=invariants, initial=initial_guess)
+        decode_result.moments_reconstruction = result
+
+        if verbose:
+            print(f'm: {result.rmsd}, ', end='')
+
+        initial_atoms = self.create_initial_atoms(result.value, num_atoms)
+
+        # Now let's get optimise the atomic configuration to be consistent with the reconstructed moments
+        result = self._structure_optimiser.optimise(
+            self._descriptor,
+            initial=initial_atoms,
+            target=result.value,  # Target the found moments
+            get_trajectory=get_trajectory,
+        )
+
+        decode_result.initial_reconstruction = result
+
+        if verbose:
+            print(f'sm: {result.rmsd}, ', end='')
+
+        # Finally, optimise the found structure wrt to the fingerprint
+        result = self._structure_optimiser.optimise(
+            self._descriptor,
+            initial=result.value,
+            target=fingerprint,  # Target the fingerprint
+            get_trajectory=get_trajectory,
+        )
+
+        if verbose:
+            print(f'sf: {result.rmsd}, ', end='')
+
+        decode_result.atoms_reconstruction = result
+        decode_result.success = result.success
+        decode_result.message = result.message
+        decode_result.value = result.value
+        decode_result.rmsd = result.rmsd
+
+        return DecoderResult(**decode_result.__dict__)
+
+    def create_random_atoms(self, num: int) -> atomic.AtomsCollection:
+        """Create a random atoms configuration with the number of atoms passed"""
+        return atomic.random_atom_collection_in_sphere(
+            num,
+            radius=self._descriptor.cutoff,
+            numbers=random.choices(self._descriptor.species, k=num),
+            centre=True,
+        )
+
+    def create_initial_atoms(self, moments: base_moments.Moments, num: int) -> atomic.AtomsCollection:
+        atoms = find_atoms(num, moments, self._descriptor, self._query)
+        atoms.numbers[:] = random.choices(self._descriptor.species, k=num)
+        return atoms
+
+        # peaks = find_peaks(num, moments, self._descriptor, self._query)
+        # return atomic.AtomsCollection(num, peaks, random.choices(self._descriptor.species, k=num))
+
+
+def merge_atoms(system: atomic.AtomsCollection, dist_threshold=0.2):
+    # Proceed to merging of atoms
+    dists = distance.cdist(system.positions, system.positions)
+    np.fill_diagonal(dists, np.inf)  # Get rid of diagonals as this is just the self-interaction
+    merge_sets = []
+    for (i, j) in np.argwhere(dists < dist_threshold):
+        if i > j:
+            # Ignore lower diagonal
+            continue
+
+        merged = False
+        for merge_set in merge_sets:
+            if i in merge_set or j in merge_set:
+                if i in merge_set:
+                    merge_set.add(j)
+                elif j in merge_set:
+                    merge_set.add(i)
+                merged = True
+                break
+
+        if not merged:
+            # Create a new merge set
+            merge_sets.append({i, j})
+
+    # Start merging
+    positions = []
+    numbers = []
+    merged_indices = set()
+    for merge_set in merge_sets:
+        pos = np.zeros(3)
+        number = 0.
+        for i in merge_set:
+            pos += system.positions[i]
+            number += system.numbers[i]
+            merged_indices.add(i)
+        pos /= len(merge_set)
+
+        positions.append(pos)
+        numbers.append(number)
+
+    for i in set(range(len(system.numbers))) - merged_indices:
+        positions.append(system.positions[i])
+        numbers.append(system.numbers[i])
+
+    return len(merged_indices), atomic.AtomsCollection(len(positions), positions, numbers)
 
 
 def get_best_rms(
