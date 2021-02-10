@@ -16,5 +16,5 @@ from .reconstruct import *
 from .zernike import *
 
 __all__ = ('analytic', 'atomic', 'invariants', 'functions', 'geometric', 'utils', 'play', 'plot', 'reconstruct',
-           'zernike', 'exceptions', 'models', 'optimisers', \
-           zernike.__all__ + fingerprinting.__all__ + reconstruct.__all__)
+           'zernike', 'exceptions', 'models', 'optimisers') +\
+          zernike.__all__ + fingerprinting.__all__ + reconstruct.__all__

@@ -269,7 +269,7 @@ class Decoder:
 
     def create_initial_atoms(self, moments: base_moments.Moments, num: int) -> atomic.AtomsCollection:
         atoms = find_atoms(num, moments, self._descriptor, self._query)
-        atoms.numbers[:] = random.choices(self._descriptor.species, k=num)
+        # atoms.numbers[:] = random.choices(self._descriptor.species, k=num)
         return atoms
 
         # peaks = find_peaks(num, moments, self._descriptor, self._query)
