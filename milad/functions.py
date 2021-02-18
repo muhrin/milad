@@ -253,25 +253,42 @@ class Function(metaclass=abc.ABCMeta):
         if self.input_type is not None:
             self._check_input_type(state, self.input_type)
 
+        try:
+            input_vec = get_bare(state)
+            if np.isnan(input_vec).any():
+                raise ValueError(
+                    f'{name} evaluate was passed an {state.__class__.__name__} input with a NaN value: {input_vec}'
+                )
+        except TypeError:
+            pass  # The types stored in the array don't support isnan ufunc
+
         result = self.evaluate(state, get_jacobian=jacobian)
         if result is None:
             raise RuntimeError(f'{name} produced None output')
 
         if jacobian:
             if not isinstance(result, tuple):
-                raise RuntimeError(f"{name}.evaulate didn't return Jacobian despite being asked to")
+                raise RuntimeError(f"{name}.evaluate didn't return Jacobian despite being asked to")
+            val, jac = result[0], result[1]
+
+            if not jac.dtype == np.object and np.isnan(jac).any():
+                raise ValueError(f'{name}.evaluate produced a Jacobian with a NaN entry')
         else:
-            try:
-                if np.isnan(get_bare(result)).any():
-                    raise ValueError(f'{name}.evaulate produce a result with a NaN entry')
-            except TypeError:
-                pass  # The types stored in the array don't support isnan ufunc
+            val = result
+            jac = None
+
+        try:
+            if np.isnan(get_bare(val)).any():
+                raise ValueError(f'{name}.evaluate produced a result with a NaN entry')
+        except TypeError:
+            pass  # The types stored in the array don't support isnan ufunc
 
         for func in self._callbacks:
             if jacobian:
-                func(state, result[0], result[1])
+                func(state, val, jac)
             else:
-                func(state, result, jacobian=None)
+                func(state, val, jacobian=None)
+
         return result
 
     @abc.abstractmethod
@@ -487,3 +504,12 @@ def copy_to(
     source_indices = source_indices or tuple(range(len(source)))
     for desc_idx, source_idx in zip(indices, source_indices):
         dest[desc_idx] = source[source_idx]
+
+
+def nan_check(array: np.ndarray, msg=None):
+    """Check that an array does not contain NaN values.  If it does this will raise a ValueError"""
+    if not array.dtype == np.object and np.isnan(array).any():
+        exc_msg = 'Found NaN value'
+        if msg is not None:
+            exc_msg += f', {msg}'
+        raise ValueError(msg)

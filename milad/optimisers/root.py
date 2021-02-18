@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import collections
+import functools
 import math
 from typing import Tuple, Optional, Callable
 
@@ -9,15 +10,25 @@ from scipy import optimize
 from milad import functions
 from . import utils
 
-__all__ = ('LeastSquaresOptimiser',)
+__all__ = ('RootFinder',)
 
 OptimiserResult = collections.namedtuple('OptimiserResult', 'success message value rmsd n_func_eval n_jac_eval')
 
 BoundsType = Tuple[Optional[functions.StateLike], Optional[functions.StateLike]]
 
 
-class LeastSquaresOptimiser:
+class RootFinder:
     """Uses scipy optimize.least_squares to perform optimisation"""
+
+    class Data:
+        """Data used during an optimisation"""
+
+        def __init__(self, use_jacobian, complex_input: bool, verbose=False, builder=None, callback: Callable = None):
+            self.use_jacobian = use_jacobian
+            self.complex_input = complex_input
+            self.verbose = verbose
+            self.builder = builder
+            self.callback = callback
 
     def optimise(  # pylint: disable=too-many-locals
             self,
@@ -71,11 +82,6 @@ class LeastSquaresOptimiser:
             complex_input = True
             x0_ = utils.split_state(x0_)
 
-        # Annoyingly scipy least_squares calls the function and the separately
-        # but we don't support getting the Jacobian on it's own (it always comes
-        # with a function evaluation and we don't want to call it twice so just
-        # cache the result)
-        jac = self._jac if jacobian == 'native' else jacobian
         data = utils.Data(
             use_jacobian=jacobian == 'native',
             complex_input=complex_input,
@@ -86,20 +92,14 @@ class LeastSquaresOptimiser:
 
         max_func_evals = max_func_evals if max_func_evals is not None else 100 * len(initial)
 
-        if np.isnan(x0_).any():
-            raise ValueError()
-
         # Do it!
-        res = optimize.least_squares(
-            self._calc,
+        res = optimize.root(
+            functools.partial(self._jac2, func=fun, opt_data=data),
             x0_,
-            jac=jac,
-            kwargs=dict(func=fun, opt_data=data),
-            bounds=bounds,
-            xtol=x_tol,
-            ftol=cost_tol,
-            gtol=grad_tol,
-            max_nfev=max_func_evals,
+            jac=True,
+            method='lm',
+            options=dict(col_deriv=False, xtol=x_tol, maxfev=max_func_evals)
+            # bounds=bounds,
         )
 
         if complex_input:
@@ -114,7 +114,7 @@ class LeastSquaresOptimiser:
         return OptimiserResult(
             success=res.success,
             value=value,
-            rmsd=math.sqrt(2. / len(res.x) * res.cost),
+            rmsd=0.0,
             message=res.message,
             n_func_eval=res.nfev,
             n_jac_eval=res.njev,
@@ -168,42 +168,17 @@ class LeastSquaresOptimiser:
         )
 
     @staticmethod
-    def _calc(state: functions.StateLike, func: functions.Function, opt_data: 'utils.Data') -> np.ndarray:
-        if np.isnan(state).any():
-            raise ValueError(f'iter: {opt_data.iter}, state: {state}')
-
+    def _jac2(state: functions.StateLike, func: functions.Function,
+              opt_data: 'utils.Data') -> Tuple[np.ndarray, np.ndarray]:
         if opt_data.complex_input:
             state = utils.join_state(state)
 
-        value = functions.get_bare(func(state))
-        if opt_data.verbose:
-            print('|Max| {}'.format(np.abs(value).max()))
+        if opt_data.use_jacobian:
+            value, jac = func(state, jacobian=True)
+        else:
+            value = func(state, jacobian=False)
+            jac = None
 
-        if opt_data.callback is not None:
-            if opt_data.builder is None:
-                inp = state
-            else:
-                inp = opt_data.builder(state)
-            opt_data.callback(inp, value, None)
-
-        split = utils.split_state(value)
-
-        if np.isnan(split).any():
-            raise ValueError(f'iter: {opt_data.iter}, split: {split}, value: {value}, state: {state}')
-
-        opt_data.iter += 1
-
-        return split
-
-    @staticmethod
-    def _jac(state: functions.StateLike, func: functions.Function, opt_data: 'utils.Data') -> np.ndarray:
-        if np.isnan(state).any():
-            raise ValueError()
-
-        if opt_data.complex_input:
-            state = utils.join_state(state)
-
-        value, jac = func(state, jacobian=True)
         if opt_data.verbose:
             print('|Max| {}'.format(np.abs(value).max()))
 
@@ -214,9 +189,11 @@ class LeastSquaresOptimiser:
                 inp = opt_data.builder(state)
             opt_data.callback(inp, value, jac)
 
-        split = utils.split_jacobian(jac, complex_inputs=opt_data.complex_input, complex_outputs=np.iscomplexobj(value))
+        # Prepare for passing back to scipy
+        value = utils.split_state(value)
+        if jac is not None:
+            jac = utils.split_jacobian(
+                jac, complex_inputs=opt_data.complex_input, complex_outputs=np.iscomplexobj(value)
+            )
 
-        if np.isnan(split).any():
-            raise ValueError()
-
-        return split
+        return value, jac

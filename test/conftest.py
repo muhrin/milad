@@ -17,5 +17,5 @@ def moment_invariants():
 @pytest.fixture(scope='session')
 def complex_invariants():
     """Get complex moment invariants"""
-    invs = milad.invariants.read(filename=invariants.COMPLEX_INVARIANTS, read_max=READ_MAX)
+    invs = milad.invariants.read(filename=invariants.COMPLEX_INVARIANTS)
     yield invs

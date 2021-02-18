@@ -289,7 +289,7 @@ def from_gaussians(
 def from_deltas(
     max_order: int,
     positions: np.array,
-    weights: Union[numbers.Number, np.array] = 1.,
+    weights: Union[numbers.Number, np.array] = 1,
     get_jacobian=False,
 ) -> Union[GeometricMoments, np.array]:
     """

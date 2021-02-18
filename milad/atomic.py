@@ -13,6 +13,8 @@ from . import generate
 
 _LOGGER = logging.getLogger(__name__)
 
+__all__ = 'AtomsCollection', 'random_atom_collection_in_sphere'
+
 
 class AtomsCollection(functions.PlainState):
     """A collection of atomic positions along with a numbers for each of their species.  Stored as:
@@ -495,7 +497,7 @@ class ApplyCutoff(functions.Function):
         return out_atoms
 
 
-def random_atom_collection_in_sphere(num: int, radius=1., centre=False, numbers=1.) -> AtomsCollection:
+def random_atom_collection_in_sphere(num: int, radius=1., centre=True, numbers=1.) -> AtomsCollection:
     pts = generate.random_points_in_sphere(num, radius=radius, centre=centre)
     atoms = AtomsCollection(num, positions=pts)
     if isinstance(numbers, tuple):

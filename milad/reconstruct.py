@@ -4,10 +4,12 @@ import functools
 import collections
 import logging
 import random
+from typing import List
 
 import numpy as np
 import rmsd as rmsdlib
 from scipy.spatial import distance
+from scipy import optimize
 from sklearn import cluster
 
 from . import atomic
@@ -58,6 +60,16 @@ def _(grid, num_clusters: int) -> np.ndarray:
     return kmeans.cluster_centers_
 
 
+def find_maximum(moments: base_moments.Moments, initial: np.ndarray) -> np.ndarray:
+    """Find the maximum of a set of moments"""
+
+    def calc(pos: np.ndarray):
+        return -moments.value_at(pos)
+
+    res = optimize.minimize(calc, initial)
+    return res.x
+
+
 def find_peaks(
     num_peaks: int,
     moments: base_moments.Moments,
@@ -65,9 +77,83 @@ def find_peaks(
     query: base_moments.ReconstructionQuery = None,
     grid_size=31,
 ):
-    current_grid = moments.reconstruct(query, zero_outside_domain=True)
     query = query or moments.create_reconstruction_query(moments.get_grid(grid_size), moments.max_order)
+    current_grid = moments.reconstruct(query, zero_outside_domain=True)
     return find_peaks_from_grid(num_peaks, current_grid, descriptor, query)
+
+
+class FoundPeaks:
+
+    def __init__(self, initial: base_moments.Moments):
+        self._initial = initial
+        self._moments = []
+        self._atom_positions = []
+
+    @property
+    def positions(self) -> List[np.ndarray]:
+        return self._atom_positions
+
+    @property
+    def moments(self) -> List[base_moments.Moments]:
+        return self._moments
+
+    def append(self, pos: np.ndarray, moments: base_moments.Moments):
+        self._atom_positions.append(pos)
+        self._moments.append(moments)
+
+    def remaining_value(self, pos: np.ndarray) -> float:
+        initial = self._initial.value_at(pos)
+        for atom_moments in self._moments:
+            initial -= atom_moments.value_at(pos)
+        return initial
+
+    def find_next_maximum(self, start_pt: np.ndarray):
+        res = optimize.minimize(self.remaining_value, start_pt)
+        return res.x
+
+
+def find_peaks_from_maxima(
+    num_peaks: int,
+    moments: base_moments.Moments,
+    descriptor: fingerprinting.MomentInvariantsDescriptor,
+    query: base_moments.ReconstructionQuery = None,
+    grid_size=31,
+):
+    scale = 1.0
+    if descriptor.scaler is not None:
+        scale = 1. / descriptor.cutoff
+
+    query = query or moments.create_reconstruction_query(moments.get_grid(grid_size), moments.max_order)
+    peaks = FoundPeaks(moments)
+    current_grid = moments.reconstruct(query, zero_outside_domain=True)
+    outside = get_buffer_indices(query, current_grid)
+    current_grid[outside] = 0.
+
+    for _ in range(num_peaks):
+        # Find the index of the maximum value in the current grid
+        max_idx = current_grid.argmax()
+
+        # Get that position in the grid
+        guess = query.points[max_idx]
+        # Now find the local maximum
+        moments_pos = peaks.find_next_maximum(guess)
+
+        # Build an atoms collection with a single atom at that position
+        single_atom = atomic.AtomsCollection(1, positions=[moments_pos / scale], numbers=[1.])
+
+        # Get the moments so we can subtract this from the grid
+        single_moments = descriptor.get_moments(single_atom, preprocess=False)
+        peaks.append(moments_pos, single_moments)
+
+        # Subtract off the grid
+        # Get the grid for just that atom on its own
+        atom_grid = single_moments.reconstruct(query, zero_outside_domain=True)
+        # Subtract off the single atom grid
+        current_grid -= atom_grid
+
+        current_grid[outside] = 0.
+
+    return peaks.positions / scale
 
 
 def find_peaks_from_grid(
@@ -75,37 +161,68 @@ def find_peaks_from_grid(
     grid,
     descriptor: fingerprinting.MomentInvariantsDescriptor,
     query: base_moments.ReconstructionQuery,
+    exclude_radius=0.75,
 ):
-    atom_positions = []
+    subtract_signal = True
+    scale = 1.0
+    if descriptor.scaler is not None:
+        scale = 1. / descriptor.cutoff
 
     current_grid = grid.copy()
+
+    exclude = exclude_radius * scale
+    outside = get_buffer_indices(query, current_grid)
+
+    found_positions = []
     for _ in range(num_peaks):
         # Find the index of the maximum value in the current grid
         max_idx = current_grid.argmax()
 
         # Get that position in the grid
         atom_pos = query.points[max_idx]
-        # Build an atoms collection with a single atom at that position
-        single_atom = atomic.AtomsCollection(1, positions=[atom_pos], numbers=[1.])
-        if descriptor.scaler is not None:
-            single_atom = descriptor.scaler.inverse(single_atom)
+        found_positions.append(atom_pos / scale)
 
-        atom_positions.append(single_atom.positions[0])
+        if subtract_signal:
+            # Build an atoms collection with a single atom at that position
+            single_atom = atomic.AtomsCollection(1, positions=[atom_pos / scale], numbers=[1.])
 
-        # Get the moments so we can subtract this from the grid
-        single_moments = descriptor.get_moments(single_atom, preprocess=False)
+            # Get the moments so we can subtract this from the grid
+            single_moments = descriptor.get_moments(single_atom, preprocess=False)
 
-        # Get the grid for just that atom on its own
-        atom_grid = single_moments.reconstruct(query, zero_outside_domain=True)
+            # Get the grid for just that atom on its own
+            atom_grid = single_moments.reconstruct(query, zero_outside_domain=True)
 
-        # Subract off the single atom grid
-        current_grid -= atom_grid
+            # Subtract off the single atom grid
+            current_grid -= atom_grid
 
         # Now remove the signal of the atom from the grid
-        remove_idxs = np.argwhere(atom_grid >= (0.5 * atom_grid.max()))
-        current_grid[remove_idxs] = 0.
+        # remove_idxs = np.argwhere(atom_grid >= (0.5 * atom_grid.max()))
+        # current_grid[remove_idxs] = 0.
 
-    return np.array(atom_positions)
+        mask = (query.points[:, 0] > atom_pos[0] - exclude) & \
+               (query.points[:, 0] < atom_pos[0] + exclude) & \
+               (query.points[:, 1] > atom_pos[1] - exclude) & \
+               (query.points[:, 1] < atom_pos[1] + exclude) & \
+               (query.points[:, 2] > atom_pos[2] - exclude) & \
+               (query.points[:, 2] < atom_pos[2] + exclude)
+
+        current_grid[mask] = 0.
+        current_grid[outside] = 0.
+
+    return np.array(found_positions)
+
+
+def get_buffer_indices(query: base_moments.ReconstructionQuery, grid_values) -> List[int]:
+    # Get all grid values that are currently 0, these should stay zero
+    outside = list(np.argwhere(grid_values == 0.).reshape(-1))
+
+    # Now, get those that are near the bounds of the sphere i.e. 1.0
+    cutoff_sq = 0.85**2
+    for idx, pt in enumerate(query.points):
+        if np.sum(pt**2) > cutoff_sq:
+            outside.append(idx)
+
+    return outside
 
 
 def find_atoms(
@@ -268,12 +385,12 @@ class Decoder:
         )
 
     def create_initial_atoms(self, moments: base_moments.Moments, num: int) -> atomic.AtomsCollection:
-        atoms = find_atoms(num, moments, self._descriptor, self._query)
+        # atoms = find_atoms(num, moments, self._descriptor, self._query)
         # atoms.numbers[:] = random.choices(self._descriptor.species, k=num)
-        return atoms
+        # return atoms
 
-        # peaks = find_peaks(num, moments, self._descriptor, self._query)
-        # return atomic.AtomsCollection(num, peaks, random.choices(self._descriptor.species, k=num))
+        peaks = find_peaks(num, moments, self._descriptor, self._query)
+        return atomic.AtomsCollection(num, peaks, random.choices(self._descriptor.species, k=num))
 
 
 def merge_atoms(system: atomic.AtomsCollection, dist_threshold=0.2):

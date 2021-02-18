@@ -25,7 +25,7 @@ setup(
     ],
     keywords='machine learning, atomic descriptor, moment invariants',
     install_requires=[
-        'dscribe', 'matplotlib', 'numba', 'numpy', 'rmsd', 'scipy', 'sympy', 'scikit-learn', 'scikit-image'
+        'dscribe', 'matplotlib', 'miniball', 'numba', 'numpy', 'rmsd', 'scipy', 'sympy', 'scikit-learn', 'scikit-image'
     ],
     extras_require={
         'dev': [

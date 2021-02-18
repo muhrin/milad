@@ -13,7 +13,8 @@ from . import base_moments
 from . import functions
 from . import geometric
 
-__all__ = 'MomentInvariant', 'read_invariants', 'RES_DIR'
+__all__ = ('MomentInvariant', 'read_invariants', 'RES_DIR', 'COMPLEX_INVARIANTS', 'GEOMETRIC_INVARIANTS', \
+          'MomentInvariants')
 
 # The resources directory
 RES_DIR = pathlib.Path(__file__).parent / 'res'

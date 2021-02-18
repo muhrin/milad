@@ -2,6 +2,7 @@
 from typing import Union, Any, Callable, Dict, Tuple, List
 
 import ase.neighborlist
+import miniball
 import numpy as np
 
 import dscribe.utils.geometry
@@ -360,15 +361,18 @@ def milad2ase(atoms: atomic.AtomsCollection) -> ase.Atoms:
     return ase.Atoms(positions=atoms.positions, numbers=atoms.numbers)
 
 
-def prepare_molecule(*molecules: ase.Atoms) -> float:
+def prepare_molecule(*molecules: ase.Atoms, offset=0.) -> float:
     """This will bring the centroid of each molecule to be coincident with the origin and return
     the maximum radius found from any of the molecules"""
     max_radius_sq = 0.
+    offset_vector = offset * np.array([1., 0., 0.])
     for molecule in molecules:
-        centroid = molecule.positions.sum(axis=0) / len(molecule)
-        # centroid = molecule.get_center_of_mass()
+        centre, _radius = miniball.get_bounding_ball(molecule.positions)
+        centroid = centre + offset_vector
+        # Set the new positions
         molecule.set_positions(molecule.positions - centroid)
         new_positions = molecule.positions
+        # Get the maximum radius squared
         max_dist_sq = max(np.dot(pos, pos) for pos in new_positions)
         max_radius_sq = max(max_radius_sq, max_dist_sq)
 

@@ -13,7 +13,6 @@ from typing import Union, Tuple, Iterator, Dict, Optional
 import numpy as np
 import scipy
 import scipy.special
-from sympy.core import symbol
 
 from . import base_moments
 from . import functions
@@ -155,7 +154,7 @@ class ZernikeMoments(base_moments.Moments):
         """
         self._max_n = n_max
         self._dtype = dtype
-        self._moments = np.empty((n_max + 1, n_max + 1, 2 * (n_max + 1) + 1), dtype=dtype)
+        self._moments = np.empty((n_max + 1, n_max + 1, 2 * n_max + 1), dtype=dtype)
         # Fill it with NaN so that it's easy to spot any values that haven't been set but should be
         self._moments.fill(np.nan)
 
@@ -180,22 +179,15 @@ class ZernikeMoments(base_moments.Moments):
     def get_mask(self, fill=None) -> 'ZernikeMoments':
         moms = ZernikeMoments(self._max_n, dtype=object)
         if fill is None:
-            moms.fill_none()
+            moms.fill(None)
         else:
             np.copyto(moms._moments, self._moments)
         return moms
 
     def fill(self, value):
         """Set all moments to the given value"""
-        self._moments.fill(value)
-
-    def fill_none(self):
-        """Set all moments to None"""
-        self._moments.fill(None)
-
-    def fill_zero(self):
-        """Set all moments to 0 + 0j"""
-        self._moments.fill(0 + 0j)
+        for idx in self.iter_indices(redundant=False):
+            self[idx] = value
 
     def randomise(self, num_range=(-5, 5), indices=(None, None, None)):
         for n, l, m in iter_indices_extended(indices, self._max_n, redundant=False):
@@ -227,8 +219,8 @@ class ZernikeMoments(base_moments.Moments):
         """Set an individual moment.  This will automatically set the corresponding -m value"""
         if value is None:
             # Special case, usually happens if this is a mask
-            self._moments[n, l, l + m] = None
-            self._moments[n, l, l - m] = None
+            self._moments[n, l, n + m] = None
+            self._moments[n, l, n - m] = None
         else:
             if m == 0:
                 try:
@@ -242,10 +234,10 @@ class ZernikeMoments(base_moments.Moments):
                     pass
             elif set_minus_m:
                 # Set the -m counterpart directly
-                self._moments[n, l, l - m] = (-1)**m * value.conjugate()
+                self._moments[n, l, n - m] = (-1)**m * value.conjugate()
 
             # This will be reached for all m values
-            self._moments[n, l, l + m] = value
+            self._moments[n, l, n + m] = value
 
     def iter(self, redundant=True):
         """Iterate tuples containing the moment indices and value"""
@@ -269,7 +261,7 @@ class ZernikeMoments(base_moments.Moments):
             raise ValueError(f'n - l must be even, got {n} {l}')
 
         try:
-            return self._moments[n, l, l + m]
+            return self._moments[n, l, n + m]
         except (KeyError, IndexError):
             assert_valid(n, l, m)
             if n > self._max_n:
@@ -293,7 +285,10 @@ class ZernikeMoments(base_moments.Moments):
         order = order if order is not None else query.max_order
         moments = query.moments
 
-        values = np.zeros(query.points.shape[0], dtype=self.dtype)
+        if len(query.points.shape) > 1:
+            values = np.zeros(query.points.shape[0], dtype=self.dtype)
+        else:
+            values = 0.
 
         if zero_outside_domain:
             # Use only reconstruction moments from within the domain
@@ -322,6 +317,8 @@ class ZernikeMoments(base_moments.Moments):
         self, viewer='plotly_widget', query: ZernikeReconstructionQuery = None, max_order=None, num_points=31
     ):
         if viewer.startswith('plotly_widget'):
+            volume_plot = viewer.endswith('volume')
+
             # Only do imports here so some of these tools aren't needed for the rest of milad
             import ipywidgets
             import plotly.graph_objects as go
@@ -335,10 +332,10 @@ class ZernikeMoments(base_moments.Moments):
 
             grid_values = self.reconstruct(query, max_order, zero_outside_domain=True)
 
-            default_isomin = (grid_values.max() - grid_values.min()) * 0.7 + grid_values.min()
+            default_isomin = (grid_values.max() - grid_values.min()) * 0.6 + grid_values.min()
             default_isomax = grid_values.max()
 
-            if viewer.endswith('volume'):
+            if volume_plot:
                 data = plotlytools.volume(
                     grid_points,
                     grid_values,
@@ -358,12 +355,14 @@ class ZernikeMoments(base_moments.Moments):
             fig = go.Figure(data=[data])
             widget = go.FigureWidget(fig)
 
+            default_opacity = 0.05 if volume_plot else 0.4
+
             @ipywidgets.interact(
                 opacity=(0., 1., 0.01),
                 isomin=(grid_values.min(), grid_values.max(), 0.5),
                 isomax=(grid_values.min(), grid_values.max(), 0.5)
             )
-            def update(opacity=0.1, isomin=default_isomin, isomax=default_isomax):
+            def update(opacity=default_opacity, isomin=default_isomin, isomax=default_isomax):
                 with widget.batch_update():
                     isosurface = widget.data[0]
                     isosurface.opacity = opacity
@@ -413,14 +412,13 @@ class ZernikeMomentsBuilder(functions.Function):
     def __init__(self, n_max: int, mask: Optional[ZernikeMoments] = None):
         super().__init__()
         self._n_max = n_max
-        if mask is None:
-            self._mask = ZernikeMoments(n_max, dtype=object)
-            self._mask.fill_none()  # All values with None are not masked
-        else:
-            self._mask = mask
+        self._mask = mask
+        self._indices = None
 
     def apply_mask(self, moms: ZernikeMoments):
         """Given a set of moments this will set any values present from the mask"""
+        if self._mask is None:
+            raise RuntimeError('Cannot apply mask as, mask is None')
         for zernike_index, value in self._mask.iter(redundant=False):
             if value is not None:
                 moms[zernike_index] = value
@@ -438,8 +436,9 @@ class ZernikeMomentsBuilder(functions.Function):
 
         # Create the moments and optionally a Jacobian
         moms = ZernikeMoments(self._n_max)
-        moms.fill_zero()
-        self.apply_mask(moms)
+        moms.fill(0.)
+        if self._mask is not None:
+            self.apply_mask(moms)
         jac = np.zeros((len(moms), len(indices_list)), dtype=complex) if get_jacobian else None
 
         # Let's create the complex moments
@@ -461,12 +460,16 @@ class ZernikeMomentsBuilder(functions.Function):
 
     def iter_indices(self):
         # Skip all the ones that are masked
-        for zidx, num_type in self._iter_indices(self._n_max):
-            if self._mask[zidx] is None:
-                yield zidx, num_type
+        if self._indices is None:
+            # Lazily create the indices
+            self._indices = tuple(self._iter_indices(self._n_max))
+
+        for zernike_index, num_type in self._indices:
+            if self._mask is None or self._mask[zernike_index] is None:
+                yield zernike_index, num_type
 
     @classmethod
-    def _iter_indices(self, n_max: int):
+    def _iter_indices(cls, n_max: int):
         # First deal with m = 0 as these are all real
         for n in inclusive(0, n_max):
             for l in inclusive(n):
@@ -478,7 +481,7 @@ class ZernikeMomentsBuilder(functions.Function):
         # Now deal with m > 0, these have both a real and imaginary part
         for num_type in (1., 1j):
             for n in inclusive(n_max):
-                for l in inclusive(0, n):
+                for l in inclusive(n):
                     if not even(n - l):
                         continue
 
@@ -631,37 +634,6 @@ def get_jacobian_wrt_geom_moments(max_order: int, redundant=True):
             jacobian[minus_m_idx, :] = minus_m
 
     return jacobian
-
-
-class SymbolicInvariants:
-
-    def __init__(self, n_max):
-        self._n_max = n_max
-        self._c = symbol.symbols(f'c:{ZernikeMoments.num_moments(n_max)}')
-
-    def symbols(self):
-        return self._c
-
-    def __getitem__(self, item):
-        target_n, target_l, target_m = item
-
-        count = 0
-        for n in inclusive(self._n_max):
-            for l in inclusive(n):
-                if not even(n - l):
-                    continue
-                for m in inclusive(l):
-                    if n == target_n and l == target_l and m == abs(target_m):
-                        value = self._c[count]
-                        if target_m < 0:
-                            value = (-1)**m * value.conjugate()
-                        return value
-                    count += 1
-
-        raise RuntimeError("Shouldn't get here")
-
-    def moment(self, n: int, l: int, m: int):
-        return self.__getitem__((n, l, m))
 
 
 @functools.lru_cache(maxsize=None)
@@ -864,12 +836,16 @@ def linear_index(index: base_moments.Index, redundant=True) -> int:
         if triple == index:
             return linear
 
+    # pylint: disable=inconsistent-return-statements
     assert False, 'Should never reach here'
 
 
 def _domain_check(positions: np.array):
     """Check that a given set of positions are within the domain for which Zernike moments are
     defined i.e. that |r| <= 1."""
+    if positions.dtype == np.object:
+        return
+
     for idx, pos in enumerate(positions):
         if np.dot(pos, pos) > 1.:
             _LOGGER.warning(

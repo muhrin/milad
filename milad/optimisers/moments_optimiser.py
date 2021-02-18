@@ -7,6 +7,7 @@ from milad import base_moments
 from milad import invariants as invs
 from milad import utils
 from . import least_squares
+from . import root
 
 __all__ = ('MomentsOptimiser',)
 
@@ -18,6 +19,7 @@ class MomentsOptimiser:
         self._least_squares_optimiser = least_squares.LeastSquaresOptimiser()
         # Use a less accurate tolerance while finding one by one and then crank up
         self._mask_invariant_moments = True
+        self._root_finger = root.RootFinder()
 
     def optimise(# pylint: disable=too-many-locals
         self,
@@ -107,6 +109,54 @@ class MomentsOptimiser:
             print(f'Found solution with RMSD: {result.rmsd}')
 
         return result
+
+    def optimise2(
+        self,
+        invariants_fn: invs.MomentInvariants,
+        target: np.ndarray,
+        initial: base_moments.Moments,
+        jacobian='native',
+        bounds=(-np.inf, np.inf),
+        target_rmsd=1e-5,
+        max_func_evals=5000,
+        cost_tol=1e-5,
+        grad_tol=1e-8,
+        max_retries=3,
+        verbose=False
+    ):
+        # Copy the start point
+        current_moments = copy.deepcopy(initial)
+
+        mask = initial.get_mask(fill='self')
+        for order in range(0, 3):
+            mask[order, None, None] = None
+
+        indices = invariants_fn.find_up_to(2)
+        partial_invariants = invariants_fn[indices]
+        partial_target = target[list(indices)]
+
+        res = self._least_squares_optimiser.optimise_target(
+            func=partial_invariants, initial=current_moments, target=partial_target, mask=mask, verbose=verbose
+        )
+
+        mask = res.value.get_mask()
+        for index, value in res.value.iter():
+            if index[0] > 2:
+                break
+            mask[index] = value
+
+        res_indices = tuple(set(range(len(target))) - set(indices))
+        partial_invariants = invariants_fn[res_indices]
+        partial_target = target[list(res_indices)]
+
+        self._root_finger.optimise_target(
+            partial_invariants,
+            initial=res.value,
+            # initial=initial,
+            target=partial_target,
+            mask=mask,
+            verbose=verbose,
+        )
 
     @staticmethod
     def _find_invariant_moments(invariants_fn: invs.MomentInvariants, invariants: np.ndarray) -> dict:

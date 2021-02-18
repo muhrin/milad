@@ -15,7 +15,7 @@ from . import least_squares
 __all__ = ('StructureOptimiser', 'StructureOptimisationResult')
 
 StructureOptimisationResult = collections.namedtuple(
-    'OptimiserResult', 'success message value rmsd n_func_eval n_jac_eval traj'
+    'StructureOptimisationResult', 'success message value rmsd n_func_eval n_jac_eval traj'
 )
 
 

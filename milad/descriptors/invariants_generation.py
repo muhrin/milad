@@ -14,6 +14,10 @@ def composite_complex_moment_form(moments: sympy.Indexed, n: int, l: int, l_prim
 
     c_n(l, l')_j^k
     """
+    if not l >= 0:
+        raise ValueError(f'l must be greater than 0, got {l}')
+    if not l_prime >= 0:
+        raise ValueError(f'l_prime must be greater than 0, got {l_prime}')
     if not utils.even(j):
         raise ValueError('j must be even, got {}'.format(j))
     if not utils.even(n - l):
@@ -22,7 +26,7 @@ def composite_complex_moment_form(moments: sympy.Indexed, n: int, l: int, l_prim
         raise ValueError(f'n - l_prime must be even got {n} - {l_prime}')
     eqn = None
 
-    for m in utils.inclusive(max(-l, k - l_prime), min(l, k + l_prime)):
+    for m in utils.inclusive(max(-l, k - l_prime), min(l, k + l_prime), 1):
         term = CG(l, m, l_prime, k - m, j, k).doit() * moments[n, l, m] * moments[n, l_prime, k - m]
         eqn = term if eqn is None else eqn + term
 
@@ -59,7 +63,7 @@ def moment_form_moment_form(
     """
     eqn = None
 
-    for k in utils.inclusive(-j, j):
+    for k in utils.inclusive(-j, j, 1):
         term = (-1) ** (j - k) * \
                composite_complex_moment_form(moments, n, l, l_prime, j, k) * \
                composite_complex_moment_form(moments, n_prime, l_prime_prime, l_prime_prime_prime, j, -k)
@@ -115,15 +119,15 @@ def invariants_moment_form_complex_moment(moments: sympy.Indexed, max_n: int):
     return invariants
 
 
-def invariants_two_moment_forms(moments: sympy.Indexed, max_n: int):
+def invariants_two_moment_forms(moments: sympy.Indexed, max_n: int, verbose=False):
     """Get invariants from two complex moment forms i.e.:
 
 
     c_n(l, l')_j c_{n'}(l'', l''')_j
     """
     invariants = []
-    for n in utils.inclusive(0, max_n, 1):
-        for n_prime in utils.inclusive(0, n):
+    for n in utils.inclusive(1, max_n, 1):
+        for n_prime in utils.inclusive(1, n, 1):
             for j in utils.inclusive(0, n_prime, 2):
                 for l in utils.inclusive(n, 1, -2):
                     for l_prime in utils.inclusive(l, max(l - j, 1), -2):
@@ -139,5 +143,7 @@ def invariants_two_moment_forms(moments: sympy.Indexed, max_n: int):
                                     l_prime_prime_prime=l_prime_prime_prime,
                                     j=j
                                 )
+                                if verbose:
+                                    print(f'{len(invariants)} {n} {l} {l_prime} ')
                                 invariants.append(invariant)
     return invariants
