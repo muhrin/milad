@@ -1,17 +1,19 @@
 # -*- coding: utf-8 -*-
 """Module for calculating geometric moments"""
+import collections
 import functools
 import numbers
 from typing import Union, Tuple, Optional, Iterator
 
 import numpy as np
+from numpy import ma
 import sympy
 
 from . import base_moments
 from . import functions
 from . import utils
 
-__all__ = 'gaussian_geometric_moments', 'from_gaussians', 'from_deltas'
+__all__ = 'GeometricMoments', 'GeometricMomentsCalculator'
 
 # pylint: disable=invalid-name
 
@@ -20,22 +22,39 @@ X = 0
 Y = 1
 Z = 2
 
+GeometricIndex = collections.namedtuple('GeometricIndex', 'p q r')
+
 
 class GeometricMoments(base_moments.Moments):
 
     @staticmethod
     def num_moments(max_order: int) -> int:
         """Get the total number of moments up to the given maximum order"""
-        return (max_order + 1)**3
+        return len(tuple(iter_indices(max_order)))
 
     @classmethod
-    def from_vector(cls, n_max: int, vec: np.array) -> 'GeometricMoments':
-        return GeometricMoments(vec.reshape(n_max + 1, n_max + 1, n_max + 1).copy())
+    def from_vector(cls, vec: np.array, max_order: int) -> 'GeometricMoments':
+        moms_mtx = np.zeros((max_order + 1, max_order + 1, max_order + 1))
+        indices = np.array(list(iter_indices(max_order))).T
+        linear = np.ravel_multi_index(indices, moms_mtx.shape)
+
+        # Put the vector values into the moments matrix
+        np.put(moms_mtx, linear, vec)
+
+        return GeometricMoments(moms_mtx)
 
     def __init__(self, moments: np.array):
         # Just trying this for now, let's see if it's possible to not force self._moments to be a numpy array
-        # self._moments = np.array(moments, dtype=moments.dtype)
-        self._moments = moments
+        max_order = moments.shape[0] - 1
+        # Mask everything and then unmask the ones we want
+        mask = np.ones(moments.shape, dtype=np.int)
+        idx_array = np.empty(moments.shape, dtype=np.int)
+        for i, indices in enumerate(iter_indices(max_order)):
+            mask[indices] = 0
+            idx_array[indices] = i
+
+        self._moments = ma.array(moments, mask=mask)
+        self._idx_array = ma.array(idx_array, mask=mask)
 
     def __getitem__(self, index: base_moments.Index):
         """Get the moment of the given index"""
@@ -58,9 +77,7 @@ class GeometricMoments(base_moments.Moments):
 
     @property
     def vector(self) -> np.array:
-        view = self._moments.view()
-        view.shape = np.prod(self._moments.shape)
-        return view
+        return self._moments.compressed()
 
     @property
     def moments(self) -> np.array:
@@ -73,15 +90,11 @@ class GeometricMoments(base_moments.Moments):
         return self._moments[p, q, r]
 
     def linear_index(self, index: base_moments.Index) -> int:
-        size = self.max_order + 1
-        return size * size * index[0] + size * index[1] + index[2]
+        return self._idx_array[index]
 
     def iter_indices(self) -> Iterator[base_moments.Index]:
         """Iterate through the valid indices of these moments"""
-        for p in utils.inclusive(self.max_order):
-            for q in utils.inclusive(self.max_order):
-                for r in utils.inclusive(self.max_order):
-                    yield base_moments.Index(p, q, r)
+        yield from iter_indices(self.max_order)
 
     def value_at(self, x: np.array, max_order: int = None):
         """Reconstruct the value at x from the moments
@@ -107,10 +120,24 @@ class GeometricMoments(base_moments.Moments):
             np.copyto(geom_moms, self._moments)
         return GeometricMoments(geom_moms)
 
+    def get_builder(self, mask=None) -> Optional[functions.Function]:
+        return functions.FromVectorBuilder(GeometricMoments, kwargs=dict(max_order=self.max_order))
+
 
 def linear_index(max_order: int, index: base_moments.Index) -> int:
-    size = max_order + 1
-    return size * size * index[0] + size * index[1] + index[2]
+    if np.sum(index) > max_order:
+        raise ValueError(f'The index passed ({index}) is of higher than the max order ({max_order})')
+
+    for i, indices in enumerate(iter_indices(max_order)):
+        if indices == index:
+            return i
+
+
+def iter_indices(max_order: int) -> Iterator[base_moments.Index]:
+    for i in utils.inclusive(max_order):
+        for j in utils.inclusive(max_order - i):
+            for k in utils.inclusive(max_order - i - j):
+                yield GeometricIndex(i, j, k)
 
 
 class GeometricMomentsCalculator(base_moments.MomentsCalculator):
@@ -125,17 +152,14 @@ class GeometricMomentsCalculator(base_moments.MomentsCalculator):
     def output_length(self, _in_state: functions.State) -> int:
         return GeometricMoments.num_moments(self._max_order)
 
-    def evaluate(self, features: functions.State, get_jacobian=False) -> GeometricMoments:
-        out_jacobian = None
-        if get_jacobian:
-            out_jacobian = np.empty((self.output_length(features), len(features)), dtype=features.vector.dtype)
-
-        moments = GeometricMoments(geometric_moments(features, self._max_order, out_jacobian))
+    def evaluate(self, features: functions.State, get_jacobian=False) -> \
+            Union[GeometricMoments, Tuple[GeometricMoments, np.ndarray]]:
+        result = geometric_moments(features, self._max_order, get_jacobian, dtype=features.vector.dtype)
 
         if get_jacobian:
-            return moments, out_jacobian
+            return GeometricMoments(result[0]), result[1]
 
-        return moments
+        return GeometricMoments(result)
 
     def create_random(self, max_order: int = None):
         max_val = 5.
@@ -144,117 +168,110 @@ class GeometricMomentsCalculator(base_moments.MomentsCalculator):
 
 
 @functools.singledispatch
-def geometric_moments(state: functions.State, max_order: int, jacobian: Optional[np.array]) -> np.ndarray:
+def geometric_moments(state: functions.State, max_order: int, get_jacobian: bool, dtype) -> np.ndarray:
     raise TypeError(f"Don't know how to calculate geometric moments for type '{type(state).__name__}'")
 
 
 @geometric_moments.register
-def _(d: functions.WeightedDelta, max_order: int, jacobian: Optional[np.array]) -> np.ndarray:
-    dtype = d.vector.dtype
+def _(delta: functions.WeightedDelta, max_order: int, get_jacobian: bool, dtype):
     order = max_order
 
     moms = np.empty((order + 1, 3), dtype=dtype)
     moms[0] = 1  # 0^th power always 1.
-    moms[1] = d.pos  # 1^st power always the position itself
+    moms[1] = delta.pos  # 1^st power always the position itself
 
     # Calculate each x, y, z raise to powers up to the upper bound
     for power in utils.inclusive(2, order, 1):
-        moms[power] = np.multiply(moms[power - 1, :], d.pos)
+        moms[power] = np.multiply(moms[power - 1, :], delta.pos)
 
-    moments = d.weight * utils.outer_product(moms[:, 0], moms[:, 1], moms[:, 2])
+    moments = delta.weight * utils.outer_product(moms[:, 0], moms[:, 1], moms[:, 2])
 
-    if jacobian is not None:
-        # Easier if we view the jacobian in moment-matrix form
-        jacobian_mtx = jacobian.view()
-        jacobian_mtx.shape = (order + 1, order + 1, order + 1, 4)
+    if get_jacobian:
+        indices = tuple(iter_indices(max_order))
+        jacobian = np.zeros((len(indices), delta.LENGTH), dtype=dtype)
 
-        # Here we perform differentiation on the coordinate parts e.g.:
-        # d/dx (x^p y^q z^r) = p x^(p - 1) y^q z^r
-        # But we have all these powers already stored in the moments matrix so reuse them
-        jacobian_mtx[0, :, :, 0] = 0.
-        for p in utils.inclusive(1, order, 1):
-            jacobian_mtx[p, :, :, d.X] = p * moments[p - 1, :, :]
+        for i, (p, q, r) in enumerate(indices):
+            jacobian[i, delta.X] = p * moments[p - 1, q, r]
+            jacobian[i, delta.Y] = q * moments[p, q - 1, r]
+            jacobian[i, delta.Z] = r * moments[p, q, r - 1]
+            jacobian[i, delta.WEIGHT] = moments[p, q, r] / delta.weight
 
-        jacobian_mtx[:, 0, :, 1] = 0.
-        for q in utils.inclusive(1, order, 1):
-            jacobian_mtx[:, q, :, d.Y] = q * moments[:, q - 1, :]
-
-        jacobian_mtx[:, :, 0, 2] = 0.
-        for r in utils.inclusive(1, order, 1):
-            jacobian_mtx[:, :, r, d.Z] = r * moments[:, :, r - 1]
-
-        # The weigh part.  Because w appears as a prefactor to all of these, to do the
-        # differentiation we just need to reduce the exponent of w by one which can be achieved
-        # by simply diving by w
-        jacobian_mtx[:, :, :, d.WEIGHT] = moments / d.weight
+        return moments, jacobian
 
     return moments
 
 
 @geometric_moments.register
-def _(g: functions.WeightedGaussian, max_order: int, jacobian: Optional[np.array]) -> np.ndarray:
+def _(gaussian: functions.WeightedGaussian, max_order: int, get_jacobian: bool, dtype):
     """Calculate the geometric moments for a 3D Gaussian"""
     O = max_order
-    calculate_jacobian = jacobian is not None
 
-    partial_moments = np.empty((O + 1, 3))
+    partial_moments = np.empty((O + 1, 3), dtype=dtype)
     partial_moments[0, :] = 1.0  # 0^th order, mass is multiplied in at end
 
     for order in utils.inclusive(0, O):
-        partial_moments[order, :] = np.array(gaussian_moment[order](g.pos, g.sigma))
+        partial_moments[order, :] = np.array(gaussian_moment[order](gaussian.pos, gaussian.sigma))
 
     moments = utils.outer_product(partial_moments[:, 0], partial_moments[:, 1], partial_moments[:, 2])
 
-    if calculate_jacobian:
+    if get_jacobian:
         dg = np.empty((
             O + 1,  # Order
             2,  # d/dmu, d/dsigma
             3,  # x, y, z
         ))
 
-        dg[order, :, :] = np.array(gaussian_moment_derivatives[order](g.pos, g.sigma))
+        for order in utils.inclusive(max_order):
+            dg[order, :, :] = np.array(gaussian_moment_derivatives[order](gaussian.pos, gaussian.sigma))
 
-        # Put it in matrix form
-        jacobian_mtx = jacobian.view()
-        jacobian_mtx.shape = (O + 1, O + 1, O + 1, len(g))
+        # Let's get the indices and create a Jacobian matrix
+        indices = tuple(iter_indices(max_order))
+        jacobian = np.zeros((len(indices), gaussian.LENGTH), dtype=dtype)
 
-        for p in utils.inclusive(O):
-            for q in utils.inclusive(O):
-                for r in utils.inclusive(O):
-                    # Positions
-                    jacobian_mtx[p, q, r, g.X] = g.weight * dg[p, 0, 0] * partial_moments[q, 1] * partial_moments[r, 2]
-                    jacobian_mtx[p, q, r, g.Y] = g.weight * dg[q, 0, 1] * partial_moments[p, 0] * partial_moments[r, 2]
-                    jacobian_mtx[p, q, r, g.Z] = g.weight * dg[r, 0, 2] * partial_moments[p, 0] * partial_moments[q, 1]
+        for i, (p, q, r) in enumerate(indices):
+            # Positions
+            jacobian[i, gaussian.X] = gaussian.weight * dg[p, 0, 0] * partial_moments[q, 1] * partial_moments[r, 2]
+            jacobian[i, gaussian.Y] = gaussian.weight * dg[q, 0, 1] * partial_moments[p, 0] * partial_moments[r, 2]
+            jacobian[i, gaussian.Z] = gaussian.weight * dg[r, 0, 2] * partial_moments[p, 0] * partial_moments[q, 1]
 
-                    # Sigma
-                    jacobian_mtx[p, q, r, g.SIGMA] = g.weight * (
-                            dg[p, 1, 0] * partial_moments[q, 1] * partial_moments[r, 2] + \
-                            partial_moments[p, 0] * dg[q, 1, 1] * partial_moments[r, 2] + \
-                            partial_moments[p, 0] * partial_moments[q, 1] * dg[r, 1, 2]
-                    )
+            # Sigma
+            jacobian[i, gaussian.SIGMA] = gaussian.weight * (
+                    dg[p, 1, 0] * partial_moments[q, 1] * partial_moments[r, 2] + \
+                    partial_moments[p, 0] * dg[q, 1, 1] * partial_moments[r, 2] + \
+                    partial_moments[p, 0] * partial_moments[q, 1] * dg[r, 1, 2]
+            )
 
         # Weights
-        jacobian_mtx[:, :, :, g.WEIGHT] = moments[:, :, :]
+        jacobian[:, gaussian.WEIGHT] = moments[:, :, :]
 
-    return g.weight * moments
+        return gaussian.weight * moments, jacobian
+
+    return gaussian.weight * moments
 
 
 @geometric_moments.register
-def _(environment: functions.Features, max_order: int, jacobian: Optional[np.array]):
+def _(environment: functions.Features, max_order: int, get_jacobian, dtype):
     """Calculate the geometric moments for a set of features"""
     O = max_order
     idx = 0
-    partial_jacobian = None
 
-    moments = np.empty((O + 1, O + 1, O + 1), dtype=environment.vector.dtype)
+    moments = np.empty((O + 1, O + 1, O + 1), dtype=dtype)
     moments.fill(0.)
 
+    jacobians = []
     for feature in environment.features:
-        if jacobian is not None:
-            partial_jacobian = jacobian[:, idx:idx + len(feature)]
-        moments += geometric_moments(feature, max_order, partial_jacobian)
+        if get_jacobian:
+            moms, jac = geometric_moments(feature, max_order, get_jacobian, dtype)
+            jacobians.append(jac)
+        else:
+            moms = geometric_moments(feature, max_order, get_jacobian, dtype)
+
+        moments += moms
 
         idx += len(feature)
+
+    if get_jacobian:
+        return moments, np.concatenate(jacobians, axis=1)
 
     return moments
 

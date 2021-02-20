@@ -22,6 +22,10 @@ class State(metaclass=abc.ABCMeta):
         """Get the state vector as a numpy array"""
 
     @property
+    def size(self):
+        return self.array.size
+
+    @property
     def array(self) -> np.array:
         """Get the state as a numpy array"""
         return self.vector
@@ -315,6 +319,35 @@ class Function(metaclass=abc.ABCMeta):
                 f"expected '{allowed_types}', "
                 f"got '{value.__class__.__name__}'"
             )
+
+
+class FromVectorBuilder(Function):
+    """A default builder that can be used for state types that have a from_vector class method"""
+
+    class Inverse(Function):
+
+        def evaluate(self, state, get_jacobian=False):
+            out = state.vector
+            if get_jacobian:
+                return out, np.eye(len(out))
+
+            return out
+
+    def __init__(self, state_type: Type, kwargs=None):
+        super().__init__()
+        self._state_type = state_type
+        self._kwargs = kwargs or {}
+
+    def evaluate(self, state_vec: np.ndarray, get_jacobian=False):
+        out = self._state_type.from_vector(state_vec, **self._kwargs)
+        if get_jacobian:
+            return out, np.eye(len(state_vec))
+
+        return out
+
+    @property
+    def inverse(self) -> Optional['Function']:
+        return FromVectorBuilder.Inverse()
 
 
 class Identity(Function):

@@ -43,6 +43,7 @@ class MomentInvariant:
         self._indarray = None  # The index array
         self._norm_power = None
         self._derivatives = None  # A cache for the derivatives
+        self._variables = None
 
     def __str__(self):
         sum_parts = []
@@ -69,6 +70,10 @@ class MomentInvariant:
 
     @property
     def max_order(self) -> int:
+        if self._max_order == -1 and self._terms:
+            term = self._terms[0]
+            for indices in term[1]:
+                self._max_order = max(self._max_order, np.sum(indices))
         return self._max_order
 
     @property
@@ -84,11 +89,14 @@ class MomentInvariant:
 
         as these are the all the moments (or variables) involved in calculating this invariant
         """
-        variables = set()
-        for _prefactor, product in self._terms:
-            for part in product:
-                variables.add(part)
-        return variables
+        if self._variables is None:
+            variables = set()
+            for _prefactor, product in self._terms:
+                for part in product:
+                    variables.add(part)
+            self._variables = variables
+
+        return self._variables
 
     def insert(self, prefactor, indices: Sequence[Tuple]):
         """
@@ -103,8 +111,6 @@ class MomentInvariant:
         if not all(len(entry) == 3 for entry in indices):
             raise ValueError('There have to be three indices per entry, got: {}'.format(indices))
         self._terms.append((prefactor, tuple(indices)))
-        if indices:
-            self._max_order = max(self._max_order, np.max(indices))
 
     def build(self):
         if self._terms:

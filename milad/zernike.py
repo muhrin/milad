@@ -531,12 +531,11 @@ class ZernikeMomentCalculator(base_moments.MomentsCalculator):
                  get_jacobian=False) -> Union[ZernikeMoments, Tuple[ZernikeMoments, np.ndarray]]:
         if isinstance(state, geometric.GeometricMoments):
             geom_moments = state
+            geom_jac = np.eye(state.size)
         else:
             geom_moments = self._geometric_moments_calculator(state, get_jacobian)
-
-        geom_jac = None
-        if get_jacobian:
-            geom_moments, geom_jac = geom_moments
+            if get_jacobian:
+                geom_moments, geom_jac = geom_moments
 
         moments = ZernikeMoments(self._max_order, dtype=object if geom_moments.dtype == np.object else complex)
 

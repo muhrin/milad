@@ -98,25 +98,21 @@ def test_zernike_properties():
 
 
 def test_zernike_analytic():
-    MAX_ORDER = 6
-
+    max_order = 6
     geom = sympy.IndexedBase('m', real=True)  # Geometric moments
-
-    jacobian = zernike.get_jacobian_wrt_geom_moments(MAX_ORDER)
+    jacobian = zernike.get_jacobian_wrt_geom_moments(max_order)
 
     # Let's build the Jacobian symbolically
-    for _idx, (n, l, m) in enumerate(zernike.iter_indices(MAX_ORDER, redundant=False)):
+    for _idx, (n, l, m) in enumerate(zernike.iter_indices(max_order, redundant=False)):
         eq = zernike.omega_nl_m(n, l, m, geom)
-        for p in range(MAX_ORDER):
-            for q in range(MAX_ORDER):
-                for r in range(MAX_ORDER):
-                    differentiated = eq.diff(geom[p, q, r])
+        for p, q, r in geometric.iter_indices(max_order):
+            differentiated = eq.diff(geom[p, q, r])
 
-                    zindex = zernike.linear_index((n, l, m))
-                    gindex = geometric.linear_index(MAX_ORDER, (p, q, r))
-                    jacobian_value = jacobian[zindex, gindex]
+            zindex = zernike.linear_index((n, l, m))
+            gindex = geometric.linear_index(max_order, (p, q, r))
+            jacobian_value = jacobian[zindex, gindex]
 
-                    assert complex(differentiated) == pytest.approx(jacobian_value), f'Omega{n},{l},{m} m{p},{q},{r}'
+            assert complex(differentiated) == pytest.approx(jacobian_value), f'Omega{n},{l},{m} m{p},{q},{r}'
 
 
 def test_zernike_indexing():
