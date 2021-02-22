@@ -116,17 +116,21 @@ def test_zernike_analytic():
 
 
 def test_zernike_indexing():
-    MAX_ORDER = 6
+    max_order = 6
 
     # Check that linear indexing works correctly
     idx = 0
-    for n in utils.inclusive(MAX_ORDER):
+    for n in utils.inclusive(max_order):
         for l in utils.inclusive(n):
             if not utils.even(n - l):
                 continue
 
-            for m in utils.inclusive(-l, l):
-                assert zernike.ZernikeMoments.linear_index((n, l, m)) == idx
+            for m in utils.inclusive(l):
+                assert zernike.linear_index((n, l, m)) == idx
+                idx += 1
+
+            for m in utils.inclusive(-l, -1, 1):
+                assert zernike.linear_index((n, l, m)) == idx
                 idx += 1
 
 
@@ -141,6 +145,9 @@ def test_zernike_from_vector():
 
     from_vector = zernike.ZernikeMoments.from_vector(max_order, as_vector)
     assert np.allclose(from_vector.vector, as_vector)
+
+    # Double check the round-trip
+    assert np.all(zernike.ZernikeMoments.from_vector(max_order, from_vector.vector).vector == from_vector.vector)
 
 
 def test_zernike_builder():

@@ -4,7 +4,7 @@ import collections
 import functools
 import operator
 import pathlib
-from typing import Sequence, Union, List, Set, Tuple, Dict, Iterator
+from typing import Sequence, Union, List, Set, Tuple, Dict, Iterator, Callable
 
 import numba
 import numpy as np
@@ -20,6 +20,7 @@ __all__ = ('MomentInvariant', 'read_invariants', 'RES_DIR', 'COMPLEX_INVARIANTS'
 RES_DIR = pathlib.Path(__file__).parent / 'res'
 GEOMETRIC_INVARIANTS = RES_DIR / 'rot3dinvs8mat.txt'
 COMPLEX_INVARIANTS = RES_DIR / 'cmfs7indep_0.txt'
+COMPLEX_INVARIANTS_ORIG = RES_DIR / 'cmfs7indep_0.orig.txt'
 
 
 def prod(iterable):
@@ -73,7 +74,7 @@ class MomentInvariant:
         if self._max_order == -1 and self._terms:
             term = self._terms[0]
             for indices in term[1]:
-                self._max_order = max(self._max_order, np.sum(indices))
+                self._max_order = max(self._max_order, np.max(indices))
         return self._max_order
 
     @property
@@ -97,6 +98,10 @@ class MomentInvariant:
             self._variables = variables
 
         return self._variables
+
+    @property
+    def terms_array(self) -> np.ndarray:
+        return self._indarray
 
     def insert(self, prefactor, indices: Sequence[Tuple]):
         """
@@ -295,6 +300,13 @@ class MomentInvariants(functions.Function):
             return MomentInvariants(*operator.itemgetter(*item)(self._invariants))
 
         return self._invariants[item]
+
+    def filter(self, func: Callable) -> 'MomentInvariants':
+        return MomentInvariants(*filter(func, self._invariants), are_real=self._real)
+
+    def find(self, func: Callable) -> Tuple[int]:
+        """Find the indices of invariants where fun(inv) returns True"""
+        return tuple(i for i, inv in enumerate(self._invariants) if func(inv))
 
     @property
     def max_order(self) -> int:

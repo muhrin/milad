@@ -11,6 +11,7 @@ import random
 from typing import Union, Tuple, Iterator, Dict, Optional
 
 import numpy as np
+from numpy import ma
 import scipy
 import scipy.special
 
@@ -115,18 +116,6 @@ class ZernikeMoments(base_moments.Moments):
         return moments
 
     @classmethod
-    def linear_index(cls, index: base_moments.Index, redundant=True) -> int:
-        """Given a triple of Zernike moment indices this will return the corresponding linearly ordered index"""
-        return linear_index(index, redundant=True)
-
-    @staticmethod
-    def triple_index(linear_index: int, redundant=True) -> Tuple:
-        """Get the triple index from the given lexicographic index"""
-        for entry, _ in zip(iter_indices(redundant=redundant), range(linear_index + 1)):
-            pass
-        return entry
-
-    @classmethod
     def from_vector(cls, n_max: int, vec: np.array, redundant=True) -> 'ZernikeMoments':
         moms = ZernikeMoments(n_max, dtype=vec.dtype)
 
@@ -154,9 +143,20 @@ class ZernikeMoments(base_moments.Moments):
         """
         self._max_n = n_max
         self._dtype = dtype
-        self._moments = np.empty((n_max + 1, n_max + 1, 2 * n_max + 1), dtype=dtype)
+
+        moments = np.empty((n_max + 1, n_max + 1, 2 * n_max + 1), dtype=dtype)
         # Fill it with NaN so that it's easy to spot any values that haven't been set but should be
-        self._moments.fill(np.nan)
+        moments.fill(np.nan)
+
+        # Mask everything and then unmask the ones we want
+        mask = np.ones(moments.shape, dtype=np.int)
+        idx_array = np.empty(moments.shape, dtype=np.int)
+        for i, indices in enumerate(iter_indices(n_max, redundant=True)):
+            mask[indices] = 0
+            idx_array[indices] = i
+
+        self._moments = ma.array(moments, mask=mask)
+        self._idx_array = ma.array(idx_array, mask=mask)
 
     def __eq__(self, other: 'ZernikeMoments'):
         """Test if another set of moments are equal to this one"""
@@ -170,6 +170,13 @@ class ZernikeMoments(base_moments.Moments):
         return self._dtype
 
     @property
+    def array(self) -> np.ndarray:
+        return self._moments
+
+    def to_matrix(self):
+        return self._moments
+
+    @property
     def max_order(self) -> int:
         return self._max_n
 
@@ -179,15 +186,10 @@ class ZernikeMoments(base_moments.Moments):
     def get_mask(self, fill=None) -> 'ZernikeMoments':
         moms = ZernikeMoments(self._max_n, dtype=object)
         if fill is None:
-            moms.fill(None)
+            moms.array.fill(None)
         else:
-            np.copyto(moms._moments, self._moments)
+            np.copyto(moms.array, self._moments)
         return moms
-
-    def fill(self, value):
-        """Set all moments to the given value"""
-        for idx in self.iter_indices(redundant=False):
-            self[idx] = value
 
     def randomise(self, num_range=(-5, 5), indices=(None, None, None)):
         for n, l, m in iter_indices_extended(indices, self._max_n, redundant=False):
@@ -200,27 +202,22 @@ class ZernikeMoments(base_moments.Moments):
         return self
 
     @property
-    def vector(self):
+    def vector(self) -> np.ndarray:
         """Return this set of moments as a vector"""
-        return self.to_vector(redundant=True)
-
-    def to_vector(self, redundant=True) -> np.ndarray:
-        """Return this set of moments as a vector"""
-        return np.array([self[indices] for indices in self.iter_indices(redundant=redundant)], dtype=self._dtype)
+        return self._moments.compressed()
 
     def __getitem__(self, item):
         return self.moment(*item)
 
     def __setitem__(self, key: Union[int, Tuple], value):
-        for n, l, m in iter_indices_extended(key, self._max_n, redundant=False):
-            self._set_moment(n, l, m, value)
+        self._set_moment(*key, value)
 
     def _set_moment(self, n: int, l: int, m: int, value, set_minus_m=True):
         """Set an individual moment.  This will automatically set the corresponding -m value"""
         if value is None:
             # Special case, usually happens if this is a mask
-            self._moments[n, l, n + m] = None
-            self._moments[n, l, n - m] = None
+            self._moments[n, l, m] = None
+            self._moments[n, l, -m] = None
         else:
             if m == 0:
                 try:
@@ -234,10 +231,10 @@ class ZernikeMoments(base_moments.Moments):
                     pass
             elif set_minus_m:
                 # Set the -m counterpart directly
-                self._moments[n, l, n - m] = (-1)**m * value.conjugate()
+                self._moments[n, l, -m] = (-1)**m * value.conjugate()
 
             # This will be reached for all m values
-            self._moments[n, l, n + m] = value
+            self._moments[n, l, m] = value
 
     def iter(self, redundant=True):
         """Iterate tuples containing the moment indices and value"""
@@ -247,8 +244,9 @@ class ZernikeMoments(base_moments.Moments):
     def iter_indices(self, redundant=True):
         yield from iter_indices(max_order=self._max_n, redundant=redundant)
 
-    def to_matrix(self) -> np.array:
-        raise AttributeError('Zernike moments cannot be converted to a matrix as the orders use negative indexing')
+    def linear_index(self, index: base_moments.Index) -> int:
+        """Given a triple of Zernike moment indices this will return the corresponding linearly ordered index"""
+        return self._idx_array[index]
 
     @staticmethod
     def num_moments(max_order: int, redundant=True) -> int:
@@ -257,19 +255,7 @@ class ZernikeMoments(base_moments.Moments):
 
     def moment(self, n: int, l: int, m: int) -> complex:
         """Get the n, l, m^th moment"""
-        if not even(n - l):
-            raise ValueError(f'n - l must be even, got {n} {l}')
-
-        try:
-            return self._moments[n, l, n + m]
-        except (KeyError, IndexError):
-            assert_valid(n, l, m)
-            if n > self._max_n:
-                raise ValueError(
-                    f'requested n value ({n}) is greater than the maximum order of these moments ({self._max_n})'
-                )
-
-            raise ValueError(f'Invalid moments: n={n} l={l} m={m}')
+        return self._moments[n, l, m]
 
     def value_at(self, x: np.array, order: int = None) -> float:
         """Reconstruct the value at x from the moments
@@ -436,7 +422,7 @@ class ZernikeMomentsBuilder(functions.Function):
 
         # Create the moments and optionally a Jacobian
         moms = ZernikeMoments(self._n_max)
-        moms.fill(0.)
+        moms.array.fill(0.)
         if self._mask is not None:
             self.apply_mask(moms)
         jac = np.zeros((len(moms), len(indices_list)), dtype=complex) if get_jacobian else None
@@ -447,10 +433,10 @@ class ZernikeMomentsBuilder(functions.Function):
 
             if get_jacobian:
                 n, l, m = zernike_idx
-                lin_idx = linear_index(zernike_idx)
+                lin_idx = moms.linear_index(zernike_idx)
                 jac[lin_idx, idx] += 1 * num_type
                 if zernike_idx.m > 0:
-                    lin_idx = linear_index((n, l, -m))
+                    lin_idx = moms.linear_index((n, l, -m))
                     jac[lin_idx, idx] += (-1)**m * (1 if num_type == 1. else -1j)
 
         if get_jacobian:
@@ -770,9 +756,14 @@ def iter_indices(max_order: int = None, redundant=False) -> Iterator[ZernikeInde
             if not even(n - l):
                 continue
 
-            m_start = -l if redundant else 0
-            for m in inclusive(m_start, l):
+            for m in inclusive(0, l):
                 yield ZernikeIndex(n, l, m)
+
+            # negative m indices go AFTER positive because we rely on the wrapping-around of negative indices
+            # to make these work they are actually at the end of the sequence of m values
+            if redundant:
+                for m in inclusive(-l, -1, 1):
+                    yield ZernikeIndex(n, l, m)
 
 
 def iter_indices_extended(key: Tuple[int, Tuple], max_order: int, redundant=False) -> Iterator[ZernikeIndex]:
@@ -786,7 +777,7 @@ def iter_indices_extended(key: Tuple[int, Tuple], max_order: int, redundant=Fals
     if n is None or l is None or m is None:
         # Define the range of n values
         if n is None:
-            n_iter = inclusive(0, max_order)
+            n_iter = inclusive(0 if l is None else l, max_order)
         else:
             n_iter = inclusive(n, n)
 
@@ -827,7 +818,7 @@ def triple_index(linear: int, redundant=True) -> ZernikeIndex:
 @functools.lru_cache(maxsize=256)
 def linear_index(index: base_moments.Index, redundant=True) -> int:
     """Given a triple of zernike function indices this will return a lexicographically ordered
-    integer and a boolean indicating if (-1)**m conjugate(value) should be applied"""
+    integer"""
     if not redundant and index[2] < 0:
         raise ValueError('m value cannot be negative')
 
