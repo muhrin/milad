@@ -86,7 +86,7 @@ class Moments(functions.State, metaclass=abc.ABCMeta):
         """
 
     @abc.abstractmethod
-    def get_mask(self, fill=None) -> 'Moments':
+    def get_mask(self) -> 'Moments':
         """Get an empty set of moments all set to None that can be used as a mask to fix values e.g. for optimisation"""
 
     def grid_values(self, num_samples: int, zero_outside_domain=True):

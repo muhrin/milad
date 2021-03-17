@@ -112,12 +112,9 @@ class GeometricMoments(base_moments.Moments):
 
         return value
 
-    def get_mask(self, fill=None) -> 'GeometricMoments':
+    def get_mask(self) -> 'GeometricMoments':
         geom_moms = np.empty(self._moments.shape, dtype=object)
-        if fill is None:
-            geom_moms.fill(None)
-        else:
-            np.copyto(geom_moms, self._moments)
+        geom_moms.fill(None)
         return GeometricMoments(geom_moms)
 
     def get_builder(self, mask=None) -> Optional[functions.Function]:

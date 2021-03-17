@@ -183,12 +183,9 @@ class ZernikeMoments(base_moments.Moments):
     def get_builder(self, mask: 'Optional[ZernikeMoments]' = None):
         return ZernikeMomentsBuilder(self._max_n, mask)
 
-    def get_mask(self, fill=None) -> 'ZernikeMoments':
+    def get_mask(self) -> 'ZernikeMoments':
         moms = ZernikeMoments(self._max_n, dtype=object)
-        if fill is None:
-            moms.array.fill(None)
-        else:
-            np.copyto(moms.array, self._moments)
+        moms.array.fill(None)
         return moms
 
     def randomise(self, num_range=(-5, 5), indices=(None, None, None)):

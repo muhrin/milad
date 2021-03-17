@@ -98,7 +98,7 @@ class RootFinder:
             x0_,
             jac=True,
             method='lm',
-            options=dict(col_deriv=False, xtol=x_tol, maxfev=max_func_evals)
+            options=dict(col_deriv=False, xtol=x_tol, maxiter=max_func_evals),
             # bounds=bounds,
         )
 

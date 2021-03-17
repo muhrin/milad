@@ -285,13 +285,16 @@ class MomentInvariants(functions.Function):
         self._max_order = -1
         self._real = are_real
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """Get the total number of invariants"""
         return len(self._invariants)
 
     def __iter__(self) -> Iterator[MomentInvariant]:
+        """Iterate the invariants"""
         return self._invariants.__iter__()
 
     def __getitem__(self, item) -> Union['MomentInvariants', MomentInvariant]:
+        """Get particular invariant(s)"""
         if isinstance(item, slice):
             return MomentInvariants(*self._invariants[item])
         if isinstance(item, tuple):
@@ -318,6 +321,14 @@ class MomentInvariants(functions.Function):
             self._max_order = max_order
 
         return self._max_order
+
+    @property
+    def variables(self) -> Set[Tuple]:
+        """Return a set of all the the indices used by these invariants"""
+        indices = set()
+        for inv in self._invariants:
+            indices.update(inv.variables)
+        return indices
 
     def output_length(self, _in_state: functions.State) -> int:  # pylint: disable=unused-argument
         return len(self._invariants)
@@ -355,14 +366,6 @@ class MomentInvariants(functions.Function):
             return vector, jac
 
         return vector
-
-    def find_up_to(self, max_order: int) -> tuple:
-        """Return the indices of individual invariants that only contain moments up to (inclusive) the maximum order.
-        This can also be used as:
-            invariants[invariants.find_to_up(5)]
-        to get a moment invariants function with those invariants
-        """
-        return tuple(idx for idx in range(len(self._invariants)) if self._invariants[idx].max_order <= max_order)
 
 
 def apply_invariants(invariants: List[MomentInvariant], moms: np.array, normalise=False, results=None) -> list:
