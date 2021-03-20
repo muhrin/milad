@@ -36,29 +36,24 @@ class TrainingMonitor:
         self.ax = energy_axis
 
         self._energy_training = TrainingMonitor.PlottingDataset(
-            self.ax, scatter_kwargs=dict(
-                edgecolors='tab:orange',
-                alpha=0.6,
-                marker='o',
-                facecolors='none',
+            self.ax,
+            scatter_kwargs=dict(
+                edgecolors='tab:orange', alpha=0.6, marker='o', facecolors='none', label='Energy (training)'
             )
         )
         self._energy_validation = TrainingMonitor.PlottingDataset(
-            self.ax, scatter_kwargs=dict(c='tab:orange', alpha=0.6)
+            self.ax, scatter_kwargs=dict(c='tab:orange', alpha=0.6, label='Energy (validation)')
         )
 
         forces_axis = energy_axis.twinx()
         forces_axis.set_yscale('log')
 
         self._force_training = TrainingMonitor.PlottingDataset(
-            forces_axis, scatter_kwargs=dict(
-                edgecolors='tab:blue',
-                alpha=0.6,
-                facecolors='none',
-            )
+            forces_axis,
+            scatter_kwargs=dict(edgecolors='tab:blue', alpha=0.6, facecolors='none', label='Force (training)')
         )
         self._force_validation = TrainingMonitor.PlottingDataset(
-            forces_axis, scatter_kwargs=dict(c='tab:blue', alpha=0.6)
+            forces_axis, scatter_kwargs=dict(c='tab:blue', alpha=0.6, label='Force (validation)')
         )
 
         self._validation_data = validation_data

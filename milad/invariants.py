@@ -21,6 +21,8 @@ RES_DIR = pathlib.Path(__file__).parent / 'res'
 GEOMETRIC_INVARIANTS = RES_DIR / 'rot3dinvs8mat.txt'
 COMPLEX_INVARIANTS = RES_DIR / 'cmfs7indep_0.txt'
 COMPLEX_INVARIANTS_ORIG = RES_DIR / 'cmfs7indep_0.orig.txt'
+# A convenience map to make it easier to load the default invariants
+INVS_MAP = {'geometric': GEOMETRIC_INVARIANTS, 'complex': COMPLEX_INVARIANTS, 'complex-orig': COMPLEX_INVARIANTS_ORIG}
 
 
 def prod(iterable):
@@ -395,6 +397,12 @@ def read_invariants(filename: str = GEOMETRIC_INVARIANTS, read_max: int = None) 
     :param filename: the filename to read from, default to geometric moments invariants
     :param read_max: the maximum number of invariants to read
     """
+    try:
+        filename = INVS_MAP[filename]
+    except KeyError:
+        # Assume it is a filename
+        pass
+
     invariants = []
     with open(filename, 'r') as file:
 
@@ -452,6 +460,12 @@ def read(filename: str = GEOMETRIC_INVARIANTS, read_max: int = None, max_order=N
         MomentInvariants:
     """Read the invariants from file"""
     invariants = MomentInvariants()
+    try:
+        filename = INVS_MAP[filename]
+    except KeyError:
+        # Assume it is a filename
+        pass
+
     if filename == COMPLEX_INVARIANTS:
         invariants.dtype = complex
 
