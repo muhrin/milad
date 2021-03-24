@@ -8,7 +8,6 @@ import torch
 import torch.nn.functional
 from torch.autograd import functional
 
-from milad import atomic
 from milad.play import asetools
 from milad import fingerprinting
 from milad import utils
@@ -341,7 +340,6 @@ class NeuralNetwork:
         progress_callback: Callable = None,
         learning_rate=5e-4,
         batchsize=16,
-        use_forces=False,
     ):
         if self._network is None:
             self._create_network(training_set.fingerprint_len)
@@ -364,7 +362,6 @@ class NeuralNetwork:
             stopping_function,
             optimiser,
             batchsize,
-            use_forces=use_forces,
             progress_callback=progress_callback,
         )
         return training_data, loss
@@ -383,7 +380,6 @@ class NeuralNetwork:
         should_stop: Callable,
         optimiser,
         batchsize,
-        use_forces=False,
         progress_callback: Callable = None,
     ):
         total_samples = len(training)

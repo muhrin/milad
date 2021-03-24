@@ -58,21 +58,26 @@ class StructureOptimiser:
         """
         outcome = argparse.Namespace()
 
-        if isinstance(target, base_moments.Moments):
-            calc = descriptor.process[:-1]
-        elif isinstance(target, np.ndarray):
-            calc = descriptor.process
+        if isinstance(descriptor, fingerprinting.MomentInvariantsDescriptor):
+            # Special case when the function being optimised is a descriptor
+            if isinstance(target, base_moments.Moments):
+                calc = descriptor.process[:-1]
+            elif isinstance(target, np.ndarray):
+                calc = descriptor.process
+            else:
+                raise TypeError(f'Unsupported type {target.__class__.__name__}')
+
+            if preprocess:
+                preprocessor = descriptor.preprocess
+                initial = preprocessor(initial)
+                if mask is not None:
+                    mask = preprocessor(mask)
+
+            bounds = bounds or self.get_bounds(initial.num_atoms, descriptor)
+
         else:
-            raise TypeError(f'Unsupported type {target.__class__.__name__}')
-
-        preprocessor = descriptor.preprocess
-
-        if preprocess:
-            initial = preprocessor(initial)
-            if mask is not None:
-                mask = preprocessor(mask)
-
-        bounds = bounds or self.get_bounds(initial.num_atoms, descriptor)
+            calc = descriptor
+            preprocess = False
 
         # Deal with saving of trajectory
         save_traj_fn = None
@@ -101,7 +106,7 @@ class StructureOptimiser:
 
         if preprocess:
             # 'Un-preprocess' the output (map atomic species into integers)
-            outcome.value = preprocessor.inverse(result.value)
+            outcome.value = descriptor.preprocess.inverse(result.value)
 
         return StructureOptimisationResult(**outcome.__dict__)
 
@@ -120,21 +125,33 @@ class StructureOptimiser:
     def get_bounds(num_atoms: int,
                    descriptor: fingerprinting.MomentInvariantsDescriptor) \
             -> Tuple[atomic.AtomsCollection, atomic.AtomsCollection]:
-        lower = atomic.AtomsCollection(num_atoms)
-        upper = atomic.AtomsCollection(num_atoms)
-        lower.vector[:] = -np.inf
-        upper.vector[:] = np.inf
+        species_range = None
+        cutoff = descriptor.cutoff
 
         # Let's look inside the preprocessing step to see if we're mapping atomic numbers, in which case we can
         # use this to set bounds on the species
         results = descriptor.preprocess.find_type(atomic.MapNumbers)
         if results:
             species_range = results[0][1].mapped_range
+
+        return StructureOptimiser.create_bounds(num_atoms, cutoff, species_range)
+
+    @staticmethod
+    def create_bounds(num_atoms: int, cutoff=None, species_range=None) ->\
+            Tuple[atomic.AtomsCollection, atomic.AtomsCollection]:
+        """Create optimisation bounds that optionally restrict the range cartesian values the atomic positions can take
+        and the range of atomic species allowed."""
+        lower = atomic.AtomsCollection(num_atoms)
+        upper = atomic.AtomsCollection(num_atoms)
+        lower.vector[:] = -np.inf
+        upper.vector[:] = np.inf
+
+        if species_range:
             lower.numbers = species_range[0]
             upper.numbers = species_range[1]
 
-        if descriptor.cutoff is not None:
-            lower.positions = -descriptor.cutoff
-            upper.positions = descriptor.cutoff
+        if cutoff:
+            lower.positions = -cutoff
+            upper.positions = cutoff
 
         return lower, upper

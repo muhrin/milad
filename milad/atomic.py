@@ -237,6 +237,13 @@ class FeatureMapper(functions.Function):
         self._feature_kwargs = kwargs or {}
         self._inverse = self.Inverse(self)
 
+    def __repr__(self) -> str:
+        desc = [self._feature_type.__name__]
+        if self._feature_kwargs:
+            desc.append(f'({self._feature_type})')
+        desc.append(f' (species=>{self._map_species_to})')
+        return ''.join(desc)
+
     @property
     def inverse(self):
         return self._inverse

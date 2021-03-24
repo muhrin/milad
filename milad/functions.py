@@ -384,6 +384,9 @@ class Chain(Function):
 
         return self._functions[item]
 
+    def __repr__(self):
+        return f'Chain({self._functions})'
+
     def copy(self) -> 'Chain':
         """Create a shallow copy"""
         return Chain(self._functions)
