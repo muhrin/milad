@@ -161,17 +161,18 @@ def find_peaks_from_grid(
     grid,
     descriptor: fingerprinting.MomentInvariantsDescriptor,
     query: base_moments.ReconstructionQuery,
-    exclude_radius=0.75,
+    exclude_radius=0.5,
 ):
     subtract_signal = True
-    scale = 1.0
-    if descriptor.scaler is not None:
-        scale = 1. / descriptor.cutoff
+    scale = 1.0 if descriptor.cutoff is None else 1. / descriptor.cutoff
 
     current_grid = grid.copy()
 
     exclude = exclude_radius * scale
     outside = get_buffer_indices(query, current_grid)
+
+    mask = np.zeros(current_grid.shape, dtype=bool)
+    mask[outside] = True
 
     found_positions = []
     for _ in range(num_peaks):
@@ -195,21 +196,36 @@ def find_peaks_from_grid(
             # Subtract off the single atom grid
             current_grid -= atom_grid
 
-        # Now remove the signal of the atom from the grid
-        # remove_idxs = np.argwhere(atom_grid >= (0.5 * atom_grid.max()))
-        # current_grid[remove_idxs] = 0.
-
-        mask = (query.points[:, 0] > atom_pos[0] - exclude) & \
-               (query.points[:, 0] < atom_pos[0] + exclude) & \
-               (query.points[:, 1] > atom_pos[1] - exclude) & \
-               (query.points[:, 1] < atom_pos[1] + exclude) & \
-               (query.points[:, 2] > atom_pos[2] - exclude) & \
-               (query.points[:, 2] < atom_pos[2] + exclude)
+        # Now mask off the gridpoints associated with this atom
+        mask |= get_surrounding_gridpoints(query, atom_pos, exclude)
 
         current_grid[mask] = 0.
-        current_grid[outside] = 0.
 
     return np.array(found_positions)
+
+
+def get_surrounding_gridpoints(
+    query: base_moments.ReconstructionQuery, atom_pos: np.array, radius: float
+) -> np.ndarray:
+    # First find the points within a cube of the central point
+    mask = (query.points[:, 0] > atom_pos[0] - radius) & \
+           (query.points[:, 0] < atom_pos[0] + radius) & \
+           (query.points[:, 1] > atom_pos[1] - radius) & \
+           (query.points[:, 1] < atom_pos[1] + radius) & \
+           (query.points[:, 2] > atom_pos[2] - radius) & \
+           (query.points[:, 2] < atom_pos[2] + radius)
+
+    indices = np.argwhere(mask)[:, 0]
+    rsq = radius * radius
+
+    # Now check the gridpoints left to see if they fall within the cutoff sphere
+    for idx in indices:
+        dr = query.points[idx] - atom_pos
+        if np.dot(dr, dr) > rsq:
+            # Remove it from the mask
+            mask[idx] = False
+
+    return mask
 
 
 def get_buffer_indices(query: base_moments.ReconstructionQuery, grid_values) -> List[int]:
@@ -484,3 +500,104 @@ def get_best_rms(
         return best
     except RuntimeError:
         return np.inf
+
+
+def find_iteratively(
+    descriptor: fingerprinting.MomentInvariantsDescriptor,
+    fingerprint: np.ndarray,
+    num_atoms: int,
+    initial: atomic.AtomsCollection,
+    find_species=False,
+    verbose=False,
+    min_rmsd=1e-7,
+    max_iters=4,
+    grid_query=None
+):
+    # Initialisation
+    moments_optimiser = optimisers.MomentsOptimiser()
+    structure_optimiser = optimisers.StructureOptimiser()
+    atoms = initial
+
+    mask = None
+    if not find_species:
+        # Fix the species numbers
+        mask = atoms.get_mask()
+        mask.numbers = atoms.numbers
+
+    for i in range(max_iters):
+        # Now recreate the moments from the atoms
+        moments = descriptor.get_moments(atoms)
+
+        if grid_query is None:
+            # Create the reconstruction query the first time
+            grid_query = moments.create_reconstruction_query(moments.get_grid(31), moments.max_order)
+
+        result = moments_optimiser.optimise(
+            invariants_fn=descriptor.invariants,
+            target=fingerprint,
+            initial=moments,
+            verbose=False,
+            # cost_tol=1e-5,
+        )
+        moments = result.value
+
+        if verbose:
+            print(f'{i} moms: {result.rmsd}')
+
+        # Find the peaks and create the corresponding collection of atoms
+        peaks = find_peaks(num_atoms, moments, descriptor, grid_query)
+        atoms = atomic.AtomsCollection(num_atoms, peaks, numbers=initial.numbers)
+
+        # if find_species:
+        #     # Take the current result, fix the positions while allowing species to vary
+        #     # atoms = result.value
+        #
+        #     pos_mask = atoms.get_mask()
+        #     pos_mask.positions = atoms.positions
+        #
+        #     result = structure_optimiser.optimise(
+        #         descriptor,
+        #         target=fingerprint,
+        #         initial=atoms,
+        #         mask=pos_mask,
+        #         verbose=False,
+        #     )
+        #
+        #     if verbose:
+        #         print(f'{i} species(pos): {result.rmsd}')
+
+        result = structure_optimiser.optimise(
+            descriptor,
+            target=fingerprint,
+            initial=atoms,
+            mask=mask,
+            verbose=False,
+        )
+
+        if verbose:
+            print(f'{i} atoms: {result.rmsd}')
+
+        if find_species:
+            # Take the current result, fix the species and allow positions to vary
+            atoms = result.value
+
+            pos_mask = atoms.get_mask()
+            pos_mask.numbers = atoms.numbers
+
+            result = structure_optimiser.optimise(
+                descriptor,
+                target=fingerprint,
+                initial=atoms,
+                mask=pos_mask,
+                verbose=False,
+            )
+
+            if verbose:
+                print(f'{i} pos(species): {result.rmsd}')
+
+        if result.rmsd < min_rmsd:
+            break
+
+        atoms = result.value
+
+    return result

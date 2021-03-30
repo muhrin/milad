@@ -41,11 +41,11 @@ def test_structure_optimiser_invariants(complex_invariants):
         descriptor=descriptor,
         target=fingerprint,
         initial=initial,
-        x_tol=1e-4,
+        bounds=descriptor.get_bounds(len(molecule)),
+        x_tol=1e-5,
         verbose=False,
     )
-    print(result.message)
-    assert result.rmsd < 1e-3
+    assert result.rmsd < 5e-3
 
 
 def test_structure_optimiser_moments(complex_invariants):
@@ -84,6 +84,7 @@ def test_structure_optimiser_moments(complex_invariants):
         descriptor=descriptor,
         target=target,
         initial=initial,
+        bounds=descriptor.get_bounds(len(molecule)),
         x_tol=1e-4,
         mask=mask,
         verbose=False,

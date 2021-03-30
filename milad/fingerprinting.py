@@ -82,8 +82,11 @@ class MomentInvariantsDescriptor(functions.Function):
         return self._process
 
     @property
-    def moments_calculator(self) -> base_moments.MomentsCalculator:
-        return self._moments_calculator
+    def moments_calculator(self) -> functions.Function:
+        """Get the function to calculate moments.  Note this is _exclusive_ of preprocessing which must be done
+        separately if required.  If you just want to calculate the moments (including preprocessing) then use
+        get_moments() instead."""
+        return self.process[:-1]
 
     @property
     def species(self) -> Optional[List[int]]:
@@ -136,6 +139,38 @@ class MomentInvariantsDescriptor(functions.Function):
             atoms.num_atoms, positions=atoms.positions - new_centre, numbers=atoms.numbers
         )
         return self.evaluate(new_atoms, get_jacobian=get_jacobian)
+
+    def get_bounds(self, num_atoms: int = 1) -> Tuple[atomic.AtomsCollection, atomic.AtomsCollection]:
+        """Get a tuple containing a min and max AtomCollections that correspond to the minimum and maximum positions
+        and (optionally) species range depending on the settings of this fingerprint.  This can be useful for setting
+        optimiser bounds.
+        """
+        cutoff = self._cutoff
+
+        # Figure out if we have a species range
+        species_range = None
+
+        # Let's look inside the preprocessing step to see if we're mapping atomic numbers, in which case we can
+        # use this to set bounds on the species
+        results = self.preprocess.find_type(atomic.MapNumbers)
+        if results:
+            numbers = results[0][1].numbers
+            species_range = min(numbers), max(numbers)
+
+        lower = atomic.AtomsCollection(num_atoms)
+        upper = atomic.AtomsCollection(num_atoms)
+        lower.vector[:] = -np.inf
+        upper.vector[:] = np.inf
+
+        if species_range:
+            lower.numbers = species_range[0]
+            upper.numbers = species_range[1]
+
+        if cutoff is not None:
+            lower.positions = -cutoff  # pylint: disable=invalid-unary-operand-type
+            upper.positions = cutoff
+
+        return lower, upper
 
 
 def descriptor(

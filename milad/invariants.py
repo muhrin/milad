@@ -170,6 +170,7 @@ class MomentInvariant:
 
         if self._terms:
             if raw_moments.dtype == np.object or len(self._terms) < 48:
+                # if raw_moments.dtype == np.object or len(self._terms) < 6:
                 total += _numpy_apply(self._farray, self._indarray, raw_moments)
             else:
                 total += _parallel_apply(self._farray, self._indarray, raw_moments)
@@ -246,7 +247,7 @@ class MomentInvariant:
 
 def _numpy_apply(prefactors, indices: np.array, raw_moments: np.ndarray):
     """Fast method to get the invariant from a numpy array"""
-    total = 0
+    total = 0.
     total += np.dot(prefactors, np.prod(raw_moments[indices[:, :, 0], indices[:, :, 1], indices[:, :, 2]], axis=1))
 
     return total
