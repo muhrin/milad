@@ -345,7 +345,7 @@ class MomentInvariants(functions.Function):
         self._invariants.append(invariant)
         self._max_order = max(self._max_order, invariant.max_order)
 
-    def evaluate(self, moments: base_moments.Moments, get_jacobian=False) -> np.ndarray:  # pylint: disable=arguments-differ
+    def evaluate(self, moments: base_moments.Moments, *, get_jacobian=False) -> np.ndarray:  # pylint: disable=arguments-differ
         vector = np.empty(len(self._invariants), dtype=np.promote_types(moments.vector.dtype, float))
         jac = None
         if get_jacobian:

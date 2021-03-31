@@ -149,7 +149,7 @@ class GeometricMomentsCalculator(base_moments.MomentsCalculator):
     def output_length(self, _in_state: functions.State) -> int:
         return GeometricMoments.num_moments(self._max_order)
 
-    def evaluate(self, features: functions.State, get_jacobian=False) -> \
+    def evaluate(self, features: functions.State, *, get_jacobian=False) -> \
             Union[GeometricMoments, Tuple[GeometricMoments, np.ndarray]]:
         result = geometric_moments(features, self._max_order, get_jacobian, dtype=features.vector.dtype)
 
@@ -335,8 +335,8 @@ def from_deltas(
 
 
 def from_deltas_analytic(max_order: int, num_particles: int, pos_symbols=None, weight_symbols=None):
-    r = pos_symbols or sympy.IndexedBase('r')  # Positions of particles
-    w = weight_symbols or sympy.IndexedBase('w')  # Weights of particles
+    r = pos_symbols or sympy.IndexedBase('r')  # Positions of particles pylint: disable=invalid-name
+    w = weight_symbols or sympy.IndexedBase('w')  # Weights of particles pylint: disable=invalid-name
     ubound = max_order + 1  # Upper bound
 
     # pylint: disable=invalid-name

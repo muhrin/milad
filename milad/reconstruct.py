@@ -119,6 +119,7 @@ def find_peaks_from_maxima(
     query: base_moments.ReconstructionQuery = None,
     grid_size=31,
 ):
+    # pylint: disable=too-many-locals
     scale = 1.0
     if descriptor.scaler is not None:
         scale = 1. / descriptor.cutoff
@@ -161,8 +162,9 @@ def find_peaks_from_grid(
     grid,
     descriptor: fingerprinting.MomentInvariantsDescriptor,
     query: base_moments.ReconstructionQuery,
-    exclude_radius=0.5,
+    exclude_radius=0.51,
 ):
+    # pylint: disable=too-many-locals
     subtract_signal = True
     scale = 1.0 if descriptor.cutoff is None else 1. / descriptor.cutoff
 
@@ -220,7 +222,7 @@ def get_surrounding_gridpoints(
 
     # Now check the gridpoints left to see if they fall within the cutoff sphere
     for idx in indices:
-        dr = query.points[idx] - atom_pos
+        dr = query.points[idx] - atom_pos  # pylint: disable=invalid-name
         if np.dot(dr, dr) > rsq:
             # Remove it from the mask
             mask[idx] = False
@@ -234,7 +236,7 @@ def get_buffer_indices(query: base_moments.ReconstructionQuery, grid_values) -> 
 
     # Now, get those that are near the bounds of the sphere i.e. 1.0
     cutoff_sq = 0.85**2
-    for idx, pt in enumerate(query.points):
+    for idx, pt in enumerate(query.points):  # pylint: disable=invalid-name
         if np.sum(pt**2) > cutoff_sq:
             outside.append(idx)
 
@@ -510,9 +512,10 @@ def find_iteratively(
     find_species=False,
     verbose=False,
     min_rmsd=1e-7,
-    max_iters=4,
+    max_iters=6,
     grid_query=None
 ):
+    # pylint: disable=too-many-locals
     # Initialisation
     moments_optimiser = optimisers.MomentsOptimiser()
     structure_optimiser = optimisers.StructureOptimiser()
@@ -542,40 +545,41 @@ def find_iteratively(
         moments = result.value
 
         if verbose:
-            print(f'{i} moms: {result.rmsd}')
+            print(f'{i} moms->fingerprint: {result.rmsd}')
 
         # Find the peaks and create the corresponding collection of atoms
         peaks = find_peaks(num_atoms, moments, descriptor, grid_query)
         atoms = atomic.AtomsCollection(num_atoms, peaks, numbers=initial.numbers)
 
-        # if find_species:
-        #     # Take the current result, fix the positions while allowing species to vary
-        #     # atoms = result.value
-        #
-        #     pos_mask = atoms.get_mask()
-        #     pos_mask.positions = atoms.positions
-        #
-        #     result = structure_optimiser.optimise(
-        #         descriptor,
-        #         target=fingerprint,
-        #         initial=atoms,
-        #         mask=pos_mask,
-        #         verbose=False,
-        #     )
-        #
-        #     if verbose:
-        #         print(f'{i} species(pos): {result.rmsd}')
-
         result = structure_optimiser.optimise(
             descriptor,
-            target=fingerprint,
+            target=moments,
             initial=atoms,
             mask=mask,
             verbose=False,
         )
 
         if verbose:
-            print(f'{i} atoms: {result.rmsd}')
+            print(f'{i} atoms->moms: {result.rmsd}')
+
+        result = structure_optimiser.optimise(
+            descriptor,
+            target=fingerprint,
+            initial=result.value,
+            mask=mask,
+            verbose=False,
+        )
+
+        # result = structure_optimiser.optimise(
+        #     descriptor,
+        #     target=fingerprint,
+        #     initial=atoms,
+        #     mask=mask,
+        #     verbose=False,
+        # )
+
+        if verbose:
+            print(f'{i} atoms->fingerprint: {result.rmsd}')
 
         if find_species:
             # Take the current result, fix the species and allow positions to vary
@@ -593,7 +597,7 @@ def find_iteratively(
             )
 
             if verbose:
-                print(f'{i} pos(species): {result.rmsd}')
+                print(f'{i} atom pos->fingerprint: {result.rmsd}')
 
         if result.rmsd < min_rmsd:
             break

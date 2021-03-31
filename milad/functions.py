@@ -296,7 +296,7 @@ class Function(metaclass=abc.ABCMeta):
         return result
 
     @abc.abstractmethod
-    def evaluate(self, state, get_jacobian=False):
+    def evaluate(self, state, *, get_jacobian=False):
         """Evaluate the function with the passed input
 
         :param state: the state that is the input to the function
@@ -326,7 +326,7 @@ class FromVectorBuilder(Function):
 
     class Inverse(Function):
 
-        def evaluate(self, state, get_jacobian=False):
+        def evaluate(self, state, *, get_jacobian=False):
             out = state.vector
             if get_jacobian:
                 return out, np.eye(len(out))
@@ -338,7 +338,13 @@ class FromVectorBuilder(Function):
         self._state_type = state_type
         self._kwargs = kwargs or {}
 
-    def evaluate(self, state_vec: np.ndarray, get_jacobian=False):
+    def evaluate(
+        # pylint: disable=arguments-differ
+        self,
+        state_vec: np.ndarray,
+        *,
+        get_jacobian=False
+    ):
         out = self._state_type.from_vector(state_vec, **self._kwargs)
         if get_jacobian:
             return out, np.eye(len(state_vec))
@@ -353,7 +359,7 @@ class FromVectorBuilder(Function):
 class Identity(Function):
     """Function that just returns what it is passed"""
 
-    def evaluate(self, state: StateLike, get_jacobian=False):
+    def evaluate(self, state: StateLike, *, get_jacobian=False):
         """Evaluate the function with the passed input"""
         if get_jacobian:
             return state, np.eye(len(state))
@@ -439,7 +445,7 @@ class Chain(Function):
             raise TypeError(f'Expected Function, got {function.__class__.__name__}')
         self._functions.append(function)
 
-    def evaluate(self, state: StateLike, get_jacobian=False):
+    def evaluate(self, state: StateLike, *, get_jacobian=False):
         if not self._functions:
             return Identity()(state, jacobian=get_jacobian)
 
@@ -492,7 +498,7 @@ class Residuals(Function):
     def empty_jacobian(self, in_state: State) -> np.array:
         return np.empty((self.output_length(in_state), len(in_state)), dtype=complex)
 
-    def evaluate(self, state: State, get_jacobian=False) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+    def evaluate(self, state: State, *, get_jacobian=False) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
         out_vector = get_bare(state) - self._data
         if get_jacobian:
             return out_vector, np.identity(len(state), dtype=out_vector.dtype)
@@ -511,7 +517,7 @@ class Native(Function):
     def support_jacobian(self):
         return self._jac is not None
 
-    def evaluate(self, state: State, get_jacobian=False) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+    def evaluate(self, state: State, *, get_jacobian=False) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
         if get_jacobian:
             return self._fn(state), self._jac(state)
 

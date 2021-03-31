@@ -483,7 +483,8 @@ class ZernikeMomentsBuilder(functions.Function):
         def inverse(self) -> 'ZernikeMomentsBuilder':
             return self._forward
 
-        def evaluate(self, state: ZernikeMoments, get_jacobian=False) -> np.ndarray:
+        def evaluate(# pylint: disable=unused-argument
+                self, state: ZernikeMoments, *, get_jacobian=False) -> np.ndarray:
             moms = []
             for indices, num_type in self._forward.iter_indices():
                 mom = state[indices]
@@ -511,6 +512,7 @@ class ZernikeMomentCalculator(base_moments.MomentsCalculator):
 
     def evaluate(self,
                  state: functions.State,
+                 *,
                  get_jacobian=False) -> Union[ZernikeMoments, Tuple[ZernikeMoments, np.ndarray]]:
         if isinstance(state, geometric.GeometricMoments):
             geom_moments = state

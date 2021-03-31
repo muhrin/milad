@@ -7,6 +7,7 @@ import random
 from typing import Optional, Type, Tuple, Union, List
 
 import numpy as np
+from scipy.spatial.distance import pdist
 
 from . import functions
 from . import generate
@@ -169,6 +170,7 @@ class AtomsCollectionBuilder(functions.Function):
 
     def evaluate(self,
                  state: functions.State,
+                 *,
                  get_jacobian=False) -> Union[AtomsCollection, Tuple[AtomsCollection, np.ndarray]]:
         vector = functions.get_bare(state)
         if len(vector) != self.input_length:
@@ -205,7 +207,7 @@ class AtomsCollectionBuilder(functions.Function):
         def output_length(self, _in_state: AtomsCollection) -> int:
             return self._builder.input_length
 
-        def evaluate(self, state: AtomsCollection, get_jacobian=False) -> np.ndarray:
+        def evaluate(self, state: AtomsCollection, *, get_jacobian=False) -> np.ndarray:
             output_length = self.output_length(state)
             if self.output_length(state) != output_length:
                 raise ValueError(f'Expected input of length {output_length} but got {state.vector.size}')
@@ -266,7 +268,7 @@ class FeatureMapper(functions.Function):
     def output_length(self, in_state: AtomsCollection) -> int:
         return in_state.num_atoms * self._feature_type.LENGTH
 
-    def evaluate(self, atoms: AtomsCollection, get_jacobian=False) -> functions.Features:  # pylint: disable=arguments-differ
+    def evaluate(self, atoms: AtomsCollection, *, get_jacobian=False) -> functions.Features:  # pylint: disable=arguments-differ
         features = functions.Features()
 
         jac = np.zeros((self.output_length(atoms), len(atoms))) if get_jacobian else None
@@ -341,7 +343,7 @@ class ScalePositions(functions.Function):
     def output_length(in_state: AtomsCollection) -> int:
         return len(in_state)
 
-    def evaluate(self, atoms: AtomsCollection, get_jacobian=False):  # pylint: disable=arguments-differ
+    def evaluate(self, atoms: AtomsCollection, *, get_jacobian=False):  # pylint: disable=arguments-differ
         out_atoms = AtomsCollection(atoms.num_atoms, dtype=atoms.dtype)
         out_atoms.positions[:] = self._scale_factor * atoms.positions
         out_atoms.numbers[:] = atoms.numbers
@@ -513,3 +515,69 @@ def random_atom_collection_in_sphere(num: int, radius=1., centre=True, numbers=1
         atoms.numbers[:] = numbers
 
     return atoms
+
+
+class SeparationForce(functions.Function):
+    """A separation force between atoms that come within the cutoff.  This can be used as a penalty in a loss function
+    to """
+
+    def __init__(self, force_constant: float, cutoff: float):
+        super().__init__()
+        self._force_constant = force_constant
+        self._cutoff = cutoff
+
+    def evaluate(self, atoms: AtomsCollection, *, get_jacobian=False):  # pylint: disable=arguments-differ
+        distances = pdist(atoms.positions)
+        total_energy = np.sum(tuple(map(self.energy, distances)))
+
+        if get_jacobian:
+            n = atoms.num_atoms  # pylint: disable=invalid-name
+            jacobian = np.zeros((1, len(atoms)))
+            positions = atoms.positions
+            # Indexing to extract the ij distance from the pdist vec, see:
+            # https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.pdist.html#scipy.spatial.distance.pdist
+            idx = lambda i, j: n * i + j - ((i + 2) * (i + 1)) // 2
+            for i in range(n):
+                for j in range(i, n):
+                    dr = positions[j] - positions[i]  # pylint: disable=invalid-name
+                    dist = distances[idx(i, j)]
+                    force = self.force(dist) * dr / dist
+
+                    jacobian[0, atoms.linear_pos_idx(i)] += force
+                    jacobian[0, atoms.linear_pos_idx(j)] -= force
+
+            return total_energy, jacobian
+
+        return total_energy
+
+    def energy(  # pylint: disable=invalid-name
+        self, r: float
+    ) -> float:
+        """
+        Energy is
+            k (r^2 / 2 - r r0) + r0
+        where k is force constant and r0 is cutoff
+
+        :param r: separation between atoms
+        :return: the corresponding energy
+        """
+        if r > self._cutoff:
+            return 0.
+
+        return self._force_constant * r * (0.5 * r - self._cutoff) + self._cutoff
+
+    def force(  # pylint: disable=invalid-name
+        self, r: float
+    ):
+        """
+        Force is
+            -k (r - r0)
+        where k is force constant and r0 is cutoff
+
+        :param r: separation between atoms
+        :return: the corresponding force magnitude
+        """
+        if r > self._cutoff:
+            return 0.
+
+        return -self._force_constant * (r - self._cutoff)
