@@ -65,6 +65,7 @@ class StructureOptimiser:
 
         :return: a structure optimisation result
         """
+        # pylint: disable=too-many-branches
         outcome = argparse.Namespace()
 
         if isinstance(descriptor, fingerprinting.MomentInvariantsDescriptor):
@@ -79,7 +80,7 @@ class StructureOptimiser:
             if preprocess:
                 preprocessor = descriptor.preprocess
 
-            bounds = bounds or self.get_bounds(initial.num_atoms, descriptor)
+            bounds = bounds or descriptor.get_bounds(initial.num_atoms)
 
         else:
             calc = descriptor
@@ -136,9 +137,3 @@ class StructureOptimiser:
             state = preprocessor.inverse(state)
 
         trajectory.append(asetools.milad2ase(state))
-
-    @staticmethod
-    def get_bounds(num_atoms: int,
-                   descriptor: fingerprinting.MomentInvariantsDescriptor) \
-            -> Tuple[atomic.AtomsCollection, atomic.AtomsCollection]:
-        return descriptor.get_bounds(num_atoms)
