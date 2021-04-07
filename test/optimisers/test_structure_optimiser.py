@@ -87,5 +87,4 @@ def test_structure_optimiser_moments(complex_invariants):
         mask=mask,
         verbose=False,
     )
-    print(result.message)
     assert result.rmsd < 1e-3

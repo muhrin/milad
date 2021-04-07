@@ -169,15 +169,15 @@ class MomentInvariant:
         total = self._constant  # type: float
 
         if self._terms:
-            if raw_moments.dtype == np.object:
-                # if raw_moments.dtype == np.object or len(self._terms) < 6:
+            if raw_moments.dtype == object:
+                # if raw_moments.dtype == object or len(self._terms) < 6:
                 total += _numpy_apply(self._farray, self._indarray, raw_moments)
             else:
                 total += _numba_apply(self._farray, self._indarray, raw_moments)
 
             #
-            # if raw_moments.dtype == np.object or len(self._terms) < 48:
-            #     # if raw_moments.dtype == np.object or len(self._terms) < 6:
+            # if raw_moments.dtype == object or len(self._terms) < 48:
+            #     # if raw_moments.dtype == object or len(self._terms) < 6:
             #     total += _numpy_apply(self._farray, self._indarray, raw_moments)
             # else:
             #     total += _parallel_apply(self._farray, self._indarray, raw_moments)

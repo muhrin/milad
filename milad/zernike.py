@@ -345,7 +345,7 @@ class ZernikeMoments(base_moments.Moments):
                 isomin=(grid_values.min(), grid_values.max(), 0.5),
                 isomax=(grid_values.min(), grid_values.max(), 0.5)
             )
-            def update(opacity=default_opacity, isomin=default_isomin, isomax=default_isomax):
+            def update(opacity=default_opacity, isomin=default_isomin, isomax=default_isomax):  # pylint: disable=unused-variable
                 with widget.batch_update():
                     isosurface = widget.data[0]
                     isosurface.opacity = opacity
@@ -522,7 +522,7 @@ class ZernikeMomentCalculator(base_moments.MomentsCalculator):
             if get_jacobian:
                 geom_moments, geom_jac = geom_moments
 
-        moments = ZernikeMoments(self._max_order, dtype=object if geom_moments.dtype == np.object else complex)
+        moments = ZernikeMoments(self._max_order, dtype=object if geom_moments.dtype == object else complex)
 
         # Get the moments themselves from polynomials of geometric moments
         for (n, l, m), poly in self.chi.items():
@@ -832,7 +832,7 @@ def linear_index(index: base_moments.Index, redundant=True) -> int:
 def _domain_check(positions: np.array):
     """Check that a given set of positions are within the domain for which Zernike moments are
     defined i.e. that |r| <= 1."""
-    if positions.dtype == np.object:
+    if positions.dtype == object:
         return
 
     for idx, pos in enumerate(positions):

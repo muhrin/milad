@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+import random
+
+import numpy as np
 import pytest
 
 import milad
@@ -19,3 +22,9 @@ def complex_invariants():
     """Get complex moment invariants"""
     invs = milad.invariants.read(filename=invariants.COMPLEX_INVARIANTS)
     yield invs
+
+
+@pytest.fixture(autouse=True)
+def set_random_seed():
+    random.seed(1234)
+    np.random.seed(1234)

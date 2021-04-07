@@ -1,4 +1,5 @@
 Moment Invariants Local Atomic Descriptor
 =========================================
 
-Stub repo for the MILAD descriptor.
+This repository contains code for creating rotation invariant descriptions of atomic environments.
+The resulting fingerprint vectors can be decoded back into the original atomic system allowing one to build generative models of local atomic environments in materials or entire molecules.

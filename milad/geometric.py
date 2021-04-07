@@ -166,10 +166,10 @@ class GeometricMomentsCalculator(base_moments.MomentsCalculator):
 
 @functools.singledispatch
 def geometric_moments(state: functions.State, max_order: int, get_jacobian: bool, dtype) -> np.ndarray:
-    raise TypeError(f"Don't know how to calculate geometric moments for type '{type(state).__name__}'")
+    raise TypeError("Don't know how to calculate geometric moments for type '{}'".format(type(state).__name__))
 
 
-@geometric_moments.register
+@geometric_moments.register(functions.WeightedDelta)
 def _(delta: functions.WeightedDelta, max_order: int, get_jacobian: bool, dtype):
     order = max_order
 
@@ -198,7 +198,7 @@ def _(delta: functions.WeightedDelta, max_order: int, get_jacobian: bool, dtype)
     return moments
 
 
-@geometric_moments.register
+@geometric_moments.register(functions.WeightedGaussian)
 def _(gaussian: functions.WeightedGaussian, max_order: int, get_jacobian: bool, dtype):
     """Calculate the geometric moments for a 3D Gaussian"""
     O = max_order
@@ -246,7 +246,7 @@ def _(gaussian: functions.WeightedGaussian, max_order: int, get_jacobian: bool, 
     return gaussian.weight * moments
 
 
-@geometric_moments.register
+@geometric_moments.register(functions.Features)
 def _(environment: functions.Features, max_order: int, get_jacobian, dtype):
     """Calculate the geometric moments for a set of features"""
     O = max_order
@@ -640,8 +640,13 @@ def _check_gaussian_moments_input(
     return input_length, output_length
 
 
-# pylint: disable=invalid-name
-def gaussian_geometric_moments(max_order: int, mu: np.array, sigma: numbers.Number, weight: numbers.Number) -> np.array:
+def gaussian_geometric_moments(
+    # pylint: disable=invalid-name
+    max_order: int,
+    mu: np.array,
+    sigma: numbers.Number,
+    weight: numbers.Number
+) -> np.array:
     """
     Get the geometric moments for a 3D Gaussian
 

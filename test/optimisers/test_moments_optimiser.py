@@ -22,6 +22,6 @@ def test_moments_optimiser(complex_invariants):
         target_rmsd=1e-2,
         cost_tol=1e-2,
         grad_tol=1e-2,
-        verbose=True,
+        verbose=False,
     )
     assert result.success, result.message

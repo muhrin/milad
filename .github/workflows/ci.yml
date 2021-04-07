@@ -1,0 +1,36 @@
+name: continuous-integration
+
+on: [push, pull_request]
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [3.6, 3.7, 3.8, 3.9]
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install python dependencies
+        run: pip install -e .[dev]
+
+      - name: Run pytest
+        run: pytest --cov=milad -sv -p no:nb_regression test
+
+      - name: Create xml coverage
+        run: coverage xml
+
+      - name: Upload coverage to Codecov
+        if: github.repository == 'muhrin/milad'
+        uses: codecov/codecov-action@v1
+        with:
+            file: ./coverage.xml
+            name: milad

@@ -97,12 +97,12 @@ class Feature(State):
     @vector.setter
     def vector(self, value: np.array):
         if not value.size == self._vector.size:
-            raise ValueError(f"Size mismatch, expected '{self._vector.size}', got '{value.size}'")
+            raise ValueError("Size mismatch, expected '{}', got '{}'".format(self._vector.size, value.size))
         self._vector[:] = value[:]
 
     def __add__(self, other: 'Feature') -> 'Features':
         if not isinstance(other, Feature):
-            raise TypeError(f"Don't know how to add '{other.__class__.__name__}' to a feature")
+            raise TypeError("Don't know how to add '{}' to a feature".format(other.__class__.__name__))
         return Features(self, other)
 
 
@@ -143,7 +143,7 @@ class Features(State):
 
     def __add__(self, other: Union[Feature, 'Features']) -> 'Features':
         if not isinstance(other, (Feature, Features)):
-            raise TypeError(f"Don't know how to add a '{other.__class__.__name__}' to an environment")
+            raise TypeError("Don't know how to add a '{}' to an environment".format(other.__class__.__name__))
         return Features(*self.features, other)
 
 
@@ -275,7 +275,7 @@ class Function(metaclass=abc.ABCMeta):
                 raise RuntimeError(f"{name}.evaluate didn't return Jacobian despite being asked to")
             val, jac = result[0], result[1]
 
-            if not jac.dtype == np.object and np.isnan(jac).any():
+            if not jac.dtype == object and np.isnan(jac).any():
                 raise ValueError(f'{name}.evaluate produced a Jacobian with a NaN entry')
         else:
             val = result
@@ -550,7 +550,7 @@ def copy_to(
 
 def nan_check(array: np.ndarray, msg=None):
     """Check that an array does not contain NaN values.  If it does this will raise a ValueError"""
-    if not array.dtype == np.object and np.isnan(array).any():
+    if not array.dtype == object and np.isnan(array).any():
         exc_msg = 'Found NaN value'
         if msg is not None:
             exc_msg += f', {msg}'
