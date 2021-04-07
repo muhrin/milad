@@ -308,7 +308,8 @@ class NeuralNetwork:
         activations: Union[str, Callable] = 'ReLU',
         loss_function=None,
         device=None,
-        dtype=torch.float64
+        dtype=torch.float64,
+        bias=False,
     ):
         # Set up the hidden layers
         self._hidden = hiddenlayers
@@ -326,6 +327,7 @@ class NeuralNetwork:
         else:
             self._device = device
         self._dtype = dtype
+        self._bias = bias
 
         self._fingerprint_scaler = DataScaler(out_range=(-1., 1.), device=self._device, dtype=self._dtype)
         self._energy_scaler = DataScaler(in_range=(-1., 1.), device=self._device, dtype=self._dtype)
@@ -379,33 +381,40 @@ class NeuralNetwork:
         training: FittingData,
         should_stop: Callable,
         optimiser,
-        batchsize,
+        batchsize: int,
         progress_callback: Callable = None,
     ):
+        # Let's break up the training data into batches
         total_samples = len(training)
-        batches = int(math.ceil(total_samples / batchsize))
+        num_batches = int(math.ceil(total_samples / batchsize))
+        batches = []
+        for batch_num in range(num_batches):
+            start_idx = batch_num * batchsize
+            end_idx = min(start_idx + batchsize, total_samples)
+            batches.append(training[start_idx:end_idx])
 
         epoch = 0
+        loss_result = None
+        get_forces = self.loss_function.force_coeff != 0.
         while True:
-            for batch_num in range(batches):
-                start_idx = batch_num * batchsize
-                end_idx = min(start_idx + batchsize, total_samples)
-                batch = training[start_idx:end_idx]
-
-                predictions = self._make_prediction(batch, get_forces=self.loss_function.force_coeff != 0.)
+            for batch in batches:
+                predictions = self._make_prediction(batch, get_forces=get_forces)
 
                 optimiser.zero_grad()
-                loss = self.loss_function.get_loss(predictions, batch).total
+                loss_result = self.loss_function.get_loss(predictions, batch)
+                loss = loss_result.total
                 loss.backward(retain_graph=True)
                 optimiser.step()
 
-            predictions = self._make_prediction(training, get_forces=True)
-            loss = self.loss_function.get_loss(predictions, training)
+            # Calculate loss for the entire training set.  Only necessary if there is more than one batch
+            if len(batches) > 1:
+                predictions = self._make_prediction(training, get_forces=get_forces)
+                loss_result = self.loss_function.get_loss(predictions, training)
 
             if progress_callback is not None:
-                progress_callback(self, epoch, training, loss)
+                progress_callback(self, epoch, training, loss_result)
 
-            if should_stop(epoch, training, loss):
+            if should_stop(epoch, training, loss_result):
                 break
 
             epoch += 1
@@ -442,11 +451,11 @@ class NeuralNetwork:
         prev_size = input_size
         # Create the fully connected (hidden) layers
         for size in self._hidden:
-            sequence.append(torch.nn.Linear(prev_size, size, bias=False))
+            sequence.append(torch.nn.Linear(prev_size, size, bias=self._bias))
             sequence.append(self._activations)
             prev_size = size
         # Add the output layer
-        sequence.extend((torch.nn.Linear(prev_size, 1, bias=True), self._energy_scaler))
+        sequence.extend((torch.nn.Linear(prev_size, 1, bias=self._bias), self._energy_scaler))
 
         self._network = torch.nn.Sequential(*sequence)
         self._network.to(self._device, self._dtype)

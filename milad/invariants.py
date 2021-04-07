@@ -169,11 +169,18 @@ class MomentInvariant:
         total = self._constant  # type: float
 
         if self._terms:
-            if raw_moments.dtype == np.object or len(self._terms) < 48:
+            if raw_moments.dtype == np.object:
                 # if raw_moments.dtype == np.object or len(self._terms) < 6:
                 total += _numpy_apply(self._farray, self._indarray, raw_moments)
             else:
-                total += _parallel_apply(self._farray, self._indarray, raw_moments)
+                total += _numba_apply(self._farray, self._indarray, raw_moments)
+
+            #
+            # if raw_moments.dtype == np.object or len(self._terms) < 48:
+            #     # if raw_moments.dtype == np.object or len(self._terms) < 6:
+            #     total += _numpy_apply(self._farray, self._indarray, raw_moments)
+            # else:
+            #     total += _parallel_apply(self._farray, self._indarray, raw_moments)
 
         return total
 
@@ -253,8 +260,8 @@ def _numpy_apply(prefactors, indices: np.array, raw_moments: np.ndarray):
     return total
 
 
-@numba.jit(parallel=True)
-def _parallel_apply(prefactors, indices, moments):
+@numba.jit(parallel=False, nopython=True)
+def _numba_apply(prefactors, indices, moments):
     """Generic apply for moments that support indexing.
 
     This is slower version of above but compatible with moments that aren't numpy arrays"""

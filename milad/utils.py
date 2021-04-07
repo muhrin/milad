@@ -15,7 +15,7 @@ def calculate_all_pair_distances(vectors, sort_result=True):
     lengths = []
     for i in range(num - 1):
         for j in range(i + 1, num):
-            dr = vectors[i] - vectors[j]
+            dr = vectors[i] - vectors[j]  # pylint: disable=invalid-name
             lengths.append(np.linalg.norm(dr))
 
     if sort_result:
@@ -188,7 +188,7 @@ class FingerprintSet:
         """
         out = []
         idx = 0
-        for system_idx, info in enumerate(self._system_info):
+        for info in self._system_info:
             natoms = len(info.atoms)
             summed = sum(values[idx:idx + natoms])
             if normalise:
@@ -208,6 +208,16 @@ class FingerprintSet:
 
         return fig
 
+    def plot_energies(self):
+        fig, axes = plt.subplots(figsize=(16, 5))
+
+        energies = self.get_potential_energies(normalise=True)
+        axes.hist(energies, 50, log=True)
+        axes.set_xlabel('Energy')
+        axes.set_ylabel('Number')
+
+        return fig
+
     def split(self, split_point: Union[float, int]) -> Tuple['FingerprintSet', 'FingerprintSet']:
         """Split this set into two.  This can be used for creating a training and validation set.
 
@@ -219,12 +229,13 @@ class FingerprintSet:
         elif not isinstance(split_point, int):
             raise TypeError('split_point must be integer or float, got {}'.format(split_point.__class__.__name__))
 
-        a = FingerprintSet(self.fingerprint_len)
+        # Split into two halves
+        one = FingerprintSet(self.fingerprint_len)
         for info in self._system_info[:split_point]:
-            a.add_system(*info)
+            one.add_system(*info)
 
-        b = FingerprintSet(self.fingerprint_len)
+        two = FingerprintSet(self.fingerprint_len)
         for info in self._system_info[split_point:]:
-            b.add_system(*info)
+            two.add_system(*info)
 
-        return a, b
+        return one, two
