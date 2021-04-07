@@ -14,6 +14,8 @@ from milad import utils
 
 __all__ = 'NeuralNetwork', 'create_fingerprint_set'
 
+# pylint: disable=no-member, not-callable
+
 
 def create_fingerprint_set(
     descriptor: fingerprinting.MomentInvariantsDescriptor,
@@ -30,8 +32,9 @@ def create_fingerprint_set(
         fps = []
         fp_derivatives = []
         for env in asetools.extract_environments(system, cutoff=descriptor.cutoff):
+            milad_env = asetools.ase2milad(env)
             if get_derivatives:
-                fingerprint, jacobian = descriptor(asetools.ase2milad(env), jacobian=True)
+                fingerprint, jacobian = descriptor(milad_env, jacobian=True)
                 # Now, let's deal with the derivatives extracting just the positional parts and summing over all
                 # neighbours keeping x, y, z separate
                 derivatives = jacobian[:, 3:3 * len(env)].reshape(fp_length, -1, 3).sum(1)
@@ -39,7 +42,7 @@ def create_fingerprint_set(
                 fps.append(fingerprint)
                 fp_derivatives.append(derivatives)
             else:
-                fps.append(descriptor(asetools.ase2milad(env)))
+                fps.append(descriptor(milad_env))
 
         fingerprints.add_system(system, fps, derivatives=fp_derivatives)
 
@@ -81,6 +84,7 @@ class Predictions:
         return self._total_energies
 
     def get_normalised_energies(self) -> torch.Tensor:
+        """Get the energy/atom for each system"""
         return self.total_energies / self.sizes
 
 
@@ -213,7 +217,7 @@ class LossFunction:
         self.force_coeff = force_coeff
 
     def get_loss(self, predictions: Predictions, fitting_data: FittingData):
-        total_loss = 0
+        total_loss = 0.
         energy_loss = torch.nn.functional.mse_loss(
             predictions.get_normalised_energies(), fitting_data.get_normalised_energies()
         )
@@ -317,7 +321,7 @@ class NeuralNetwork:
         # Set the activation function
         if isinstance(activations, str):
             self._activations = getattr(torch.nn, activations)()
-        elif isinstance(activations, Callable):
+        elif isinstance(activations, Callable):  # pylint: disable=isinstance-second-argument-not-valid-type
             self._activations = activations
         else:
             raise TypeError('Expecting str or Callable, got {}'.format(activations.__class__.__name__))
