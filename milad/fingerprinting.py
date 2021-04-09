@@ -25,6 +25,7 @@ class MomentInvariantsDescriptor(functions.Function):
         scale: bool = True,
         species_mapper: atomic.MapNumbers = None,
         apply_cutoff=True,
+        smooth_cutoff=False
     ):
         super().__init__()
 
@@ -50,6 +51,9 @@ class MomentInvariantsDescriptor(functions.Function):
                 process.append(self.scaler)
 
         process.append(feature_mapper)
+        if smooth_cutoff:
+            process.append(functions.CosineCutoff(cutoff))
+
         process.append(moments_calculator)
         process.append(self._invariants)
 
@@ -101,7 +105,7 @@ class MomentInvariantsDescriptor(functions.Function):
             atoms = self.preprocess(atoms)
         return self.process[:-1](atoms)
 
-    def evaluate(self, state: atomic.AtomsCollection, get_jacobian=False):
+    def evaluate(self, state: atomic.AtomsCollection, *, get_jacobian=False):
         result = self._calculator(state, get_jacobian)
         if get_jacobian:
             return result[0].real, result[1].real
@@ -181,6 +185,7 @@ def descriptor(
     moments_calculator: base_moments.MomentsCalculator = None,
     invs: invariants.MomentInvariants = None,
     apply_cutoff=True,
+    smooth_cutoff=False,
 ):
     """
 
@@ -221,6 +226,7 @@ def descriptor(
         scale=scale,
         species_mapper=species_mapper,
         apply_cutoff=apply_cutoff,
+        smooth_cutoff=smooth_cutoff,
     )
 
 

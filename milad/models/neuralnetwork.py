@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import collections
 import math
-from typing import Union, Callable, Sequence, Optional
+from typing import Union, Callable, Sequence, Optional, List
 
 import ase
 import torch
@@ -148,6 +148,9 @@ class FittingData:
                 f'systems (sizes) ({len(sizes)}).'
             )
 
+        if not (len(derivatives) == len(fingerprints) == len(forces)):  # pylint: disable=superfluous-parens
+            raise ValueError('Dataset size mismatch')
+
         self._num_atoms = sizes
         self._fingerprints = fingerprints
         self._total_energies = total_energies
@@ -207,6 +210,17 @@ class FittingData:
 
     def get_normalised_energies(self) -> torch.Tensor:
         return self._total_energies / self._num_atoms
+
+    def batch_split(self, batchsize: int) -> List['FittingData']:
+        total_samples = len(self)
+        num_batches = int(math.ceil(total_samples / batchsize))
+        batches = []
+        for batch_num in range(num_batches):
+            start_idx = batch_num * batchsize
+            end_idx = min(start_idx + batchsize, total_samples)
+            batches.append(self[start_idx:end_idx])
+
+        return batches
 
 
 class LossFunction:
@@ -314,7 +328,19 @@ class NeuralNetwork:
         device=None,
         dtype=torch.float64,
         bias=False,
+        vectorise_jacobian=False,
     ):
+        """
+
+        :param hiddenlayers: a tuple of the hidden layers to use e.g. (32, 16, 8)
+        :param activations:
+        :param loss_function:
+        :param device:
+        :param dtype:
+        :param bias:
+        :param vectorise_jacobian: if True, will calculate the NN Jacobian for a batch of fingerprints all in one go.
+            This is very memory consuming at the moment and may exceed the amount of memory you have available.
+        """
         # Set up the hidden layers
         self._hidden = hiddenlayers
 
@@ -332,6 +358,7 @@ class NeuralNetwork:
             self._device = device
         self._dtype = dtype
         self._bias = bias
+        self._vectorise_jacobian = vectorise_jacobian
 
         self._fingerprint_scaler = DataScaler(out_range=(-1., 1.), device=self._device, dtype=self._dtype)
         self._energy_scaler = DataScaler(in_range=(-1., 1.), device=self._device, dtype=self._dtype)
@@ -387,22 +414,16 @@ class NeuralNetwork:
         optimiser,
         batchsize: int,
         progress_callback: Callable = None,
-    ):
+    ) -> LossFunction.Loss:
         # Let's break up the training data into batches
-        total_samples = len(training)
-        num_batches = int(math.ceil(total_samples / batchsize))
-        batches = []
-        for batch_num in range(num_batches):
-            start_idx = batch_num * batchsize
-            end_idx = min(start_idx + batchsize, total_samples)
-            batches.append(training[start_idx:end_idx])
+        batches = training.batch_split(batchsize)
 
         epoch = 0
         loss_result = None
         get_forces = self.loss_function.force_coeff != 0.
         while True:
             for batch in batches:
-                predictions = self._make_prediction(batch, get_forces=get_forces)
+                predictions = self.make_prediction(batch, get_forces=get_forces, create_graph=True)
 
                 optimiser.zero_grad()
                 loss_result = self.loss_function.get_loss(predictions, batch)
@@ -412,7 +433,7 @@ class NeuralNetwork:
 
             # Calculate loss for the entire training set.  Only necessary if there is more than one batch
             if len(batches) > 1:
-                predictions = self._make_prediction(training, get_forces=get_forces)
+                predictions = self.make_prediction(training, get_forces=get_forces)
                 loss_result = self.loss_function.get_loss(predictions, training)
 
             if progress_callback is not None:
@@ -423,13 +444,14 @@ class NeuralNetwork:
 
             epoch += 1
 
-        return loss
+        return loss_result
 
-    def loss(self, fitting_data: FittingData, get_forces=True) -> LossFunction.Loss:
-        predictions = self._make_prediction(fitting_data, get_forces=get_forces)
+    def loss(self, fitting_data: FittingData, get_forces=None) -> LossFunction.Loss:
+        get_forces = get_forces if get_forces is not None else self.loss_function.force_coeff != 0.
+        predictions = self.make_prediction(fitting_data, get_forces=get_forces)
         return self.loss_function.get_loss(predictions, fitting_data)
 
-    def _make_prediction(self, fitting_data: FittingData, get_forces=False) -> Predictions:
+    def make_prediction(self, fitting_data: FittingData, get_forces=False, create_graph=False) -> Predictions:
         # Join all fingerprints as this is much faster going through the network
         local_energies = self._network(fitting_data.fingerprints)
 
@@ -438,11 +460,42 @@ class NeuralNetwork:
             forces = []
             # Need to calculate the forces using the chain rule with the fingerprints derivative and the
             # neural network derivative
-            for fingerprint, derivatives in zip(fitting_data.fingerprints, fitting_data.derivatives):
-                # Get the derivative of the energy wrt to input vector
-                network_deriv = functional.jacobian(self._network, fingerprint, create_graph=True)
-                predicted_force = -torch.matmul(network_deriv, derivatives)
-                forces.append(predicted_force)
+            if self._vectorise_jacobian:
+                jac = functional.jacobian(
+                    self._network, fitting_data.fingerprints, create_graph=create_graph, vectorize=True
+                )
+                jacs = [jac[i, :, i, :] for i in range(len(fitting_data.fingerprints))]
+
+                for fingerprint, derivatives, network_deriv in zip(
+                    fitting_data.fingerprints, fitting_data.derivatives, jacs
+                ):
+                    # Get the derivative of the energy wrt to input vector
+                    predicted_force = -torch.matmul(network_deriv, derivatives)
+                    forces.append(predicted_force)
+            else:
+                # Fallback, lower memory version
+                for fingerprint, derivatives in zip(fitting_data.fingerprints, fitting_data.derivatives):
+                    # Get the derivative of the energy wrt to input vector
+                    network_deriv = functional.jacobian(
+                        self._network, fingerprint, create_graph=create_graph, vectorize=True
+                    )
+                    predicted_force = -torch.matmul(network_deriv, derivatives)
+                    forces.append(predicted_force)
+
+            # VMAP version, doesn't work yet but may be fixed soon and would almost certainly be fast and relatively
+            # low-memory.  See:
+            # https://github.com/pytorch/pytorch/issues/42368
+            # def get_jacobian(fingerprint):
+            #     return functional.jacobian(self._network, fingerprint, create_graph=False)
+            #
+            # jac = torch.vmap(get_jacobian)(tuple(fitting_data.fingerprints))
+            # jacs = [jac[i, :, i, :] for i in range(len(fitting_data.fingerprints))]
+            #
+            # for fingerprint, derivatives, network_deriv
+            #   in zip(fitting_data.fingerprints, fitting_data.derivatives, jacs):
+            #     # Get the derivative of the energy wrt to input vector
+            #     predicted_force = -torch.matmul(network_deriv, derivatives)
+            #     forces.append(predicted_force)
 
             forces = torch.cat(forces)
 

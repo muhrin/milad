@@ -33,16 +33,16 @@ class TrainingMonitor:
         plt.ion()
 
         self.fig = fig
-        self.ax = energy_axis
+        self.energy_axis = energy_axis
 
         self._energy_training = TrainingMonitor.PlottingDataset(
-            self.ax,
+            self.energy_axis,
             scatter_kwargs=dict(
                 edgecolors='tab:orange', alpha=0.6, marker='o', facecolors='none', label='Energy (training)'
             )
         )
         self._energy_validation = TrainingMonitor.PlottingDataset(
-            self.ax, scatter_kwargs=dict(c='tab:orange', alpha=0.6, label='Energy (validation)')
+            self.energy_axis, scatter_kwargs=dict(c='tab:orange', alpha=0.6, label='Energy (validation)')
         )
 
         forces_axis = energy_axis.twinx()
@@ -58,7 +58,7 @@ class TrainingMonitor:
 
         self._validation_data = validation_data
 
-    def progress_callaback(self, network, step, _training, loss):
+    def progress_callaback(self, network, _step, _training, loss):
         # Calculate MSEs
         training_rmsd = loss.energy.cpu().item()**0.5
         self._energy_training.append(training_rmsd)
@@ -82,52 +82,51 @@ class TrainingMonitor:
 
         self.fig.canvas.draw()
 
-    def plot_energy_comparison(
-        self, network: neuralnetwork.NeuralNetwork, training_data: neuralnetwork.FittingData,
-        *fitting_data: neuralnetwork.FittingData
-    ):
+    def plot_energy_comparison(self, network: neuralnetwork.NeuralNetwork, *fitting_data: neuralnetwork.FittingData):
         fig = plt.figure(figsize=(8, 8))
-        ax = fig.gca()
+        axis = fig.gca()
 
         minimum, maximum = np.inf, -np.inf
 
+        training_data = None if not fitting_data else fitting_data[0]
+
         if training_data:
-            predictions = network._make_prediction(training_data)
+            predictions = network.make_prediction(training_data)
             known_energies = training_data.get_normalised_energies().cpu().detach().numpy()
-            ax.scatter(known_energies, predictions.get_normalised_energies().cpu().detach().numpy(), c='r', alpha=0.3)
+            axis.scatter(known_energies, predictions.get_normalised_energies().cpu().detach().numpy(), c='r', alpha=0.3)
             minimum = min(minimum, known_energies.min())
             maximum = max(maximum, known_energies.max())
 
         for entry in fitting_data:
             # Any additional datasets the user wants to plot
-            predictions = network._make_prediction(entry)
+            predictions = network.make_prediction(entry)
             known_energies = entry.get_normalised_energies().cpu().detach().numpy()
-            ax.scatter(known_energies, predictions.get_normalised_energies().cpu().detach().numpy(), alpha=0.4)
+            axis.scatter(known_energies, predictions.get_normalised_energies().cpu().detach().numpy(), alpha=0.4)
             minimum = min(minimum, known_energies.min())
             maximum = max(maximum, known_energies.max())
 
         if self._validation_data:
-            predictions = network._make_prediction(self._validation_data)
+            predictions = network.make_prediction(self._validation_data)
             known_energies = self._validation_data.get_normalised_energies().cpu().detach().numpy()
-            ax.scatter(known_energies, predictions.get_normalised_energies().cpu().detach().numpy(), c='b', alpha=0.8)
+            axis.scatter(known_energies, predictions.get_normalised_energies().cpu().detach().numpy(), c='b', alpha=0.8)
             minimum = min(minimum, known_energies.min())
             maximum = max(maximum, known_energies.max())
 
         if minimum != np.inf:
-            ax.plot((minimum, maximum), (minimum, maximum), 'k-', lw=2, c='black')
+            axis.plot((minimum, maximum), (minimum, maximum), 'k-', lw=2, c='black')
 
         return fig
 
     def plot_energy_deviation_histogram(self, network, *fitting_data: neuralnetwork.FittingData):
         fig = plt.figure(figsize=(10, 10))
-        ax = fig.gca()
-        ax.set_ylabel('No. of structures')
+        axis = fig.gca()
+        axis.set_ylabel('No. of structures')
 
         all_datasets = [self._validation_data, *fitting_data]
         for data_set in all_datasets:
             target_energies = data_set.get_normalised_energies().cpu().detach().numpy()
-            predicted_energies = network._make_prediction(data_set).get_normalised_energies().cpu().detach().numpy()
+            predicted_energies = network.make_prediction(data_set).get_normalised_energies().cpu().detach().numpy()
             differences = target_energies - predicted_energies
-            ax.hist(differences, 100)
+            axis.hist(differences, 100)
 
         return fig

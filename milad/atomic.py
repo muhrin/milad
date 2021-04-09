@@ -2,6 +2,7 @@
 """
 Module containing functions and objects related to manipulating collections of atoms
 """
+import copy
 import logging
 import random
 from typing import Optional, Type, Tuple, Union, List

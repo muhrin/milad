@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 import abc
+import copy
 import logging
 import numbers
 from typing import List, Union, Tuple, Callable, Any, Iterable, Type, Optional
 
 import numpy as np
+import scipy
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -83,6 +85,11 @@ class Feature(State):
         self._vector = np.zeros(self.LENGTH, dtype=dtype)
 
     @property
+    @abc.abstractmethod
+    def pos(self) -> np.ndarray:
+        """The position of this feature"""
+
+    @property
     def vector(self):
         return self._vector
 
@@ -131,6 +138,17 @@ class Features(State):
     @array.setter
     def array(self, arr):
         self._vector[:] = arr
+
+    def feature_range(self, feature: Feature) -> Optional[range]:
+        """Given a feature in this set of features, get the corresponding slice of indices in the feature vector"""
+        try:
+            idx = self._features.index(feature)
+        except IndexError:
+            return None
+
+        start = sum([len(entry) for entry in self._features[:idx]])
+        stop = start + len(feature)
+        return range(start, stop)
 
     def add(self, feature: Feature):
         self._features.append(feature)
@@ -194,7 +212,7 @@ class WeightedGaussian(Feature):
     LENGTH = 5
 
     def __init__(self, pos: np.array, sigma: float = 1., weight: float = 1.):
-        super().__init__()
+        super().__init__(dtype=pos.dtype)
         self.pos = pos
         self.sigma = sigma
         self.weight = weight
@@ -522,6 +540,87 @@ class Native(Function):
             return self._fn(state), self._jac(state)
 
         return self._fn(state)
+
+
+class CosineCutoff(Function):
+    """A function that takes a set of Features and scales their weights by applying a cosine cutoff in the form
+
+    w' = w (cos(\pi * dr / r_\text{cut}) + 1.) / 2
+    """
+    supports_jacobian = False
+
+    def __init__(self, cutoff: float):
+        super().__init__()
+        self._cutoff = cutoff
+
+    def evaluate(self, in_features: Features, *, get_jacobian=False):  # pylint: disable=arguments-differ
+        out_features = Features()
+        r_cut_sq = self._cutoff**2
+
+        jacobians = []
+        for in_feature in in_features.features:
+            out_feature = None
+            if hasattr(in_feature, 'weight') and hasattr(in_feature, 'pos'):
+                r_sq = np.dot(in_feature.pos, in_feature.pos)
+
+                # Hack that makes it possible to test this function analytically
+                if r_sq < r_cut_sq:
+                    dr = r_sq**0.5  # pylint: disable=invalid-name
+                    out_feature = copy.deepcopy(in_feature)
+                    # Rescale the weight
+                    scale = self.fn(dr)
+                    out_feature.weight = in_feature.weight * scale
+
+                    if get_jacobian:
+                        # Calculate this portion of the Jacobian
+                        jac_block = np.eye(len(in_feature))
+                        dr_dxyz = out_feature.pos / dr if dr > 0. else np.zeros(3)
+                        dwout_dr = in_feature.weight * self.deriv(dr)
+
+                        jac_block[in_feature.WEIGHT, 0:3] = dwout_dr * dr_dxyz
+                        jac_block[in_feature.WEIGHT, in_feature.WEIGHT] = scale
+
+                        jacobians.append(jac_block)
+
+            else:
+                # Just pass on the same feature, no changes
+                out_feature = in_feature
+
+                if get_jacobian:
+                    # Calculate this portion of the Jacobian
+                    jacobians.append(np.eye(len(in_feature)))
+
+            if out_feature is not None:
+                out_features.add(out_feature)
+
+        if get_jacobian:
+            return out_features, scipy.linalg.block_diag(*jacobians)
+
+        return out_features
+
+    def fn(
+        # pylint: disable=invalid-name
+        self,
+        dr
+    ) -> float:
+        return 0.5 * (np.cos(np.pi * dr / self._cutoff) + 1.)
+
+    def deriv(
+        # pylint: disable=invalid-name
+        self,
+        dr
+    ) -> float:
+        return -0.5 * np.pi / self._cutoff * np.sin(np.pi * dr / self._cutoff)
+
+    @staticmethod
+    def symbolic(
+        # pylint: disable=invalid-name
+        dr,
+        weight,
+        rcut
+    ):
+        import sympy as sp
+        return weight * (sp.cos(sp.pi * dr / rcut) + 1) / 2
 
 
 # endregion
