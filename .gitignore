@@ -68,3 +68,7 @@ target/
 
 # Virtual environment directories
 /venv*/
+
+# TeX stuff
+*.aux
+*.pdf
