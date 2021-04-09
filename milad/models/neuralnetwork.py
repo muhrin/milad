@@ -431,16 +431,18 @@ class NeuralNetwork:
                 loss.backward(retain_graph=True)
                 optimiser.step()
 
-            # Calculate loss for the entire training set.  Only necessary if there is more than one batch
-            if len(batches) > 1:
-                predictions = self.make_prediction(training, get_forces=get_forces)
-                loss_result = self.loss_function.get_loss(predictions, training)
+            # Use no_grad to reduce memory footprint
+            with torch.no_grad():
+                # Calculate loss for the entire training set.  Only necessary if there is more than one batch
+                if len(batches) > 1:
+                    predictions = self.make_prediction(training, get_forces=get_forces)
+                    loss_result = self.loss_function.get_loss(predictions, training)
 
-            if progress_callback is not None:
-                progress_callback(self, epoch, training, loss_result)
+                if progress_callback is not None:
+                    progress_callback(self, epoch, training, loss_result)
 
-            if should_stop(epoch, training, loss_result):
-                break
+                if should_stop(epoch, training, loss_result):
+                    break
 
             epoch += 1
 

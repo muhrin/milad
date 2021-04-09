@@ -2,6 +2,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+import torch
+
 from . import neuralnetwork
 
 __all__ = ('TrainingMonitor',)
@@ -58,6 +60,7 @@ class TrainingMonitor:
 
         self._validation_data = validation_data
 
+    @torch.no_grad()
     def progress_callaback(self, network, _step, _training, loss):
         # Calculate MSEs
         training_rmsd = loss.energy.cpu().item()**0.5
