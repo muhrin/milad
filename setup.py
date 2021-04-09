@@ -41,7 +41,7 @@ setup(
             'yapf',
         ],
     },
-    packages=['milad', 'milad.play'],
+    packages=['milad', 'milad.descriptors', 'milad.models', 'milad.optimisers', 'milad.play'],
     include_package_data=True,
     test_suite='test',
     entry_points={
