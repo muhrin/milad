@@ -25,16 +25,16 @@ relbranch="release-${version}"
 
 echo Releasing version $version
 
-git checkout -b $relbranch 
+git checkout -b $relbranch
 git add ${VERSION_FILE}
 git commit --no-verify -m "Release ${version}"
 
 git tag -a $tag -m "Version $version"
 
 
-# Merge into master
+# Merge into main
 
-git checkout master
+git checkout main
 git merge $relbranch
 
 # And back into the working branch (usually develop)
@@ -44,7 +44,7 @@ git merge $relbranch
 git branch -d $relbranch
 
 # Push everything
-git push --tags $REMOTE master $current_branch
+git push --tags $REMOTE main $current_branch
 
 
 # Release on pypi
@@ -53,7 +53,3 @@ python setup.py sdist
 python setup.py bdist_wheel --universal
 
 twine upload dist/*
-
-
-
-
