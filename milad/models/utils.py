@@ -18,17 +18,21 @@ class TrainingMonitor:
             self._axes = axes
             self._last_plt = None
             self._values = []
+            self._steps = []
             self._scatter_kwargs = scatter_kwargs or {}
 
-        def append(self, value):
+        def append(self, value, step: int = None):
             self._values.append(value)
+            self._steps.append(step if step is not None else len(self._steps))
 
         def replot(self):
             if self._last_plt is not None:
                 self._last_plt.remove()
-            self._last_plt = self._axes.scatter(list(range(len(self._values))), self._values, **self._scatter_kwargs)
+            self._last_plt = self._axes.scatter(self._steps, self._values, **self._scatter_kwargs)
 
-    def __init__(self, validation_data: neuralnetwork.FittingData = None):
+    def __init__(self, validation_data: neuralnetwork.FittingData = None, show_validation_every=10):
+        self._show_validation_every = show_validation_every
+
         fig = plt.figure(figsize=(12, 10))
         energy_axis = fig.add_subplot(111)
         energy_axis.set_yscale('log')
@@ -61,7 +65,7 @@ class TrainingMonitor:
         self._validation_data = validation_data
 
     @torch.no_grad()
-    def progress_callaback(self, network, _step, _training, loss):
+    def progress_callaback(self, network, step, _training, loss):
         # Calculate MSEs
         training_rmsd = loss.energy.cpu().item()**0.5
         self._energy_training.append(training_rmsd)
@@ -71,16 +75,16 @@ class TrainingMonitor:
             self._force_training.append(loss.force.cpu().item()**0.5)
             self._force_training.replot()
 
-        if self._validation_data:
+        if self._validation_data and (step % self._show_validation_every) == 0:
             # Calculate the validation loss
             validation_loss = network.loss(self._validation_data)
             validation_rmsd = validation_loss.energy.cpu().item()**0.5
-            self._energy_validation.append(validation_rmsd)
+            self._energy_validation.append(validation_rmsd, step)
             self._energy_validation.replot()
 
             if validation_loss.force is not None:
                 force_rmsd = validation_loss.force.cpu().item()**0.5
-                self._force_validation.append(force_rmsd)
+                self._force_validation.append(force_rmsd, step)
                 self._force_validation.replot()
 
         self.fig.canvas.draw()

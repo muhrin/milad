@@ -50,8 +50,11 @@ def create_fingerprint_set(
 
 
 class Predictions:
+    """Class representing predictions made by the the model"""
 
-    def __init__(self, sizes: torch.Tensor, local_energies: torch.Tensor, forces: torch.Tensor = None):
+    def __init__(
+        self, sizes: torch.Tensor, indices: torch.Tensor, local_energies: torch.Tensor, forces: torch.Tensor = None
+    ):
         """Create an object to store prediction data from the neural network
 
         :param sizes: a tensor containing the number of atoms in each system.  The length of the tensor is the total
@@ -64,6 +67,7 @@ class Predictions:
             )
 
         self.sizes = sizes
+        self.indices = indices
         self.local_energies = local_energies
         self.forces = forces
         self._total_energies = None
@@ -73,13 +77,11 @@ class Predictions:
         """Get total energies as a single tensor that preserves gradients"""
         if self._total_energies is None:
             # Lazily calculate
-            idx = 0
-            total_energies = []
-            for num_atoms in self.sizes:
-                total_energies.append(torch.sum(self.local_energies[idx:idx + num_atoms]))
-                idx += num_atoms
+            device = self.local_energies.device
+
             # Combine them all into a tensor
-            self._total_energies = torch.stack(total_energies)
+            self._total_energies = torch.zeros(len(self.sizes), device=device, dtype=self.local_energies.dtype)
+            self._total_energies.scatter_add_(0, self.indices, self.local_energies[:, 0])
 
         return self._total_energies
 
@@ -148,14 +150,12 @@ class FittingData:
                 f'systems (sizes) ({len(sizes)}).'
             )
 
-        if not (len(derivatives) == len(fingerprints) == len(forces)):  # pylint: disable=superfluous-parens
-            raise ValueError('Dataset size mismatch')
-
         self._num_atoms = sizes
         self._fingerprints = fingerprints
         self._total_energies = total_energies
         self._forces = forces
         self._derivatives = derivatives
+        self._index = _create_index_from_sizes(self._num_atoms)
 
     def __getitem__(self, item) -> 'FittingData':
         if isinstance(item, slice):
@@ -207,6 +207,12 @@ class FittingData:
     def num_atoms(self) -> torch.Tensor:
         """Get the number of atoms in each structure"""
         return self._num_atoms
+
+    @property
+    def index(self) -> torch.Tensor:
+        """Get an tensor of structure indices that each local environment datum belongs to
+        (e.g. force, derivatices, etc)"""
+        return self._index
 
     def get_normalised_energies(self) -> torch.Tensor:
         return self._total_energies / self._num_atoms
@@ -323,7 +329,7 @@ class NeuralNetwork:
     def __init__(
         self,
         hiddenlayers=(32, 16, 8),
-        activations: Union[str, Callable] = 'ReLU',
+        activations: Union[str, Callable] = 'Tanh',
         loss_function=None,
         device=None,
         dtype=torch.float64,
@@ -501,11 +507,10 @@ class NeuralNetwork:
 
             forces = torch.cat(forces)
 
-        return Predictions(fitting_data.num_atoms, local_energies=local_energies, forces=forces)
+        return Predictions(fitting_data.num_atoms, fitting_data.index, local_energies=local_energies, forces=forces)
 
     def _create_network(self, input_size):
         # Create the network
-        # sequence = [self._fingerprint_scaler]
         sequence = []
         prev_size = input_size
         # Create the fully connected (hidden) layers
@@ -521,3 +526,14 @@ class NeuralNetwork:
 
     def tensor(self, *args, requires_grad=False) -> torch.Tensor:
         return torch.tensor(*args, device=self._device, dtype=self._dtype, requires_grad=requires_grad)
+
+
+def _create_index_from_sizes(sizes: torch.Tensor) -> torch.Tensor:
+    device = sizes.device
+    index = torch.empty(sizes.sum(), dtype=torch.int64, device=device)
+    idx = 0
+    for i, num_atoms in enumerate(sizes):
+        index[idx:idx + num_atoms] = i
+        idx += num_atoms
+
+    return index
