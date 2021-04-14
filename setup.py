@@ -2,6 +2,7 @@
 from setuptools import setup
 
 __author__ = 'Martin Uhrin'
+__contributors__ = 'Sonia Collaud'
 __license__ = 'GPLv3'
 
 about = {}

@@ -1,6 +1,9 @@
 Moment Invariants Local Atomic Descriptor
 =========================================
 
+.. image:: docs/source/img/milad_logo.svg
+   :alt: MILAD logo
+
 .. image:: docs/source/img/encode_decode.png
    :alt: The rotationally invariant encoding and decoding of a molecule
 
