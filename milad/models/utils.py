@@ -92,6 +92,7 @@ class TrainingMonitor:
     def plot_energy_comparison(self, network: neuralnetwork.NeuralNetwork, *fitting_data: neuralnetwork.FittingData):
         fig = plt.figure(figsize=(8, 8))
         axis = fig.gca()
+        axis.ticklabel_format(useOffset=False)
 
         minimum, maximum = np.inf, -np.inf
 
@@ -124,7 +125,7 @@ class TrainingMonitor:
 
         return fig
 
-    def plot_energy_deviation_histogram(self, network, *fitting_data: neuralnetwork.FittingData):
+    def plot_energy_deviation_histogram(self, network, *fitting_data: neuralnetwork.FittingData, bins=100):
         fig = plt.figure(figsize=(10, 10))
         axis = fig.gca()
         axis.set_ylabel('No. of structures')
@@ -134,6 +135,6 @@ class TrainingMonitor:
             target_energies = data_set.get_normalised_energies().cpu().detach().numpy()
             predicted_energies = network.make_prediction(data_set).get_normalised_energies().cpu().detach().numpy()
             differences = target_energies - predicted_energies
-            axis.hist(differences, 100)
+            axis.hist(differences, bins)
 
         return fig

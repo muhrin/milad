@@ -244,7 +244,7 @@ class LossFunction:
         total_loss += self.energy_coeff * energy_loss
 
         force_loss = None
-        if fitting_data.forces is not None and self.force_coeff != 0.:
+        if fitting_data.forces is not None and predictions.forces is not None and self.force_coeff != 0.:
             force_loss = torch.nn.functional.mse_loss(predictions.forces, fitting_data.forces) / 3.
             total_loss += self.force_coeff * force_loss
             total_loss *= 0.5
