@@ -464,6 +464,7 @@ def get_best_rms(
     max_attempts: int = 1000,
     max_retries=20,
     threshold=1e-7,
+    use_hungarian=True
 ) -> float:
     """
     Get the best RMSs fitting between two molecules.  This will first use an algorithm to make a decent guess at the
@@ -471,28 +472,38 @@ def get_best_rms(
 
     :param reference: the reference to fit to
     :param probe: the probe to try to fit to the reference
+    :param max_attempts: the number of attempts that RDKit should make the find the best RMSD in each retry
+    :param max_retries: the number of ties we should call RDKit's get best RMSD method
+    :param threshold: if the RMSD returned by RDKit's get best RMSD method drops below this value then we stop and
+        return the result
+    :param use_hungarian: if True will use the Hungarian algorithm (https://en.wikipedia.org/wiki/Hungarian_algorithm)
+        to try and find a good label assignment before calling RDKit
     :return: the best RMSD found
     """
     from rdkit.Chem import rdMolAlign
     from . import rdkittools
 
-    # Find a decent re-ordering of the atoms
-    try:
-        reorder_map = rmsdlib.reorder_hungarian(reference.numbers, probe.numbers, reference.positions, probe.positions)
-    except ValueError:
-        pass
-    else:
-        probe = atomic.AtomsCollection(
-            reference.num_atoms,
-            positions=probe.positions[reorder_map],
-            numbers=probe.numbers[reorder_map],
-        )
+    if use_hungarian:
+        # Find a decent re-ordering of the atoms
+        try:
+            reorder_map = rmsdlib.reorder_hungarian(
+                reference.numbers, probe.numbers, reference.positions, probe.positions
+            )
+        except ValueError:
+            pass
+        else:
+            probe = atomic.AtomsCollection(
+                reference.num_atoms,
+                positions=probe.positions[reorder_map],
+                numbers=probe.numbers[reorder_map],
+            )
 
     # Now ask rdkit to find the best.
     # This will try a brute-force permutation search starting with the one we just defined which is likely to be
     # the best
     reference = rdkittools.milad2rdkit(reference)
     probe = rdkittools.milad2rdkit(probe)
+
     try:
         best = np.inf
         for _ in range(max_retries):
