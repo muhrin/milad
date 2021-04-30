@@ -13,6 +13,10 @@ The resulting fingerprint vectors can be decoded back into the original atomic s
 
 Code examples will be coming soon!
 
+To find out more check out the paper:
+
+Uhrin, M. (2021). Through the eyes of a descriptor: Constructing complete, invertible, descriptions of atomic environments, `arXiv:2104.09319 <https://arxiv.org/abs/2104.09319>`_.
+
 Contact martin [at] digitalbaker.net for more details.
 
 MILAD is FOSS, under the GPLv3 license.
