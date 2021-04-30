@@ -18,7 +18,7 @@ __all__ = ('MomentInvariant', 'read_invariants', 'RES_DIR', 'COMPLEX_INVARIANTS'
 
 # The resources directory
 RES_DIR = pathlib.Path(__file__).parent / 'res'
-GEOMETRIC_INVARIANTS = RES_DIR / 'milad_rot3dinvs8indep.txt'
+GEOMETRIC_INVARIANTS = RES_DIR / 'rot3dinvs8mat.txt'
 COMPLEX_INVARIANTS = RES_DIR / 'cmfs7indep_0.txt'
 COMPLEX_INVARIANTS_ORIG = RES_DIR / 'cmfs7indep_0.orig.txt'
 # A convenience map to make it easier to load the default invariants
