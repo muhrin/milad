@@ -483,7 +483,7 @@ class ZernikeMomentsBuilder(functions.Function):
         def inverse(self) -> 'ZernikeMomentsBuilder':
             return self._forward
 
-        def evaluate(# pylint: disable=unused-argument
+        def evaluate(  # pylint: disable=unused-argument
                 self, state: ZernikeMoments, *, get_jacobian=False) -> np.ndarray:
             moms = []
             for indices, num_type in self._forward.iter_indices():
@@ -576,6 +576,10 @@ class ZernikeMomentCalculator(base_moments.MomentsCalculator):
     def create_random(self, max_order: int = None) -> ZernikeMoments:
         max_order = max_order or self._max_order
         return ZernikeMoments.rand(max_order)
+
+
+def rand(max_order: int) -> ZernikeMoments:
+    return ZernikeMomentCalculator(max_order).create_random()
 
 
 def get_jacobian_wrt_geom_moments(max_order: int, redundant=True):

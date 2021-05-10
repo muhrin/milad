@@ -28,6 +28,11 @@ def even(val: int) -> bool:
     return (val % 2) == 0
 
 
+def odd(val: int) -> bool:
+    """Test if an integer is odd.  Returns True if so."""
+    return not even(val)
+
+
 def inclusive(*args) -> Iterator[int]:
     """Like range() but inclusive of upper bound and automatically does iteration of ranges with a
     negative step e.g. 0, -4 will produce a range containing 0, -1, -2, -3, -4"""
@@ -239,3 +244,28 @@ class FingerprintSet:
             two.add_system(*info)
 
         return one, two
+
+
+def nl_pairs(     # pylint: disable=invalid-name
+    n: Union[int, Tuple[int, int]],
+    l: Union[int, Tuple[int, int]] = None,
+    l_le_n=True,
+    n_minus_l_even=True
+) -> Iterator[Tuple]:
+    """Generator that will create n,l pairs for spherical harmonics optionally with l <= s"""
+    if not isinstance(n, tuple):
+        n = (0, n)
+    if l is None:
+        l = 0, n[1]
+    elif not isinstance(l, tuple):
+        # have max l
+        l = 0, l
+
+    for n_ in inclusive(*n, 1):  # pylint: disable=invalid-name
+        if n_minus_l_even and odd(l[0] - n_):
+            l_start = l[0] + 1
+        else:
+            l_start = l[0]
+
+        for l_ in inclusive(l_start, min(n_, l[1]) if l_le_n else l[1], 2 if n_minus_l_even else 1):  # pylint: disable=invalid-name
+            yield n_, l_

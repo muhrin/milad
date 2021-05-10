@@ -36,11 +36,11 @@ class MomentInvariant:
     of moments labelled by three indices e.g. p * c_20^0 * c_20^0
     """
 
-    def __init__(self, weight):
+    def __init__(self, weight: int, *term, constant=0):
         self._weight = weight
-        self._terms = []
+        self._terms = list(term)
         self._max_order = -1
-        self._constant = 0
+        self._constant = constant
 
         self._farray = None  # The prefactors array
         self._indarray = None  # The index array
@@ -129,6 +129,7 @@ class MomentInvariant:
 
     def apply(self, raw_moments: base_moments.Moments, normalise=False) -> float:
         """Compute this invariant from the given moments optionally normalising"""
+        assert self._farray is not None, 'Invariant is empty'
 
         if isinstance(raw_moments, np.ndarray):
             total = self._numpy_apply(raw_moments)
@@ -250,6 +251,43 @@ class MomentInvariant:
         for indices in product:
             powers[indices] += 1
         return powers
+
+
+class InvariantBuilder:
+    """Tools that can be used to build an invariant term by term"""
+
+    def __init__(self, weight: int):
+        self._weight = weight
+        self._terms = []
+        self._constant = 0
+
+    @property
+    def constant(self):
+        return self._constant
+
+    @constant.setter
+    def constant(self, new_value):
+        self._constant = new_value
+
+    def add_term(self, prefactor, indices: Sequence[Tuple]):
+        """
+        :param prefactor: the prefactor for this term
+        :param indices: the indices of the moments multiplied together in this term
+        """
+        if not indices:
+            # If there are no indices supplied then it's just a constant
+            self._constant += prefactor
+            return
+
+        if not all(len(entry) == 3 for entry in indices):
+            raise ValueError('There have to be three indices per entry, got: {}'.format(indices))
+        self._terms.append((prefactor, tuple(indices)))
+
+    def build(self) -> MomentInvariant:
+        """Returns the invariant from the current set of terms"""
+        inv = MomentInvariant(self._weight, *self._terms, constant=self._constant)
+        inv.build()
+        return inv
 
 
 def _numpy_apply(prefactors, indices: np.array, raw_moments: np.ndarray):
@@ -430,6 +468,7 @@ def read_invariants(filename: str = GEOMETRIC_INVARIANTS, read_max: int = None) 
                     prefactor = terms[0]
 
                     indices = []
+                    # Extract the indices 3 at a time
                     for idx in range(num_terms):
                         indices.append(tuple(terms[idx * 3 + 1:(idx + 1) * 3 + 1]))
                     invariant.insert(prefactor, indices)

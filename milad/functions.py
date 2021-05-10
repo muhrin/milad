@@ -177,7 +177,7 @@ class WeightedDelta(Feature):
     LENGTH = 4
 
     def __init__(self, pos: np.array, weight=1.0):
-        super().__init__(dtype=pos.dtype)
+        super().__init__(dtype=np.promote_types(pos.dtype, type(weight)))
         self.pos = pos
         self.weight = weight
 
