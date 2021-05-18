@@ -252,7 +252,13 @@ def nl_pairs(     # pylint: disable=invalid-name
     l_le_n=True,
     n_minus_l_even=True
 ) -> Iterator[Tuple]:
-    """Generator that will create n,l pairs for spherical harmonics optionally with l <= s"""
+    """Generator that will create n,l pairs for spherical harmonics optionally with l <= s
+
+    :param n: the maximum value of n to go up to
+    :param l: the maximum value of l to go up to
+    :param l_le_n: only yield pairs that satisfy l <= n
+    :param n_minus_l_even: only yield pairs that satisfy even(l - n) == True
+    """
     if not isinstance(n, tuple):
         n = (0, n)
     if l is None:

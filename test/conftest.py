@@ -28,3 +28,9 @@ def complex_invariants():
 def set_random_seed():
     random.seed(1234)
     np.random.seed(1234)
+
+
+@pytest.fixture()
+def save_figures():
+    """Return True if you want to save figures from tests"""
+    return False

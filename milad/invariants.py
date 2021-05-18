@@ -14,7 +14,7 @@ from . import functions
 from . import geometric
 
 __all__ = ('MomentInvariant', 'read_invariants', 'RES_DIR', 'COMPLEX_INVARIANTS', 'GEOMETRIC_INVARIANTS', \
-          'MomentInvariants')
+           'MomentInvariants')
 
 # The resources directory
 RES_DIR = pathlib.Path(__file__).parent / 'res'
@@ -38,15 +38,17 @@ class MomentInvariant:
 
     def __init__(self, weight: int, *term, constant=0):
         self._weight = weight
-        self._terms = list(term)
+        self._terms = term
         self._max_order = -1
         self._constant = constant
 
         self._farray = None  # The prefactors array
         self._indarray = None  # The index array
-        self._norm_power = None
+        self._norm_power = 1
         self._derivatives = None  # A cache for the derivatives
         self._variables = None
+
+        self._build()
 
     def __str__(self):
         sum_parts = []
@@ -68,7 +70,7 @@ class MomentInvariant:
         return self._weight
 
     @property
-    def terms(self) -> List:
+    def terms(self) -> Tuple:
         return self._terms
 
     @property
@@ -102,24 +104,28 @@ class MomentInvariant:
         return self._variables
 
     @property
+    def prefactors(self) -> np.ndarray:
+        return self._farray
+
+    @property
     def terms_array(self) -> np.ndarray:
         return self._indarray
 
-    def insert(self, prefactor, indices: Sequence[Tuple]):
-        """
-        :param prefactor: the prefactor for this term in the invariant
-        :param indices: the indices of the moments involved in this invariant
-        """
-        if not indices:
-            # If there are no indices supplied then it's just a constant
-            self._constant += prefactor
-            return
+    # def insert(self, prefactor, indices: Sequence[Tuple]):
+    #     """
+    #     :param prefactor: the prefactor for this term in the invariant
+    #     :param indices: the indices of the moments involved in this invariant
+    #     """
+    #     if not indices:
+    #         # If there are no indices supplied then it's just a constant
+    #         self._constant += prefactor
+    #         return
+    #
+    #     if not all(len(entry) == 3 for entry in indices):
+    #         raise ValueError('There have to be three indices per entry, got: {}'.format(indices))
+    #     self._terms.append((prefactor, tuple(indices)))
 
-        if not all(len(entry) == 3 for entry in indices):
-            raise ValueError('There have to be three indices per entry, got: {}'.format(indices))
-        self._terms.append((prefactor, tuple(indices)))
-
-    def build(self):
+    def _build(self):
         if self._terms:
             factors, arr = zip(*self._terms)
             self._farray = np.asarray(factors)
@@ -129,8 +135,6 @@ class MomentInvariant:
 
     def apply(self, raw_moments: base_moments.Moments, normalise=False) -> float:
         """Compute this invariant from the given moments optionally normalising"""
-        assert self._farray is not None, 'Invariant is empty'
-
         if isinstance(raw_moments, np.ndarray):
             total = self._numpy_apply(raw_moments)
         else:
@@ -171,17 +175,9 @@ class MomentInvariant:
 
         if self._terms:
             if raw_moments.dtype == object:
-                # if raw_moments.dtype == object or len(self._terms) < 6:
-                total += _numpy_apply(self._farray, self._indarray, raw_moments)
+                total += _numpy_apply(self.prefactors, self.terms_array, raw_moments)
             else:
-                total += _numba_apply(self._farray, self._indarray, raw_moments)
-
-            #
-            # if raw_moments.dtype == object or len(self._terms) < 48:
-            #     # if raw_moments.dtype == object or len(self._terms) < 6:
-            #     total += _numpy_apply(self._farray, self._indarray, raw_moments)
-            # else:
-            #     total += _parallel_apply(self._farray, self._indarray, raw_moments)
+                total += _numba_apply(self.prefactors, self.terms_array, raw_moments)
 
         return total
 
@@ -205,7 +201,7 @@ class MomentInvariant:
         """
         if not self._derivatives:
             # Have to calculate first time
-            deriv_terms = {}  # type: Dict[Tuple, MomentInvariant]
+            deriv_terms = {}  # type: Dict[Tuple, InvariantBuilder]
             for prefactor, product in self._terms:
                 powers = collections.defaultdict(int)
                 for indices in product:
@@ -216,7 +212,7 @@ class MomentInvariant:
                     if variable not in powers:
                         continue
 
-                    derivative = deriv_terms.setdefault(variable, MomentInvariant(self._weight - 1))
+                    derivative = deriv_terms.setdefault(variable, InvariantBuilder(self._weight - 1))
                     new_product = []
 
                     # Multiply the prefactor by the current power of the variable
@@ -236,12 +232,9 @@ class MomentInvariant:
                         # The other terms keep their exponent unchanged
                         new_product.extend((var,) * power)
 
-                    derivative.insert(new_prefactor, new_product)
+                    derivative.add_term(new_prefactor, new_product)
 
-            for entry in deriv_terms.values():
-                entry.build()
-
-            self._derivatives = deriv_terms
+            self._derivatives = {variable: builder.build() for variable, builder in deriv_terms.items()}
 
         return self._derivatives
 
@@ -253,13 +246,40 @@ class MomentInvariant:
         return powers
 
 
+def _numpy_apply(prefactors, indices: np.array, moments: np.ndarray):
+    """Fast method to get the invariant from a numpy array"""
+    total = 0.
+    total += np.dot(prefactors, np.prod(moments[indices[:, :, 0], indices[:, :, 1], indices[:, :, 2]], axis=1))
+
+    return total
+
+
+@numba.jit(parallel=False, nopython=True)
+def _numba_apply(prefactors, indices, moments):
+    """Generic apply for moments that support indexing.
+
+    This is slower version of above but compatible with moments that aren't numpy arrays"""
+    total = 0.
+    for idx in numba.prange(len(prefactors)):  # pylint: disable=not-an-iterable
+        factor = prefactors[idx]
+        entry = indices[idx]
+
+        product = 1.
+        for index in entry:
+            product *= moments[index[0], index[1], index[2]]
+
+        total += factor * product
+    return total
+
+
 class InvariantBuilder:
     """Tools that can be used to build an invariant term by term"""
 
-    def __init__(self, weight: int):
+    def __init__(self, weight: int, reduce=True):
         self._weight = weight
         self._terms = []
         self._constant = 0
+        self._reduce = reduce
 
     @property
     def constant(self):
@@ -285,35 +305,21 @@ class InvariantBuilder:
 
     def build(self) -> MomentInvariant:
         """Returns the invariant from the current set of terms"""
-        inv = MomentInvariant(self._weight, *self._terms, constant=self._constant)
-        inv.build()
+        terms = self._terms
+        if self._reduce:
+            terms_dict = collections.defaultdict(set)
+            for i, (_, product) in enumerate(self._terms):
+                terms_dict[tuple(sorted(product))].add(i)
+
+            if len(terms) != len(terms_dict):
+                # Now build up the new terms
+                terms = list()
+                for idx_set in terms_dict.values():
+                    prefactor = sum(self._terms[idx][0] for idx in idx_set)
+                    terms.append((prefactor, self._terms[tuple(idx_set)[0]][1]))
+
+        inv = MomentInvariant(self._weight, *terms, constant=self._constant)
         return inv
-
-
-def _numpy_apply(prefactors, indices: np.array, raw_moments: np.ndarray):
-    """Fast method to get the invariant from a numpy array"""
-    total = 0.
-    total += np.dot(prefactors, np.prod(raw_moments[indices[:, :, 0], indices[:, :, 1], indices[:, :, 2]], axis=1))
-
-    return total
-
-
-@numba.jit(parallel=False, nopython=True)
-def _numba_apply(prefactors, indices, moments):
-    """Generic apply for moments that support indexing.
-
-    This is slower version of above but compatible with moments that aren't numpy arrays"""
-    total = 0.
-    for idx in numba.prange(len(prefactors)):  # pylint: disable=not-an-iterable
-        factor = prefactors[idx]
-        entry = indices[idx]
-
-        product = 1.
-        for index in entry:
-            product *= moments[index[0], index[1], index[2]]
-
-        total += factor * product
-    return total
 
 
 class MomentInvariants(functions.Function):
@@ -353,6 +359,7 @@ class MomentInvariants(functions.Function):
         return self._invariants[item]
 
     def filter(self, func: Callable) -> 'MomentInvariants':
+        """Return moment invariants for which the passed callable returns true"""
         return MomentInvariants(*filter(func, self._invariants), are_real=self._real)
 
     def find(self, func: Callable) -> Tuple[int]:
@@ -438,7 +445,7 @@ def apply_invariants(invariants: List[MomentInvariant], moms: np.array, normalis
 
 def read_invariants(filename: str = GEOMETRIC_INVARIANTS, read_max: int = None) -> \
         List[MomentInvariant]:
-    """Read the Flusser, Suk and Zitová invariants.
+    """Read invariants in the format use by Flusser, Suk and Zitová.
 
     :param filename: the filename to read from, default to geometric moments invariants
     :param read_max: the maximum number of invariants to read
@@ -457,8 +464,8 @@ def read_invariants(filename: str = GEOMETRIC_INVARIANTS, read_max: int = None) 
             if line:
                 # New entry
                 header = [int(number) for number in line.split(' ')]
-                num_terms = header[2]
-                invariant = MomentInvariant(num_terms)
+                degree = header[2]
+                builder = InvariantBuilder(degree)
 
                 # Now read the actual terms
                 line = file.readline().rstrip()
@@ -469,14 +476,13 @@ def read_invariants(filename: str = GEOMETRIC_INVARIANTS, read_max: int = None) 
 
                     indices = []
                     # Extract the indices 3 at a time
-                    for idx in range(num_terms):
+                    for idx in range(degree):
                         indices.append(tuple(terms[idx * 3 + 1:(idx + 1) * 3 + 1]))
-                    invariant.insert(prefactor, indices)
+                    builder.add_term(prefactor, indices)
 
                     line = file.readline().rstrip()
 
-                invariant.build()
-                invariants.append(invariant)
+                invariants.append(builder.build())
                 if len(invariants) == read_max:
                     break
 

@@ -11,7 +11,7 @@ from milad import generate
 from milad import geometric
 
 
-def test_invariant_single_mass(moment_invariants, request):
+def test_invariant_single_mass(moment_invariants, request, save_figures):
     num_invariants = 20
     num_masses = 20
 
@@ -27,10 +27,11 @@ def test_invariant_single_mass(moment_invariants, request):
         milad.plot.plot_invariants(invariants, axes, label='mass={}'.format(mass))
 
     fig.legend()
-    fig.savefig('{}.pdf'.format(request.node.name))
+    if save_figures:
+        fig.savefig('{}.pdf'.format(request.node.name))
 
 
-def test_invariant_two_weights(moment_invariants, request):
+def test_invariant_two_weights(moment_invariants, request, save_figures):
     num_invariants = 64
     num_weights = 11
 
@@ -50,7 +51,8 @@ def test_invariant_two_weights(moment_invariants, request):
     axes.set_yscale('log')
     axes.set_title('Varying mass')
     fig.legend()
-    fig.savefig('{}.pdf'.format(request.node.name))
+    if save_figures:
+        fig.savefig('{}.pdf'.format(request.node.name))
 
 
 def test_invariant_derivative(moment_invariants):
@@ -74,7 +76,7 @@ def test_invariants_function(moment_invariants):
     num_points = 10
     max_order = 10
 
-    invariants_fn = milad.invariants.MomentInvariants(*moment_invariants)
+    invariants_fn = moment_invariants  # milad.invariants.MomentInvariants(*moment_invariants)
     moments_fn = geometric.GeometricMomentsCalculator(max_order)
 
     pts = generate.random_points_in_sphere(num_points)
@@ -102,7 +104,7 @@ def test_invariants_derivatives_correctness(complex_invariants):
     phi, jac = complex_invariants(zernike_moms, jacobian=True)
 
     for i, inv in enumerate(phi):
-        for j, (mom_idx, mom) in enumerate(zernike_moms.iter(redundant=True)):
+        for j, (_, mom) in enumerate(zernike_moms.iter(redundant=True)):
             # Perform symbolic derivative
             diff = sympy.diff(inv, mom).expand()
 

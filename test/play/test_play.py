@@ -17,7 +17,7 @@ def generate_vectors_on_sphere(num):
     return vecs
 
 
-def test_env_simple_no_cutoff_fn(moment_invariants, request):
+def test_env_simple_no_cutoff_fn(moment_invariants, request, save_figures):
     # Settings
     numpy.random.seed(5)
     num_atoms = 6
@@ -52,10 +52,11 @@ def test_env_simple_no_cutoff_fn(moment_invariants, request):
     fig, axes = plt.subplots()
     milad.plot.plot_multiple_invariants(series, axes)
     fig.legend()
-    fig.savefig('{}.pdf'.format(request.node.name))
+    if save_figures:
+        fig.savefig('{}.pdf'.format(request.node.name))
 
 
-def test_env_simple_cos_cutoff_fn(moment_invariants, request):
+def test_env_simple_cos_cutoff_fn(moment_invariants, request, save_figures):
     num_atoms = 6
     sigma = 1.0
     num_rotations = 10
@@ -88,10 +89,11 @@ def test_env_simple_cos_cutoff_fn(moment_invariants, request):
     fig, axes = plt.subplots()
     milad.plot.plot_multiple_invariants(series, axes)
     fig.legend()
-    fig.savefig('{}.pdf'.format(request.node.name))
+    if save_figures:
+        fig.savefig('{}.pdf'.format(request.node.name))
 
 
-def test_atom_entering(moment_invariants, request):
+def test_atom_entering(moment_invariants, request, save_figures):
     """Test how the invariants change as an atom enters the cutoff"""
     num_atoms = 6
     cutoff = 6.
@@ -140,10 +142,11 @@ def test_atom_entering(moment_invariants, request):
     axes.set_ylabel(f'Difference from x={start_x:.2f}')
     milad.plot.plot_multiple_invariants(diffs, axes, labels)
     fig.legend()
-    fig.savefig('{}.pdf'.format(request.node.name))
+    if save_figures:
+        fig.savefig('{}.pdf'.format(request.node.name))
 
 
-def test_asymmetric_distribution(moment_invariants, request):
+def test_asymmetric_distribution(moment_invariants, request, save_figures):
     """Test how the invariants change as an atom enters the cutoff"""
     sigma = 1.0
     normalise = True
@@ -164,10 +167,11 @@ def test_asymmetric_distribution(moment_invariants, request):
     fig, axes = plt.subplots()
     milad.plot.plot_multiple_invariants(series, axes)
     fig.legend()
-    fig.savefig('{}.pdf'.format(request.node.name))
+    if save_figures:
+        fig.savefig('{}.pdf'.format(request.node.name))
 
 
-def test_fingerprint(moment_invariants, request):
+def test_fingerprint(moment_invariants, request, save_figures):
     num_atoms = 5
     num_rotations = 10
     scale = 4.
@@ -199,4 +203,5 @@ def test_fingerprint(moment_invariants, request):
     milad.plot.plot_multiple_invariants(series, axes, labels=['$R_{{{}}}$'.format(idx) for idx in range(len(series))])
     axes.set_xlabel('Total fingerprint ({} atoms x {} invariants)'.format(num_atoms, num_invariants))
     fig.legend()
-    fig.savefig(f'{request.node.name}.pdf')
+    if save_figures:
+        fig.savefig(f'{request.node.name}.pdf')
