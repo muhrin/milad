@@ -23,8 +23,10 @@ setup(
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
     ],
     keywords='machine learning, atomic descriptor, moment invariants',
+    python_requires='>=3.6',
     install_requires=[
         'dscribe', 'matplotlib', 'miniball', 'numba', 'numpy', 'rmsd', 'torch', 'scipy', 'sympy', 'scikit-learn',
         'scikit-image'

@@ -9,6 +9,7 @@ http://arxiv.org/abs/1712.10163
 
 We use an adapted version of their algorithm to recover moments from invariants.
 """
+import collections
 import functools
 import logging
 import math
@@ -25,9 +26,22 @@ _LOGGER = logging.getLogger(__name__)
 # We use a lot of variable names that are convenient for mathematics but don't conform to the Google
 # code style so just disable for this file
 # pylint: disable=invalid-name
-
-Q = np.array([[-1 / 2**0.5, 0, 1j / 2**0.5], [0, 1, 0], [1 / 2**0.5, 0, 1j / 2**0.5]])
+SQRT_TWO = 2**0.5
 SQRT_THREE = 3**0.5
+
+
+def q_matrix(l: int) -> np.ndarray:
+    """Create a Q matrix that transforms real spherical harmonics to complex ones"""
+    size = 2 * l + 1
+    Q_ = np.zeros((size, size), dtype=complex)
+    Q_[0, 0] = SQRT_TWO
+    for m in utils.inclusive(1, l):
+        Q_[m, -m] = 1
+        Q_[m, m] = (-1)**m
+        Q_[-m, m] = 1j
+        Q_[-m, -m] = 1j
+
+    return Q_ / SQRT_TWO
 
 
 def cholesky(gram: np.ndarray) -> np.array:
@@ -86,14 +100,14 @@ class InvertibleInvariants(invariants.MomentInvariants):
     def __init__(
         self,
         degree_1: invariants.MomentInvariants,
-        degree_2: invariants.MomentInvariants,
+        degree_2: np.ma.masked_array,
         degree_3: invariants.MomentInvariants,
         n_max: int,
         l_max: int,
         l_le_n: bool,
         n_minus_l_even: bool,
     ):
-        super().__init__(*degree_1, *degree_2, *degree_3, are_real=False)
+        super().__init__(*degree_1, *degree_2.compressed(), *degree_3, are_real=False)
         self._degree_1 = degree_1
         self._degree_2 = degree_2
         self._degree_3 = degree_3
@@ -103,20 +117,120 @@ class InvertibleInvariants(invariants.MomentInvariants):
         self._l_max = l_max
 
     def invert(self, phi: np.array, moments_out):
+        l_max = self._l_max or self._n_max
+
         used_invariants = set()
         moments_out.array.fill(float('nan'))
 
         used_invariants.update(self._invert_degree_1(phi, moments_out))
-        used_invariants.update(self._invert_degree_2(phi, moments_out))
-        used_invariants.update(self._invert_degree_3(phi, moments_out))
+
+        # Let's go up in l until we find an I2 we can solve for
+        l = 1
+        while l < l_max:
+            gram, phi_indices = self.gram_matrix(phi, l=l)
+            rank, X1 = self.get_vectors_from_gram(gram, l)
+            self._place_vectors(moments_out, SQRT_THREE * X1, l)
+            used_invariants.update(phi_indices)
+
+            if rank > 0:
+                # Now, let's get a 3rd degree invariant that have l1=l2=l3 so we can resolve the +/-I_3 degeneracy
+                try:
+                    sign, inv_idx = self._determine_sign(phi, moments_out, l)
+                except RuntimeError:
+                    _LOGGER.warning('Unable to determine sign for I_2, l=%i', l)
+                else:
+                    moments_out.array[:, l, :] = sign * moments_out.array[:, l, :]
+                    used_invariants.add(inv_idx)
+
+                break
+
+            l += 1
+
+        l += 1
+
+        # Now we can continue using I3 only
+        used_invariants.update(self._invert_degree_3(phi, l, moments_out))
 
         _LOGGER.info('Used %i out of %i invariants during inversion', len(used_invariants), len(phi))
         return moments_out
+
+    def gram_matrix(self, phi: np.ndarray, l: int) -> Tuple[np.ndarray, np.ndarray]:
+        """Get the Gram matrix for the corresponding angular frequency, l"""
+        # Let's get the indices for the degree-2 invariants
+        num_deg_1 = len(self._degree_1)
+        indices = np.ma.masked_array(np.empty(self._degree_2.shape, dtype=int), mask=self._degree_2.mask)
+        valid_invs = np.argwhere(self._degree_2 != None)  # pylint: disable=singleton-comparison
+        indices[valid_invs[:, 0], valid_invs[:, 1], valid_invs[:, 2]] = (np.arange(0, len(valid_invs)) + num_deg_1)
+
+        gram_size = int(math.ceil(self._n_max / 2.)) if self._n_minus_l_even else self._n_max
+        gram = np.zeros((gram_size, gram_size), dtype=complex)
+        phi_indices = indices[l, :, :].compressed()
+        gram[np.triu_indices(gram_size)] = phi[phi_indices]
+        ilower = np.tril_indices(gram_size, -1)
+        gram[ilower] = gram.T[ilower]  # pylint: disable=unsubscriptable-object
+
+        return gram, phi_indices
+
+    # @staticmethod
+    # def get_vectors_from_gram(gram: np.array, l: int) -> Tuple[int, np.array]:
+    #     """Given a Gram matrix that that is interpreted as an the SxS (where there are S radial functions) inner
+    #     product space of the vectors at a particular angular frequency, l, this will solve for a set of possible
+    #     vectors up to isomorphism.
+    #     The rank of the Gram matrix and an array of the vectors are returned.
+    #     """
+    #     X1 = np.zeros((gram.shape[0], 2 * l + 1), dtype=complex)
+    #     rank = np.linalg.matrix_rank(gram)
+    #
+    #     # Check if we have anything to decompose, if not just save ourselves the trouble and return now
+    #     if not gram.nonzero() or rank == 0:
+    #         return rank, X1
+    #
+    #     # Let's do a Cholesky and extract a set of compatible X vectors
+    #     L = cholesky(gram)
+    #     L = L[:, :rank]  # Collect entries up to rank
+    #
+    #     bound = int(math.floor(rank / 2))
+    #     m_values = tuple(m for m in utils.inclusive(-bound, bound, 1) if not (utils.even(rank) and m == 0))
+    #
+    #     # Get a rotation matrix that makes the vectors respect the conjugate symmetry
+    #     Q = q_matrix(l)[m_values, :][:, m_values]
+    #     X1[:, m_values] = L @ Q
+    #
+    #     return rank, X1
+
+    @staticmethod
+    def get_vectors_from_gram(gram: np.array, l: int) -> Tuple[int, np.array]:
+        """Given a Gram matrix that that is interpreted as an the SxS (where there are S radial functions) inner product
+         pace of the vectors at a particular angular frequency, l, this will solve for a set of possible vectors up to
+         isomorphism.
+        The rank of the Gram matrix and an array of the vectors are returned.
+        """
+        X1 = np.zeros((gram.shape[0], 2 * l + 1), dtype=complex)
+
+        u, s, _vh = np.linalg.svd(gram, hermitian=True)
+        rank = int(np.sum(~np.isclose(s, 0.)))
+
+        # Check if we have anything to decompose, if not just save ourselves the trouble and return now
+        if rank == 0:
+            return rank, X1
+
+        L = u[:, :rank] * s[:rank]**0.5
+
+        bound = int(math.floor(rank / 2))
+        m_values = tuple(m for m in utils.inclusive(-bound, bound, 1) if not (utils.even(rank) and m == 0))
+
+        # Get a rotation matrix that makes the vectors respect the conjugate symmetry
+        Q = q_matrix(l)[m_values, :][:, m_values]
+        X1[:, m_values] = L @ Q
+
+        return rank, X1
 
     def nl_pairs(self, n: Union[int, Tuple[int, int]], l: Union[int, Tuple[int, int]]) -> Iterator[Tuple[int, int]]:
         yield from utils.nl_pairs(n, l, l_le_n=self._l_le_n, n_minus_l_even=self._n_minus_l_even)
 
     def _invert_degree_1(self, phi: np.array, moments_out) -> set:
+        """Get the degree 1 invariants.  There is no inversion to be done here, we just copy over all the values
+        corresponding to c_n0^0 which are all rotation invariants"""
         used_invariants = set()
 
         idx = 0
@@ -128,66 +242,72 @@ class InvertibleInvariants(invariants.MomentInvariants):
 
         return used_invariants
 
-    def _invert_degree_2(self, phi: np.array, moments_out) -> set:
-        # pylint: disable=too-many-locals
-        used_invariants = set()
-        generator = InvariantsGenerator(self._l_le_n, self._n_minus_l_even)
+    def _invert_degree_2(self, phi: np.array, l: int, moments_out) -> Tuple[set, int]:
+        gram, phi_indices = self.gram_matrix(phi, l=l)
+        used_invariants = set(phi_indices)
 
-        # Degree 2 - Gram matrix time
-        start_idx = generator.total_degree_1(self._n_max)
-        num_deg2 = generator.total_degree_2(self._n_max, 1)
-        mtx_size = int(math.ceil(self._n_max / 2.)) if self._n_minus_l_even else self._n_max
-        tri = np.zeros((mtx_size, mtx_size), dtype=complex)
-        tri[np.triu_indices(mtx_size)] = phi[start_idx:start_idx + num_deg2]
-        ilower = np.tril_indices(mtx_size, -1)
-        tri[ilower] = tri.T[ilower]  # pylint: disable=unsubscriptable-object
+        rank, X1 = self.get_vectors_from_gram(gram, l)
 
-        used_invariants.update(set(range(start_idx, start_idx + num_deg2)))
+        self._place_vectors(moments_out, SQRT_THREE * X1, l)
 
-        # Let's do a Cholesky and extract a set of compatible X vectors
-        L = cholesky(tri)[:, :3]  # Only uses lower triangular plus diag
-        X1 = L @ Q.T
+        # Now, let's get a 3rd degree invariant that have l1=l2=l3 so we can resolve the +/-I_3 degeneracy
+        try:
+            sign, inv_idx = self._determine_sign(phi, moments_out, l)
+        except RuntimeError:
+            _LOGGER.warning('Unable to determine sign for I_2, l=%i', l)
+        else:
+            moments_out.array[:, l, :] = sign * moments_out.array[:, l, :]
+            used_invariants.add(inv_idx)
 
-        for i, n in enumerate(utils.inclusive(1, self._n_max, 2 if self._n_minus_l_even else 1)):
-            for m in (-1, 0, 1):
-                moments_out[n, 1, m] = SQRT_THREE * X1[i, m + 1]
+        return used_invariants, rank
 
-        # Now, let's get a 3rd degree invariant that has all l = 1 so we can resolve the +/-I_3 degeneracy
-        res = np.array(self.find(lambda inv: inv.weight == 3 and np.all(inv.terms_array[:, :, 1] == 1)))
+    def _place_vectors(self, moments, vectors, l: int):
+        m_range = tuple(utils.inclusive(-l, l))
+        for i, n in enumerate(utils.inclusive(l if self._l_le_n else 0, self._n_max, 2 if self._n_minus_l_even else 1)):
+            moments.array[n, l, m_range] = vectors[i, m_range]
+        return moments
+
+    def _determine_sign(self, phi: np.ndarray, moments_out, l: int):
+        # Find I3 that have l1=l2=l3
+        res = np.array(self.find(lambda inv: inv.weight == 3 and np.all(inv.terms_array[:, :, 1] == l)))
         # Get the index of a non-zero invariant that we can use to determine if we should use +Q or -Q
-        i3_nonzero = np.argwhere(~np.isclose(phi[res], 0))[0][0]
-        i3_nonzero = res[i3_nonzero]
+        try:
+            # Find one that is non-zero
+            i3_nonzero = np.argwhere(~np.isclose(phi[res], 0))[0][0]
+        except IndexError:
+            raise RuntimeError(f'Unable to determine sign for I_2, l={l}')
+        else:
+            i3_nonzero = res[i3_nonzero]
+            inv_res = self[i3_nonzero](moments_out)
+            sign = inv_res / phi[i3_nonzero]
+            if np.isclose(sign, 1):
+                return 1, i3_nonzero
+            if np.isclose(sign, -1.):
+                return -1, i3_nonzero
 
-        used_invariants.add(i3_nonzero)
+            raise RuntimeError(f'The passed moments do not match I3 invariant (idx={i3_nonzero})')
 
-        inv_res = self[i3_nonzero](moments_out)
-        if np.isclose(inv_res / phi[i3_nonzero], -1.):
-            # Need to use negative version of X1
-            moments_out.array[:, 1, :] = -moments_out.array[:, 1, :]
-
-        return used_invariants
-
-    def _invert_degree_3(self, phi: np.array, moments_out) -> set:
+    def _invert_degree_3(self, phi: np.array, l_start: int, moments_out) -> set:
         # pylint: disable=too-many-locals
         used_invariants = set()
 
         # Degree 3 - Now let's frequency march to recover the rest
-        for l in utils.inclusive(2, self._l_max or self._n_max, 1):
-            n_start = l if self._l_le_n else ((1 if utils.odd(l) else 2) if self._n_minus_l_even else 1)
-            for n in utils.inclusive(n_start, self._n_max, 2 if self._n_minus_l_even else 1):
+        for l3 in utils.inclusive(l_start, self._l_max or self._n_max, 1):
+            n_start = l3 if self._l_le_n else ((1 if utils.odd(l3) else 2) if self._n_minus_l_even else 1)
+            for n3 in utils.inclusive(n_start, self._n_max, 2 if self._n_minus_l_even else 1):
                 # Get the correct invariants
-                i3_idx = np.array(self.find(functools.partial(degree_3_with_unknown, n, l)))
+                i3_idx = np.array(self.find(functools.partial(degree_3_with_unknown, n3, l3)))
 
-                if len(i3_idx) < 2 * l + 1:
-                    _LOGGER.warning("Don't have enough invariants to solve for n=%i, l=%i", n, l)
+                if len(i3_idx) < 2 * l3 + 1:
+                    _LOGGER.warning("Don't have enough invariants to solve for n=%i, l=%i", n3, l3)
 
                 # Create the matrices of the system to be solved
-                coeffs = np.zeros((len(i3_idx), 2 * l + 1), dtype=complex)
+                coeffs = np.zeros((len(i3_idx), 2 * l3 + 1), dtype=complex)
 
                 for i, inv_idx in enumerate(i3_idx):
                     invariant = self[inv_idx]
                     # Get just the first two terms (the third is the unknown)
-                    for j, m in enumerate(utils.inclusive(-l, l)):
+                    for j, m in enumerate(utils.inclusive(-l3, l3)):
                         mask = invariant.terms_array[:, 2, 2] == m
                         if np.any(mask):
                             prefactors = invariant.prefactors[mask]
@@ -198,11 +318,13 @@ class InvertibleInvariants(invariants.MomentInvariants):
                 # The known invariants
                 phis = phi[i3_idx]
                 res = np.linalg.lstsq(coeffs, phis, rcond=None)
+                if res[2] < (2 * l3 + 1):
+                    _LOGGER.warning('Rank deficiency (%i < %i) in n=%i, l=%i', res[2], (2 * l3 + 1), n3, l3)
 
                 used_invariants.update(set(i3_idx))
 
-                for i, m in enumerate(utils.inclusive(-l, l)):
-                    moments_out[n, l, m] = res[0][i]
+                for i, m in enumerate(utils.inclusive(-l3, l3)):
+                    moments_out[n3, l3, m] = res[0][i]
 
         return used_invariants
 
@@ -288,26 +410,24 @@ class InvariantsGenerator:
 
         return invs
 
-    def generate_degree_2(self, n_max: int, l_max=None) -> invariants.MomentInvariants:
+    def generate_degree_2(self, n_max: int, l_max=None) -> np.ma.masked_array:
         """Generate second degree invariants up to the maximum n, and optionally max l"""
         l_max = l_max or n_max
         assert n_max > 0
         assert l_max <= n_max
 
-        invs = invariants.MomentInvariants()
+        invs_array = np.empty((l_max + 1, n_max + 1, n_max + 1), dtype=object)
+        invs_array.fill(None)
 
-        for n1 in utils.inclusive(1, n_max, 1):
-            for n2 in utils.inclusive(n1, n_max, 1):
-                l_max = min(l_max, n1) if self._l_le_n else l_max
-                for l in utils.inclusive(1, l_max, 1):
-                    if self._n_minus_l_even and (utils.odd(n1 - l) or utils.odd(n2 - l)):
-                        continue
+        for l in utils.inclusive(1, l_max, 1):
+            n1_min = l if self._l_le_n else (l % 2 if self._n_minus_l_even else 0)
+            for n1 in utils.inclusive(n1_min, n_max, 2 if self._n_minus_l_even else 1):
+                for n2 in utils.inclusive(n1, n_max, 2 if self._n_minus_l_even else 1):
+                    invs_array[l, n1, n2] = self.inv_degree_2(n1, n2, l)
 
-                    invs.append(self.inv_degree_2(n1, n2, l))
+        return np.ma.masked_array(invs_array, invs_array == None)  # pylint: disable=singleton-comparison
 
-        return invs
-
-    def generate_degree_3(self, n_max, l_max) -> invariants.MomentInvariants:
+    def generate_degree_3(self, n_max: int, l_max: int) -> invariants.MomentInvariants:
         """Generate third degree invariants up to maximum n, and optionally max l"""
         # pylint: disable=too-many-locals
 
@@ -315,18 +435,23 @@ class InvariantsGenerator:
         done = set()
 
         invs = invariants.MomentInvariants()
-        # We need one 3rd degree invariant at l=1 that includes three radial terms in order to resolve
+
+        # We need one 3rd degree invariant at l1=l2=l3 that includes three radial terms in order to resolve
         # the sign ambiguity on the unitary matrix from Cholesky decomposition
-        if self._n_minus_l_even:
-            invs.append(self.inv_degree_3(1, 1, 3, 1, 5, 1))
-            done.add(((1, 1), (3, 1), (5, 1)))
-        else:
-            invs.append(self.inv_degree_3(1, 1, 2, 1, 3, 1))
-            done.add(((1, 1), (2, 1), (3, 1)))
+        for l in utils.inclusive(1, l_max):
+            n1_min = l if self._l_le_n else (l % 2 if self._n_minus_l_even else 0)
+            for n1 in utils.inclusive(n1_min, n_max, 2 if self._n_minus_l_even else 1):
+                for n2 in utils.inclusive(n1, n_max, 2 if self._n_minus_l_even else 1):
+                    for n3 in utils.inclusive(n2, n_max, 2 if self._n_minus_l_even else 1):
+                        if degree_3_is_zero((n1, l), (n2, l), (n3, l)):
+                            continue
+
+                        invs.append(self.inv_degree_3(n1, l, n2, l, n3, l))
+                        done.add(((n1, l), (n2, l), (n3, l)))
 
         for pair_c in self.nl_pairs((2 if self._l_le_n else 1, n_max), (2, l_max)):
-            for pair_b in self.nl_pairs((1, n_max), (1, pair_c[1] - 1)):
-                for pair_a in self.nl_pairs((1, n_max), (1, pair_b[1])):
+            for pair_b in self.nl_pairs((0, n_max), (0, pair_c[1] - 1)):
+                for pair_a in self.nl_pairs((0, n_max), (0, pair_b[1])):
                     pairs = tuple(sorted([pair_a, pair_b, pair_c], key=lambda p: (p[1], p[0])))
                     # pairs = pair_a, pair_b, pair_c
                     (n1, l1), (n2, l2), (n3, l3) = pairs
@@ -343,16 +468,11 @@ class InvariantsGenerator:
                     if pairs in done:
                         continue
 
-                    # Redundancy criteria
-                    if utils.odd(l1) and pairs[0] == pairs[1] == pairs[2]:
-                        continue
-                    if utils.odd(l3) and pairs[0] == pairs[1] != pairs[2]:
+                    # Check for zero invariants
+                    if degree_3_is_zero(*pairs):
                         continue
 
                     inv = self.inv_degree_3(n1, l1, n2, l2, n3, l3)
-                    if inv == 0:
-                        continue
-
                     invs.append(inv)
                     done.add(pairs)
 
@@ -361,7 +481,7 @@ class InvariantsGenerator:
     def generate_all(self, n_max: int, l_max: int = None) -> InvertibleInvariants:
         """Generate all moments invariants using this scheme up to the max n and l"""
         invs = InvertibleInvariants(
-            self.generate_degree_1(n_max=n_max), self.generate_degree_2(n_max=n_max, l_max=1),
+            self.generate_degree_1(n_max=n_max), self.generate_degree_2(n_max=n_max, l_max=l_max),
             self.generate_degree_3(n_max=n_max, l_max=l_max), n_max, l_max, self._l_le_n, self._n_minus_l_even
         )
 
@@ -369,3 +489,24 @@ class InvariantsGenerator:
 
     def nl_pairs(self, n: Union[int, Tuple[int, int]], l: Union[int, Tuple[int, int]]) -> Iterator[Tuple[int, int]]:
         yield from utils.nl_pairs(n, l, l_le_n=self._l_le_n, n_minus_l_even=self._n_minus_l_even)
+
+
+def degree_3_is_zero(pair1: Tuple, pair2: Tuple, pair3: Tuple) -> bool:
+    """Check if a set a degree-3 invariant is identically zero"""
+    if utils.odd(pair1[1]) and pair1 == pair2 == pair3:
+        # All same
+        return True
+
+    counts = collections.defaultdict(int)
+    counts[pair1] += 1
+    counts[pair2] += 1
+    counts[pair3] += 1
+
+    if utils.odd(pair3[1]) and pair1 == pair2 and pair1 != pair3:
+        return True
+    if utils.odd(pair2[1]) and pair1 == pair3 and pair1 != pair2:
+        return True
+    if utils.odd(pair1[1]) and pair2 == pair3 and pair2 != pair1:
+        return True
+
+    return False
