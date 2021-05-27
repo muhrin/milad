@@ -25,3 +25,57 @@ def to_complex(vec: np.array) -> np.array:
 def even(val: int) -> bool:
     """Test if an integer is event.  Returns True if so."""
     return (val % 2) == 0
+
+
+def odd(val: int) -> bool:
+    """Test if an integer is odd.  Returns True if so."""
+    return (val % 2) != 0
+
+
+def cholesky(gram: np.ndarray) -> np.array:
+    """Find Cholesky decomposition of the passed Gram matrix.  If this fails the algorithm
+    will attempt to force it to be positive definite
+
+    A Python/Numpy port of John D'Errico's `nearestSPD` MATLAB code [1], which credits [2].
+
+    [1] https://www.mathworks.com/matlabcentral/fileexchange/42885-nearestspd
+
+    [2] N.J. Higham, "Computing a nearest symmetric positive semidefinite matrix" (1988):
+    https://doi.org/10.1016/0024-3795(88)90223-6
+    """
+
+    # pylint: disable=invalid-name
+    try:
+        return np.linalg.cholesky(gram)
+    except np.linalg.LinAlgError:
+        pass
+
+    B = (gram + gram.T) / 2
+    _, s, V = np.linalg.svd(B)
+
+    H = np.dot(V.T, np.dot(np.diag(s), V))
+
+    A2 = (B + H) / 2
+    A3 = (A2 + A2.T) / 2
+
+    spacing = np.spacing(np.linalg.norm(gram))
+    # The above is different from [1]. It appears that MATLAB's `chol` Cholesky
+    # decomposition will accept matrixes with exactly 0-eigenvalue, whereas
+    # Numpy's will not. So where [1] uses `eps(mineig)` (where `eps` is Matlab
+    # for `np.spacing`), we use the above definition. CAVEAT: our `spacing`
+    # will be much larger than [1]'s `eps(mineig)`, since `mineig` is usually on
+    # the order of 1e-16, and `eps(1e-16)` is on the order of 1e-34, whereas
+    # `spacing` will, for Gaussian random matrixes of small dimension, be on
+    # othe order of 1e-16. In practice, both ways converge, as the unit test
+    # below suggests.
+    I = np.eye(gram.shape[0])
+    k = 1
+    while True:
+        try:
+            return np.linalg.cholesky(A3)
+        except np.linalg.LinAlgError:
+            pass
+
+        mineig = np.min(np.real(np.linalg.eigvals(A3)))
+        A3 += I * (-mineig * k**2 + spacing)
+        k += 1

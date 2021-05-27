@@ -9,6 +9,7 @@ from milad import zernike
 from milad import generate
 
 N_MAX = 5
+indices = milad.sph.IndexTraits(n_spec=N_MAX, n_minus_l_even=True, l_le_n=True)
 
 # pylint: disable=redefined-outer-name
 
@@ -16,8 +17,7 @@ N_MAX = 5
 @pytest.fixture(scope='session')
 def inv_invariants():
     """A fixture to create a set of invertible invariants"""
-    generator = invertible_invariants.InvariantsGenerator()
-    return generator.generate_all(N_MAX)
+    return invertible_invariants.InvariantsGenerator.generate_all(indices)
 
 
 def check_inverted_invariants(invariants: milad.MomentInvariants, target: np.array, inverted: np.ndarray):
@@ -57,13 +57,12 @@ def test_invertible_invariants_symmetric(inv_invariants):
 
     inverted = zernike.ZernikeMoments(N_MAX)
 
-    # For now we can't deal with this case...stay tuned
-    with pytest.raises(ValueError):
-        inv_invariants.invert(phi, inverted)
+    # with pytest.raises(ValueError):
+    inv_invariants.invert(phi, inverted)
 
-    # assert not np.any(np.isnan(inverted.array))
-    #
-    # inverted_phi = inv_invariants(inverted)
+    assert not np.any(np.isnan(inverted.array))
+    _inverted_phi = inv_invariants(inverted)
+    # For now we can't deal with this case...stay tuned
     # check_inverted_invariants(inv_invariants, phi, inverted_phi)
 
 

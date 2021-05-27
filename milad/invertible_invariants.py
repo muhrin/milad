@@ -13,13 +13,15 @@ import collections
 import functools
 import logging
 import math
-from typing import Iterator, Tuple, Union
+from typing import Tuple
 
 import numpy as np
 from sympy.physics.quantum import cg
 
 from . import invariants
 from . import utils
+from . import mathutil
+from . import sph
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,80 +46,21 @@ def q_matrix(l: int) -> np.ndarray:
     return Q_ / SQRT_TWO
 
 
-def cholesky(gram: np.ndarray) -> np.array:
-    """Find Cholesky decomposition of the passed Gram matrix.  If this fails the algorithm
-    will attempt to force it to be positive definite
-
-    A Python/Numpy port of John D'Errico's `nearestSPD` MATLAB code [1], which
-    credits [2].
-
-    [1] https://www.mathworks.com/matlabcentral/fileexchange/42885-nearestspd
-
-    [2] N.J. Higham, "Computing a nearest symmetric positive semidefinite
-    matrix" (1988): https://doi.org/10.1016/0024-3795(88)90223-6
-    """
-
-    # pylint: disable=invalid-name
-    try:
-        return np.linalg.cholesky(gram)
-    except np.linalg.LinAlgError:
-        pass
-
-    B = (gram + gram.T) / 2
-    _, s, V = np.linalg.svd(B)
-
-    H = np.dot(V.T, np.dot(np.diag(s), V))
-
-    A2 = (B + H) / 2
-    A3 = (A2 + A2.T) / 2
-
-    spacing = np.spacing(np.linalg.norm(gram))
-    # The above is different from [1]. It appears that MATLAB's `chol` Cholesky
-    # decomposition will accept matrixes with exactly 0-eigenvalue, whereas
-    # Numpy's will not. So where [1] uses `eps(mineig)` (where `eps` is Matlab
-    # for `np.spacing`), we use the above definition. CAVEAT: our `spacing`
-    # will be much larger than [1]'s `eps(mineig)`, since `mineig` is usually on
-    # the order of 1e-16, and `eps(1e-16)` is on the order of 1e-34, whereas
-    # `spacing` will, for Gaussian random matrixes of small dimension, be on
-    # othe order of 1e-16. In practice, both ways converge, as the unit test
-    # below suggests.
-    I = np.eye(gram.shape[0])
-    k = 1
-    while True:
-        try:
-            return np.linalg.cholesky(A3)
-        except np.linalg.LinAlgError:
-            pass
-
-        mineig = np.min(np.real(np.linalg.eigvals(A3)))
-        A3 += I * (-mineig * k**2 + spacing)
-        k += 1
-
-
 class InvertibleInvariants(invariants.MomentInvariants):
     """A set of invertible invariants"""
 
     def __init__(
-        self,
-        degree_1: invariants.MomentInvariants,
-        degree_2: np.ma.masked_array,
-        degree_3: invariants.MomentInvariants,
-        n_max: int,
-        l_max: int,
-        l_le_n: bool,
-        n_minus_l_even: bool,
+        self, degree_1: invariants.MomentInvariants, degree_2: np.ma.masked_array,
+        degree_3: invariants.MomentInvariants, index_traits: sph.IndexTraits
     ):
         super().__init__(*degree_1, *degree_2.compressed(), *degree_3, are_real=False)
         self._degree_1 = degree_1
         self._degree_2 = degree_2
         self._degree_3 = degree_3
-        self._l_le_n = l_le_n
-        self._n_minus_l_even = n_minus_l_even
-        self._n_max = n_max
-        self._l_max = l_max
+        self._index_traits = index_traits
 
     def invert(self, phi: np.array, moments_out):
-        l_max = self._l_max or self._n_max
+        l_max = self._index_traits.l_range[1]
 
         used_invariants = set()
         moments_out.array.fill(float('nan'))
@@ -162,7 +105,7 @@ class InvertibleInvariants(invariants.MomentInvariants):
         valid_invs = np.argwhere(self._degree_2 != None)  # pylint: disable=singleton-comparison
         indices[valid_invs[:, 0], valid_invs[:, 1], valid_invs[:, 2]] = (np.arange(0, len(valid_invs)) + num_deg_1)
 
-        gram_size = int(math.ceil(self._n_max / 2.)) if self._n_minus_l_even else self._n_max
+        gram_size = sum(1 for _ in self._index_traits.iter_n(l))
         gram = np.zeros((gram_size, gram_size), dtype=complex)
         phi_indices = indices[l, :, :].compressed()
         gram[np.triu_indices(gram_size)] = phi[phi_indices]
@@ -190,7 +133,7 @@ class InvertibleInvariants(invariants.MomentInvariants):
     #     L = L[:, :rank]  # Collect entries up to rank
     #
     #     bound = int(math.floor(rank / 2))
-    #     m_values = tuple(m for m in utils.inclusive(-bound, bound, 1) if not (utils.even(rank) and m == 0))
+    #     m_values = tuple(m for m in utils.inclusive(-bound, bound, 1) if not (mathutil.even(rank) and m == 0))
     #
     #     # Get a rotation matrix that makes the vectors respect the conjugate symmetry
     #     Q = q_matrix(l)[m_values, :][:, m_values]
@@ -217,16 +160,13 @@ class InvertibleInvariants(invariants.MomentInvariants):
         L = u[:, :rank] * s[:rank]**0.5
 
         bound = int(math.floor(rank / 2))
-        m_values = tuple(m for m in utils.inclusive(-bound, bound, 1) if not (utils.even(rank) and m == 0))
+        m_values = tuple(m for m in utils.inclusive(-bound, bound, 1) if not (mathutil.even(rank) and m == 0))
 
         # Get a rotation matrix that makes the vectors respect the conjugate symmetry
         Q = q_matrix(l)[m_values, :][:, m_values]
         X1[:, m_values] = L @ Q
 
         return rank, X1
-
-    def nl_pairs(self, n: Union[int, Tuple[int, int]], l: Union[int, Tuple[int, int]]) -> Iterator[Tuple[int, int]]:
-        yield from utils.nl_pairs(n, l, l_le_n=self._l_le_n, n_minus_l_even=self._n_minus_l_even)
 
     def _invert_degree_1(self, phi: np.array, moments_out) -> set:
         """Get the degree 1 invariants.  There is no inversion to be done here, we just copy over all the values
@@ -235,7 +175,7 @@ class InvertibleInvariants(invariants.MomentInvariants):
 
         idx = 0
         # Degree 1, these are easy, all invariants are moments themselves
-        for n in utils.inclusive(0, self._n_max, 2 if self._n_minus_l_even else 1):
+        for n in self._index_traits.iter_n(l=0):
             moments_out[n, 0, 0] = phi[idx]
             used_invariants.add(idx)
             idx += 1
@@ -263,7 +203,7 @@ class InvertibleInvariants(invariants.MomentInvariants):
 
     def _place_vectors(self, moments, vectors, l: int):
         m_range = tuple(utils.inclusive(-l, l))
-        for i, n in enumerate(utils.inclusive(l if self._l_le_n else 0, self._n_max, 2 if self._n_minus_l_even else 1)):
+        for i, n in enumerate(self._index_traits.iter_n(l)):
             moments.array[n, l, m_range] = vectors[i, m_range]
         return moments
 
@@ -292,9 +232,8 @@ class InvertibleInvariants(invariants.MomentInvariants):
         used_invariants = set()
 
         # Degree 3 - Now let's frequency march to recover the rest
-        for l3 in utils.inclusive(l_start, self._l_max or self._n_max, 1):
-            n_start = l3 if self._l_le_n else ((1 if utils.odd(l3) else 2) if self._n_minus_l_even else 1)
-            for n3 in utils.inclusive(n_start, self._n_max, 2 if self._n_minus_l_even else 1):
+        for l3 in utils.inclusive(l_start, self._index_traits.l_range[1], 1):
+            for n3 in self._index_traits.iter_n(l3):
                 # Get the correct invariants
                 i3_idx = np.array(self.find(functools.partial(degree_3_with_unknown, n3, l3)))
 
@@ -335,42 +274,29 @@ def degree_3_with_unknown(n: int, l: int, inv: invariants.MomentInvariant):
 
 class InvariantsGenerator:
 
-    def __init__(self, l_le_n=True, n_minus_l_even=True):
-        self._l_le_n = l_le_n
-        self._n_minus_l_even = n_minus_l_even
-
     @staticmethod
     def delta(l1, l2, l3) -> bool:
         """Delta condition.  Returns True if |l2 - l3| <= l1 <= l2 + l3"""
         return abs(l2 - l3) <= l1 <= l2 + l3
 
-    def total_degree_1(self, n_max: int) -> int:
+    @staticmethod
+    def total_degree_1(index_traits: sph.IndexTraits) -> int:
         """Total number of degree 1 invariants up to n_max"""
-        return (int(math.floor(n_max / 2.)) if self._n_minus_l_even else n_max) + 1
+        return sum(1 for _ in index_traits.iter_n(0))
 
-    def num_degree_2(self, n_max: int, l: int) -> int:
-        if utils.odd(l):
-            n = int(math.ceil(n_max / 2.)) if self._n_minus_l_even else n_max
-        else:
-            n = int(math.floor(n_max / 2.)) if self._n_minus_l_even else n_max
-
+    @staticmethod
+    def num_degree_2(index_traits: sph.IndexTraits, l: int) -> int:
+        n = sum(1 for _ in index_traits.iter_n(l))
         return int(n * (n + 1) / 2)
 
-    def total_degree_2(self, n_max: int, l_max=None) -> int:
-        l_max = l_max or n_max
-        return sum(self.num_degree_2(n_max, l) for l in utils.inclusive(1, l_max, 1))
+    @classmethod
+    def total_degree_2(cls, index_traits: sph.IndexTraits) -> int:
+        l_max = index_traits.l_range[1]
+        return sum(cls.num_degree_2(index_traits, l) for l in utils.inclusive(1, l_max, 1))
 
-    def inv_degree_2(self, n1: int, n2: int, l: int) -> invariants.MomentInvariant:
+    @staticmethod
+    def inv_degree_2(n1: int, n2: int, l: int) -> invariants.MomentInvariant:
         """Generate a degree-2 invariant"""
-        if self._l_le_n:
-            err = None
-            if l > n1:
-                err = 'l must be <= n1, got n1={}, l={}'.format(n1, l)
-            if l > n2:
-                err = 'l must be <= n2, got n2={}, l={}'.format(n2, l)
-            if err:
-                raise ValueError(err)
-
         builder = invariants.InvariantBuilder(2)
         recip_prefactor = 2 * l + 1
 
@@ -379,12 +305,13 @@ class InvariantsGenerator:
 
         return builder.build()
 
-    def inv_degree_3(self, n1, l1, n2, l2, n3, l3):
+    @classmethod
+    def inv_degree_3(cls, n1, l1, n2, l2, n3, l3):
         """Generate degree-2 invariant"""
         assert l1 <= n1, f'{l1} > {n1}'
         assert l2 <= n2, f'{l2} > {n2}'
         assert l3 <= n3, f'{l3} > {n3}'
-        assert self.delta(l1, l2, l3)
+        assert cls.delta(l1, l2, l3)
 
         builder = invariants.InvariantBuilder(3)
 
@@ -400,38 +327,39 @@ class InvariantsGenerator:
 
         return builder.build()
 
-    def generate_degree_1(self, n_max: int) -> invariants.MomentInvariants:
+    @staticmethod
+    def generate_degree_1(index_traits: sph.IndexTraits) -> invariants.MomentInvariants:
         """Generate first degree invariants up to the maximum n"""
         invs = invariants.MomentInvariants()
-        for n in utils.inclusive(0, n_max, 2 if self._n_minus_l_even else 1):
+        for n in index_traits.iter_n(0):
             builder = invariants.InvariantBuilder(1)
             builder.add_term(1, [(n, 0, 0)])
             invs.append(builder.build())
 
         return invs
 
-    def generate_degree_2(self, n_max: int, l_max=None) -> np.ma.masked_array:
+    @classmethod
+    def generate_degree_2(cls, index_traits: sph.IndexTraits) -> np.ma.masked_array:
         """Generate second degree invariants up to the maximum n, and optionally max l"""
-        l_max = l_max or n_max
-        assert n_max > 0
-        assert l_max <= n_max
+        N = index_traits.n_range[1] - index_traits.n_range[0] + 1  # Add one because range is inclusive
+        L = index_traits.l_range[1] - index_traits.l_range[0] + 1  # Add one because range is inclusive
 
-        invs_array = np.empty((l_max + 1, n_max + 1, n_max + 1), dtype=object)
+        invs_array = np.empty((L, N, N), dtype=object)
         invs_array.fill(None)
 
-        for l in utils.inclusive(1, l_max, 1):
-            n1_min = l if self._l_le_n else (l % 2 if self._n_minus_l_even else 0)
-            for n1 in utils.inclusive(n1_min, n_max, 2 if self._n_minus_l_even else 1):
-                for n2 in utils.inclusive(n1, n_max, 2 if self._n_minus_l_even else 1):
-                    invs_array[l, n1, n2] = self.inv_degree_2(n1, n2, l)
+        for l in utils.inclusive(1, index_traits.l_range[1], 1):
+            for n1 in index_traits.iter_n(l):
+                for n2 in index_traits.iter_n(l, n_spec=(n1, None)):
+                    invs_array[l, n1, n2] = cls.inv_degree_2(n1, n2, l)
 
         return np.ma.masked_array(invs_array, invs_array == None)  # pylint: disable=singleton-comparison
 
-    def generate_degree_3(self, n_max: int, l_max: int) -> invariants.MomentInvariants:
+    @classmethod
+    def generate_degree_3(cls, index_traits: sph.IndexTraits) -> invariants.MomentInvariants:
         """Generate third degree invariants up to maximum n, and optionally max l"""
         # pylint: disable=too-many-locals
 
-        l_max = l_max or n_max
+        l_max = index_traits.l_range[1]
         done = set()
 
         invs = invariants.MomentInvariants()
@@ -439,29 +367,28 @@ class InvariantsGenerator:
         # We need one 3rd degree invariant at l1=l2=l3 that includes three radial terms in order to resolve
         # the sign ambiguity on the unitary matrix from Cholesky decomposition
         for l in utils.inclusive(1, l_max):
-            n1_min = l if self._l_le_n else (l % 2 if self._n_minus_l_even else 0)
-            for n1 in utils.inclusive(n1_min, n_max, 2 if self._n_minus_l_even else 1):
-                for n2 in utils.inclusive(n1, n_max, 2 if self._n_minus_l_even else 1):
-                    for n3 in utils.inclusive(n2, n_max, 2 if self._n_minus_l_even else 1):
+            for n1 in index_traits.iter_n(l):
+                for n2 in index_traits.iter_n(l, n_spec=(n1, None)):
+                    for n3 in index_traits.iter_n(l, n_spec=(n2, None)):
                         if degree_3_is_zero((n1, l), (n2, l), (n3, l)):
                             continue
 
-                        invs.append(self.inv_degree_3(n1, l, n2, l, n3, l))
+                        invs.append(cls.inv_degree_3(n1, l, n2, l, n3, l))
                         done.add(((n1, l), (n2, l), (n3, l)))
 
-        for pair_c in self.nl_pairs((2 if self._l_le_n else 1, n_max), (2, l_max)):
-            for pair_b in self.nl_pairs((0, n_max), (0, pair_c[1] - 1)):
-                for pair_a in self.nl_pairs((0, n_max), (0, pair_b[1])):
+        for pair_c in index_traits.iter_nl(n_spec=(2, None), l_spec=(2, None)):
+            for pair_b in index_traits.iter_nl(l_spec=(None, pair_c[1] - 1)):
+                for pair_a in index_traits.iter_nl(l_spec=(None, pair_b[1])):
                     pairs = tuple(sorted([pair_a, pair_b, pair_c], key=lambda p: (p[1], p[0])))
                     # pairs = pair_a, pair_b, pair_c
                     (n1, l1), (n2, l2), (n3, l3) = pairs
 
                     # Check delta criterion
-                    if not self.delta(l1, l2, l3):
+                    if not cls.delta(l1, l2, l3):
                         continue
 
                     # Check l <= n criterion
-                    if self._l_le_n and (utils.odd(n1 - l1) or utils.odd(n2 - l2) or utils.odd(n3 - l3)):
+                    if (mathutil.odd(n1 - l1) or mathutil.odd(n2 - l2) or mathutil.odd(n3 - l3)):
                         continue
 
                     # Check for permutations that have already been done
@@ -472,28 +399,26 @@ class InvariantsGenerator:
                     if degree_3_is_zero(*pairs):
                         continue
 
-                    inv = self.inv_degree_3(n1, l1, n2, l2, n3, l3)
+                    inv = cls.inv_degree_3(n1, l1, n2, l2, n3, l3)
                     invs.append(inv)
                     done.add(pairs)
 
         return invs
 
-    def generate_all(self, n_max: int, l_max: int = None) -> InvertibleInvariants:
+    @classmethod
+    def generate_all(cls, index_traits: sph.IndexTraits) -> InvertibleInvariants:
         """Generate all moments invariants using this scheme up to the max n and l"""
         invs = InvertibleInvariants(
-            self.generate_degree_1(n_max=n_max), self.generate_degree_2(n_max=n_max, l_max=l_max),
-            self.generate_degree_3(n_max=n_max, l_max=l_max), n_max, l_max, self._l_le_n, self._n_minus_l_even
+            cls.generate_degree_1(index_traits), cls.generate_degree_2(index_traits),
+            cls.generate_degree_3(index_traits), index_traits
         )
 
         return invs
 
-    def nl_pairs(self, n: Union[int, Tuple[int, int]], l: Union[int, Tuple[int, int]]) -> Iterator[Tuple[int, int]]:
-        yield from utils.nl_pairs(n, l, l_le_n=self._l_le_n, n_minus_l_even=self._n_minus_l_even)
-
 
 def degree_3_is_zero(pair1: Tuple, pair2: Tuple, pair3: Tuple) -> bool:
     """Check if a set a degree-3 invariant is identically zero"""
-    if utils.odd(pair1[1]) and pair1 == pair2 == pair3:
+    if mathutil.odd(pair1[1]) and pair1 == pair2 == pair3:
         # All same
         return True
 
@@ -502,11 +427,11 @@ def degree_3_is_zero(pair1: Tuple, pair2: Tuple, pair3: Tuple) -> bool:
     counts[pair2] += 1
     counts[pair3] += 1
 
-    if utils.odd(pair3[1]) and pair1 == pair2 and pair1 != pair3:
+    if mathutil.odd(pair3[1]) and pair1 == pair2 and pair1 != pair3:
         return True
-    if utils.odd(pair2[1]) and pair1 == pair3 and pair1 != pair2:
+    if mathutil.odd(pair2[1]) and pair1 == pair3 and pair1 != pair2:
         return True
-    if utils.odd(pair1[1]) and pair2 == pair3 and pair2 != pair1:
+    if mathutil.odd(pair1[1]) and pair2 == pair3 and pair2 != pair1:
         return True
 
     return False
