@@ -48,22 +48,28 @@ def test_invertible_invariants_basics(inv_invariants):
     check_inverted_invariants(inv_invariants, phi, inverted_phi)
 
 
-def test_invertible_invariants_symmetric(inv_invariants):
+def test_invertible_invariants_symmetric():
     """Test invertible invariants for symmetric environments"""
+    n_max = 10
+    l_max = 5
+
+    indices = milad.sph.IndexTraits(n_max, l_max, n_minus_l_even=True, l_le_n=True)
+    inv_invariants = invertible_invariants.InvariantsGenerator.generate_all(indices)
+
     pts = np.array([[-0.5, 0, 0], [-.25, 0, 0.], [.25, 0, 0.], [0.5, 0, 0.]])
-    moments = zernike.from_deltas(N_MAX, pts)
+    moments = zernike.from_deltas(n_max, pts, l_max=l_max)
 
     phi = inv_invariants(moments)
 
-    inverted = zernike.ZernikeMoments(N_MAX)
+    inverted = zernike.ZernikeMoments(n_max, l_max)
 
     # with pytest.raises(ValueError):
     inv_invariants.invert(phi, inverted)
 
     assert not np.any(np.isnan(inverted.array))
-    _inverted_phi = inv_invariants(inverted)
+    inverted_phi = inv_invariants(inverted)
     # For now we can't deal with this case...stay tuned
-    # check_inverted_invariants(inv_invariants, phi, inverted_phi)
+    check_inverted_invariants(inv_invariants, phi, inverted_phi)
 
 
 def test_invertible_invariants_are_rotation_invariant(inv_invariants):

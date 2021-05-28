@@ -1,13 +1,30 @@
 # -*- coding: utf-8 -*-
 """Module for things related to spherical harmonics"""
-from typing import Union, Tuple, Optional
+import numbers
+from typing import Union, Tuple, Optional, NamedTuple
+
+import numpy as np
+import numpy.ma
 
 from . import utils
 
-MaxOrRange = Union[int, Tuple[type(None), type(None)]]
-Range = Tuple[int, int]
-
 # pylint: disable=invalid-name
+
+
+class InclusiveRange(NamedTuple):
+    min: int
+    max: int
+
+    def __contains__(self, x: numbers.Number):
+        return self.min <= x <= self.max
+
+    def __len__(self):
+        return (self.max - self.min) + 1
+
+
+Range = InclusiveRange
+RangeType = Union[Tuple[int, int], Range]
+MaxOrRange = Union[int, Tuple[type(None), type(None)]]
 
 __all__ = 'IndexTraits', 'MaxOrRange', 'Range'
 
@@ -23,13 +40,26 @@ class IndexTraits:
         self._l_le_n = l_le_n
         self._n_minus_l_even = n_minus_l_even
 
+        if l_le_n and self._n_range[1] > self._n_range[1]:
+            raise ValueError(f'Cannot have l_max > n_max ({self._n_range[1]} > {self._n_range[1]})')
+
     @property
-    def n_range(self) -> Tuple[int, int]:
+    def n(self) -> InclusiveRange:
         return self._n_range
 
     @property
-    def l_range(self) -> Tuple[int, int]:
+    def N(self) -> int:
+        """Return the total number of radial basis included"""
+        return len(self._n_range)
+
+    @property
+    def l(self) -> InclusiveRange:
         return self._l_range
+
+    @property
+    def L(self) -> int:
+        """Get the total number of angular frequencies included i.e. l = 0 -> L - 1"""
+        return len(self._l_range)
 
     def iter_n(self, l: int, n_spec: MaxOrRange = None):
         """Iterate over all the valid n values for a given angular frequency, l"""
@@ -47,6 +77,11 @@ class IndexTraits:
         l_min = l_min + ((n - l_min) % 2) if self._n_minus_l_even else l_min
         yield from utils.inclusive(l_min, min(l_max, n) if self._l_le_n else l_max, 2 if self._n_minus_l_even else 1)
 
+    @staticmethod
+    def iter_m(l: int, m_spec: MaxOrRange = None):
+        m_min, m_max = make_range(m_spec, (-l, l))
+        yield from utils.inclusive(m_min, m_max)
+
     def iter_nl(self, n_spec: MaxOrRange = None, l_spec: MaxOrRange = None):
         n_spec = make_range(n_spec, self._n_range)
         l_spec = make_range(l_spec, self._l_range)
@@ -55,8 +90,18 @@ class IndexTraits:
             for l in self.iter_l(n, l_spec):
                 yield n, l
 
+    def iter_nlm(self, n_spec: MaxOrRange = None, l_spec: MaxOrRange = None, m_spec: MaxOrRange = None):
+        for n, l in self.iter_nl(n_spec, l_spec):
+            for m in self.iter_m(l, m_spec):
+                yield n, l, m
 
-def make_range(spec: Optional[MaxOrRange], default: Range) -> Range:
+    def iter_lm(self, n: int, l_spec: MaxOrRange = None, m_spec: MaxOrRange = None):
+        for l in self.iter_l(n, l_spec):
+            for m in self.iter_m(l, m_spec):
+                yield l, m
+
+
+def make_range(spec: Optional[MaxOrRange], default: RangeType) -> Range:
     if spec is None:
         return default
 
@@ -65,13 +110,23 @@ def make_range(spec: Optional[MaxOrRange], default: Range) -> Range:
     val_range[0] = default[0] if val_range[0] is None else val_range[0]
     val_range[1] = default[1] if val_range[1] is None else val_range[1]
 
-    return tuple(val_range)
+    return Range(*val_range)
 
 
 def to_range(spec: MaxOrRange) -> Range:
     if isinstance(spec, tuple):
-        return spec
-    if isinstance(spec, int):
-        return 0, spec
+        return Range(*spec)
+    if isinstance(spec, (int, np.integer)):
+        return Range(0, spec)
 
     raise ValueError(f"'{spec}' is not a valid value specification, takes integer (maximum) or 2-tuple (range)")
+
+
+def create_array(indices: IndexTraits, dtype=complex):
+    """Create an empty array that is sized according to the passed indices"""
+    array = np.empty((indices.N, indices.L, 2 * indices.L + 1), dtype=dtype)
+    # Create the mask and unmask the valid elements
+    mask = np.ones(array.shape, dtype=np.int)
+    for idx in indices.iter_nlm():
+        mask[idx] = 0
+    return numpy.ma.array(array, mask=mask)

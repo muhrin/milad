@@ -29,7 +29,6 @@ _LOGGER = logging.getLogger(__name__)
 # code style so just disable for this file
 # pylint: disable=invalid-name
 SQRT_TWO = 2**0.5
-SQRT_THREE = 3**0.5
 
 
 def q_matrix(l: int) -> np.ndarray:
@@ -60,7 +59,7 @@ class InvertibleInvariants(invariants.MomentInvariants):
         self._index_traits = index_traits
 
     def invert(self, phi: np.array, moments_out):
-        l_max = self._index_traits.l_range[1]
+        l_max = self._index_traits.l[1]
 
         used_invariants = set()
         moments_out.array.fill(float('nan'))
@@ -71,8 +70,8 @@ class InvertibleInvariants(invariants.MomentInvariants):
         l = 1
         while l < l_max:
             gram, phi_indices = self.gram_matrix(phi, l=l)
-            rank, X1 = self.get_vectors_from_gram(gram, l)
-            self._place_vectors(moments_out, SQRT_THREE * X1, l)
+            vectors, rank = self.get_vectors_from_gram(gram, l)
+            self._place_vectors(moments_out, vectors, l)
             used_invariants.update(phi_indices)
 
             if rank > 0:
@@ -142,20 +141,20 @@ class InvertibleInvariants(invariants.MomentInvariants):
     #     return rank, X1
 
     @staticmethod
-    def get_vectors_from_gram(gram: np.array, l: int) -> Tuple[int, np.array]:
+    def get_vectors_from_gram(gram: np.array, l: int) -> Tuple[np.array, int]:
         """Given a Gram matrix that that is interpreted as an the SxS (where there are S radial functions) inner product
          pace of the vectors at a particular angular frequency, l, this will solve for a set of possible vectors up to
          isomorphism.
         The rank of the Gram matrix and an array of the vectors are returned.
         """
-        X1 = np.zeros((gram.shape[0], 2 * l + 1), dtype=complex)
+        vectors = np.zeros((gram.shape[0], 2 * l + 1), dtype=complex)
 
         u, s, _vh = np.linalg.svd(gram, hermitian=True)
         rank = int(np.sum(~np.isclose(s, 0.)))
 
         # Check if we have anything to decompose, if not just save ourselves the trouble and return now
         if rank == 0:
-            return rank, X1
+            return rank, vectors
 
         L = u[:, :rank] * s[:rank]**0.5
 
@@ -164,42 +163,23 @@ class InvertibleInvariants(invariants.MomentInvariants):
 
         # Get a rotation matrix that makes the vectors respect the conjugate symmetry
         Q = q_matrix(l)[m_values, :][:, m_values]
-        X1[:, m_values] = L @ Q
+        # Perform the rotation and multiply by the Clebsch-Gordan coefficient
+        vectors[:, m_values] = (2 * l + 1)**0.25 * L @ Q
 
-        return rank, X1
+        return vectors, rank
 
     def _invert_degree_1(self, phi: np.array, moments_out) -> set:
         """Get the degree 1 invariants.  There is no inversion to be done here, we just copy over all the values
         corresponding to c_n0^0 which are all rotation invariants"""
         used_invariants = set()
 
-        idx = 0
         # Degree 1, these are easy, all invariants are moments themselves
-        for n in self._index_traits.iter_n(l=0):
-            moments_out[n, 0, 0] = phi[idx]
-            used_invariants.add(idx)
-            idx += 1
+        indices = tuple(self._index_traits.iter_n(l=0))
+        num = len(indices)
+        moments_out.array[indices, 0, 0] = phi[:num]
+        used_invariants.update(range(num))
 
         return used_invariants
-
-    def _invert_degree_2(self, phi: np.array, l: int, moments_out) -> Tuple[set, int]:
-        gram, phi_indices = self.gram_matrix(phi, l=l)
-        used_invariants = set(phi_indices)
-
-        rank, X1 = self.get_vectors_from_gram(gram, l)
-
-        self._place_vectors(moments_out, SQRT_THREE * X1, l)
-
-        # Now, let's get a 3rd degree invariant that have l1=l2=l3 so we can resolve the +/-I_3 degeneracy
-        try:
-            sign, inv_idx = self._determine_sign(phi, moments_out, l)
-        except RuntimeError:
-            _LOGGER.warning('Unable to determine sign for I_2, l=%i', l)
-        else:
-            moments_out.array[:, l, :] = sign * moments_out.array[:, l, :]
-            used_invariants.add(inv_idx)
-
-        return used_invariants, rank
 
     def _place_vectors(self, moments, vectors, l: int):
         m_range = tuple(utils.inclusive(-l, l))
@@ -232,40 +212,53 @@ class InvertibleInvariants(invariants.MomentInvariants):
         used_invariants = set()
 
         # Degree 3 - Now let's frequency march to recover the rest
-        for l3 in utils.inclusive(l_start, self._index_traits.l_range[1], 1):
-            for n3 in self._index_traits.iter_n(l3):
-                # Get the correct invariants
-                i3_idx = np.array(self.find(functools.partial(degree_3_with_unknown, n3, l3)))
-
-                if len(i3_idx) < 2 * l3 + 1:
-                    _LOGGER.warning("Don't have enough invariants to solve for n=%i, l=%i", n3, l3)
-
-                # Create the matrices of the system to be solved
-                coeffs = np.zeros((len(i3_idx), 2 * l3 + 1), dtype=complex)
-
-                for i, inv_idx in enumerate(i3_idx):
-                    invariant = self[inv_idx]
-                    # Get just the first two terms (the third is the unknown)
-                    for j, m in enumerate(utils.inclusive(-l3, l3)):
-                        mask = invariant.terms_array[:, 2, 2] == m
-                        if np.any(mask):
-                            prefactors = invariant.prefactors[mask]
-                            indices = invariant.terms_array[:, 0:2, :][mask]
-                            # pylint: disable=protected-access
-                            coeffs[i, j] = invariants._numpy_apply(prefactors, indices, moments_out)
-
-                # The known invariants
-                phis = phi[i3_idx]
-                res = np.linalg.lstsq(coeffs, phis, rcond=None)
-                if res[2] < (2 * l3 + 1):
-                    _LOGGER.warning('Rank deficiency (%i < %i) in n=%i, l=%i', res[2], (2 * l3 + 1), n3, l3)
-
-                used_invariants.update(set(i3_idx))
-
-                for i, m in enumerate(utils.inclusive(-l3, l3)):
-                    moments_out[n3, l3, m] = res[0][i]
+        for l3 in utils.inclusive(l_start, self._index_traits.l[1], 1):
+            vectors, used = self._invert_deg_3_l(phi, moments_out, l3)
+            self._place_vectors(moments_out, vectors, l3)
+            used_invariants.update(used)
 
         return used_invariants
+
+    def _invert_deg_3_l(self, phi: np.array, moments, l3: int):
+        # pylint: disable=too-many-locals
+        used_invariants = set()
+
+        n_values = tuple(self._index_traits.iter_n(l3))
+        m_values = tuple(self._index_traits.iter_m(l3))
+        vectors = np.empty((len(n_values), 2 * l3 + 1), dtype=moments.dtype)
+
+        for n3_, n3 in enumerate(self._index_traits.iter_n(l3)):
+            # Get the correct invariants
+            i3_idx = np.array(self.find(functools.partial(degree_3_with_unknown, n3, l3)))
+
+            if len(i3_idx) < 2 * l3 + 1:
+                _LOGGER.warning("Don't have enough invariants to solve for n=%i, l=%i", n3, l3)
+
+            # Create the matrices of the system to be solved
+            coeffs = np.zeros((len(i3_idx), 2 * l3 + 1), dtype=complex)
+
+            for i, inv_idx in enumerate(i3_idx):
+                invariant = self[inv_idx]
+                # Get just the first two terms (the third is the unknown)
+                for j, m in enumerate(utils.inclusive(-l3, l3)):
+                    mask = invariant.terms_array[:, 2, 2] == m
+                    if np.any(mask):
+                        prefactors = invariant.prefactors[mask]
+                        indices = invariant.terms_array[:, 0:2, :][mask]
+                        # pylint: disable=protected-access
+                        coeffs[i, j] = invariants._numpy_apply(prefactors, indices, moments)
+
+            # The known invariants
+            phis = phi[i3_idx]
+            res = np.linalg.lstsq(coeffs, phis, rcond=None)
+            if res[2] < (2 * l3 + 1):
+                _LOGGER.warning('Rank deficiency (%i < %i) in n=%i, l=%i', res[2], (2 * l3 + 1), n3, l3)
+
+            used_invariants.update(set(i3_idx))
+
+            vectors[n3_, m_values] = res[0]
+
+        return vectors, used_invariants
 
 
 def degree_3_with_unknown(n: int, l: int, inv: invariants.MomentInvariant):
@@ -291,23 +284,25 @@ class InvariantsGenerator:
 
     @classmethod
     def total_degree_2(cls, index_traits: sph.IndexTraits) -> int:
-        l_max = index_traits.l_range[1]
+        l_max = index_traits.l[1]
         return sum(cls.num_degree_2(index_traits, l) for l in utils.inclusive(1, l_max, 1))
 
     @staticmethod
     def inv_degree_2(n1: int, n2: int, l: int) -> invariants.MomentInvariant:
-        """Generate a degree-2 invariant"""
+        """Generate a degree-2 invariant
+        """
         builder = invariants.InvariantBuilder(2)
-        recip_prefactor = 2 * l + 1
+        # This comes from the Clebsch-Gordan coefficient: <l,l,m,-m|0,0> = (-1)^(l-m)/sqrt(2l + 1)
+        recip_prefactor = (2 * l + 1)**0.5
 
-        for k in utils.inclusive(-l, l, 1):
-            builder.add_term((-1)**k / recip_prefactor, ((n1, l, k), (n2, l, -k)))
+        for m in utils.inclusive(-l, l, 1):
+            builder.add_term((-1)**(l - m) / recip_prefactor, ((n1, l, m), (n2, l, -m)))
 
         return builder.build()
 
     @classmethod
     def inv_degree_3(cls, n1, l1, n2, l2, n3, l3):
-        """Generate degree-2 invariant"""
+        """Generate degree-3 invariant"""
         assert l1 <= n1, f'{l1} > {n1}'
         assert l2 <= n2, f'{l2} > {n2}'
         assert l3 <= n3, f'{l3} > {n3}'
@@ -315,7 +310,7 @@ class InvariantsGenerator:
 
         builder = invariants.InvariantBuilder(3)
 
-        recip_prefactor = 2 * l1 + 1
+        recip_prefactor = (2 * l1 + 1)**0.5
         for k1 in utils.inclusive(-l1, l1):
             for k2 in utils.inclusive(-l2, l2):
                 for k3 in utils.inclusive(-l3, l3):
@@ -341,13 +336,13 @@ class InvariantsGenerator:
     @classmethod
     def generate_degree_2(cls, index_traits: sph.IndexTraits) -> np.ma.masked_array:
         """Generate second degree invariants up to the maximum n, and optionally max l"""
-        N = index_traits.n_range[1] - index_traits.n_range[0] + 1  # Add one because range is inclusive
-        L = index_traits.l_range[1] - index_traits.l_range[0] + 1  # Add one because range is inclusive
+        N = index_traits.N
+        L = index_traits.L
 
         invs_array = np.empty((L, N, N), dtype=object)
         invs_array.fill(None)
 
-        for l in utils.inclusive(1, index_traits.l_range[1], 1):
+        for l in utils.inclusive(1, index_traits.l[1], 1):
             for n1 in index_traits.iter_n(l):
                 for n2 in index_traits.iter_n(l, n_spec=(n1, None)):
                     invs_array[l, n1, n2] = cls.inv_degree_2(n1, n2, l)
@@ -359,7 +354,7 @@ class InvariantsGenerator:
         """Generate third degree invariants up to maximum n, and optionally max l"""
         # pylint: disable=too-many-locals
 
-        l_max = index_traits.l_range[1]
+        l_max = index_traits.l[1]
         done = set()
 
         invs = invariants.MomentInvariants()
@@ -385,10 +380,6 @@ class InvariantsGenerator:
 
                     # Check delta criterion
                     if not cls.delta(l1, l2, l3):
-                        continue
-
-                    # Check l <= n criterion
-                    if (mathutil.odd(n1 - l1) or mathutil.odd(n2 - l2) or mathutil.odd(n3 - l3)):
                         continue
 
                     # Check for permutations that have already been done
