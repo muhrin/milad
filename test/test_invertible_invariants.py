@@ -33,13 +33,12 @@ def test_invertible_invariants_basics(inv_invariants):
         3. Calculate the fingerprint from the inverted moments
         4. Assert that the two fingerprints match
     """
-
     # Create some random moments and calculate the fingerprint
     pts = generate.random_points_in_sphere(11, radius=1., centre=False)
-    moments = zernike.from_deltas(N_MAX, pts)
+    moments = zernike.from_deltas(indices.n.max, pts)
     phi = inv_invariants(moments)
 
-    inverted = zernike.ZernikeMoments(N_MAX)
+    inverted = zernike.ZernikeMoments(indices.n.max, indices.l.max)
     # Perform inversion
     inv_invariants.invert(phi, inverted)
     assert not np.any(np.isnan(inverted.array))
@@ -50,18 +49,16 @@ def test_invertible_invariants_basics(inv_invariants):
 
 def test_invertible_invariants_symmetric():
     """Test invertible invariants for symmetric environments"""
-    n_max = 10
-    l_max = 5
-
-    indices = milad.sph.IndexTraits(n_max, l_max, n_minus_l_even=True, l_le_n=True)
+    indices = milad.sph.IndexTraits(n_spec=12, l_spec=4, n_minus_l_even=True, l_le_n=True)
     inv_invariants = invertible_invariants.InvariantsGenerator.generate_all(indices)
 
-    pts = np.array([[-0.5, 0, 0], [-.25, 0, 0.], [.25, 0, 0.], [0.5, 0, 0.]])
-    moments = zernike.from_deltas(n_max, pts, l_max=l_max)
+    pts = np.array([[-0.5, 0, 0], [0.5, 0, 0]])
+    # pts = np.array([[-0.5, -0.5, 0], [-0.5, 0.5, 0], [0.5, -0.5, 0], [0.5, 0.5, 0]])
+    moments = zernike.from_deltas(indices.n.max, pts, l_max=indices.l.max)
 
     phi = inv_invariants(moments)
 
-    inverted = zernike.ZernikeMoments(n_max, l_max)
+    inverted = zernike.ZernikeMoments(indices.n.max, indices.l.max)
 
     # with pytest.raises(ValueError):
     inv_invariants.invert(phi, inverted)
@@ -79,11 +76,13 @@ def test_invertible_invariants_are_rotation_invariant(inv_invariants):
 
     pts = generate.random_points_in_sphere(10, radius=1.)
     weights = np.random.rand(num_points)
-    phi0 = inv_invariants(zernike.from_deltas(N_MAX, pts, weights))
+    moments0 = zernike.from_deltas(N_MAX, pts, weights)
+    phi0 = inv_invariants(moments0)
     for _ in range(num_rotations):
         rot = Rotation.random()
         rotated = rot.apply(pts)
 
-        phi = inv_invariants(zernike.from_deltas(N_MAX, rotated, weights))
+        moments = zernike.from_deltas(N_MAX, rotated, weights)
+        phi = inv_invariants(moments)
 
         assert np.allclose(phi0, phi)

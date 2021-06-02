@@ -154,7 +154,7 @@ class InvertibleInvariants(invariants.MomentInvariants):
 
         # Check if we have anything to decompose, if not just save ourselves the trouble and return now
         if rank == 0:
-            return rank, vectors
+            return vectors, rank
 
         L = u[:, :rank] * s[:rank]**0.5
 
@@ -342,7 +342,7 @@ class InvariantsGenerator:
         invs_array = np.empty((L, N, N), dtype=object)
         invs_array.fill(None)
 
-        for l in utils.inclusive(1, index_traits.l[1], 1):
+        for l in utils.inclusive(1, index_traits.l.max, 1):
             for n1 in index_traits.iter_n(l):
                 for n2 in index_traits.iter_n(l, n_spec=(n1, None)):
                     invs_array[l, n1, n2] = cls.inv_degree_2(n1, n2, l)
