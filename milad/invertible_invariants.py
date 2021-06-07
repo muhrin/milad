@@ -37,10 +37,11 @@ def q_matrix(l: int) -> np.ndarray:
     Q_ = np.zeros((size, size), dtype=complex)
     Q_[0, 0] = SQRT_TWO
     for m in utils.inclusive(1, l):
-        Q_[m, -m] = 1
-        Q_[m, m] = (-1)**m
-        Q_[-m, m] = 1j
-        Q_[-m, -m] = 1j
+        Q_[m, -m] = 1  # Top left
+        Q_[-m, -m] = 1j  # Bottom left
+
+        Q_[-m, m] = -1j * (-1)**m  # Top right
+        Q_[m, m] = (-1)**m  # Bottom right
 
     return Q_ / SQRT_TWO
 
@@ -96,22 +97,50 @@ class InvertibleInvariants(invariants.MomentInvariants):
         _LOGGER.info('Used %i out of %i invariants during inversion', len(used_invariants), len(phi))
         return moments_out
 
-    def gram_matrix(self, phi: np.ndarray, l: int) -> Tuple[np.ndarray, np.ndarray]:
-        """Get the Gram matrix for the corresponding angular frequency, l"""
-        # Let's get the indices for the degree-2 invariants
+    def gram_indices(self, l: int) -> np.ndarray:
+        """Get the indices of the invariants that correspond to the upper-right portion of the Gram matrix"""
         num_deg_1 = len(self._degree_1)
         indices = np.ma.masked_array(np.empty(self._degree_2.shape, dtype=int), mask=self._degree_2.mask)
         valid_invs = np.argwhere(self._degree_2 != None)  # pylint: disable=singleton-comparison
         indices[valid_invs[:, 0], valid_invs[:, 1], valid_invs[:, 2]] = (np.arange(0, len(valid_invs)) + num_deg_1)
 
+        linear_indices = indices[l, :, :].compressed()
+        return linear_indices
+
+    def gram_matrix(self, phi: np.ndarray, l: int) -> Tuple[np.ndarray, np.ndarray]:
+        """Get the Gram matrix for the corresponding angular frequency, l"""
+        # Let's get the indices for the degree-2 invariants
+        phi_indices = self.gram_indices(l)
+
+        # Create the Gram matrix
         gram_size = sum(1 for _ in self._index_traits.iter_n(l))
         gram = np.zeros((gram_size, gram_size), dtype=complex)
-        phi_indices = indices[l, :, :].compressed()
+
+        # Copy over the invariant values and symmetrise
         gram[np.triu_indices(gram_size)] = phi[phi_indices]
         ilower = np.tril_indices(gram_size, -1)
         gram[ilower] = gram.T[ilower]  # pylint: disable=unsubscriptable-object
 
         return gram, phi_indices
+
+    def reduced_gram(self, phi: np.ndarray, moments, l: int):
+        # Get the original gram matrix and then subtract off the subspaces that we have already found
+        gram, gram_indices = self.gram_matrix(phi, l)
+        gram_size = gram.shape[0]
+
+        # Copy over the invariant values and symmetrise
+        idx = 0
+        for i in range(gram_size):
+            for j in range(i, gram_size):
+                # Subtract off what we've found so far
+                gram[i, j] -= self[gram_indices[idx]](moments)
+                idx += 1
+
+        # Resymmetrise the Gram
+        ilower = np.tril_indices(gram_size, -1)
+        gram[ilower] = gram.T[ilower]  # pylint: disable=unsubscriptable-object
+
+        return gram
 
     # @staticmethod
     # def get_vectors_from_gram(gram: np.array, l: int) -> Tuple[int, np.array]:
@@ -311,14 +340,14 @@ class InvariantsGenerator:
         builder = invariants.InvariantBuilder(3)
 
         recip_prefactor = (2 * l1 + 1)**0.5
-        for k1 in utils.inclusive(-l1, l1):
-            for k2 in utils.inclusive(-l2, l2):
-                for k3 in utils.inclusive(-l3, l3):
-                    if k1 + k2 + k3 != 0:
+        for m1 in utils.inclusive(-l1, l1):
+            for m2 in utils.inclusive(-l2, l2):
+                for m3 in utils.inclusive(-l3, l3):
+                    if m1 + m2 + m3 != 0:
                         continue
 
-                    prefactor = (-1)**k1 * complex(cg.CG(l2, k2, l3, k3, l1, -k1).doit()) / recip_prefactor
-                    builder.add_term(prefactor, ((n1, l1, k1), (n2, l2, k2), (n3, l3, k3)))
+                    prefactor = (-1)**m1 * complex(cg.CG(l2, m2, l3, m3, l1, -m1).doit()) / recip_prefactor
+                    builder.add_term(prefactor, ((n1, l1, m1), (n2, l2, m2), (n3, l3, m3)))
 
         return builder.build()
 
