@@ -23,7 +23,7 @@ def inv_invariants():
 def check_inverted_invariants(invariants: milad.MomentInvariants, target: np.array, inverted: np.ndarray):
     diff = target - inverted
     not_zero = np.argwhere(~np.isclose(diff, 0.)).ravel()
-    assert not np.any(not_zero), '\n'.join(str(invariants[idx]) for idx in not_zero)
+    assert not np.any(not_zero), f'First non-zero: {invariants[not_zero[0]]}'
 
 
 def test_invertible_invariants_basics(inv_invariants):

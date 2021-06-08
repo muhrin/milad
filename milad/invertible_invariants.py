@@ -12,11 +12,12 @@ We use an adapted version of their algorithm to recover moments from invariants.
 import collections
 import functools
 import logging
-import math
 from typing import Tuple
 
 import numpy as np
+import sympy
 from sympy.physics.quantum import cg
+from sympy.physics import wigner
 
 from . import invariants
 from . import utils
@@ -31,7 +32,7 @@ _LOGGER = logging.getLogger(__name__)
 SQRT_TWO = 2**0.5
 
 
-def q_matrix(l: int) -> np.ndarray:
+def q_matrix(l: int, direct_indexing=True) -> np.ndarray:
     """Create a Q matrix that transforms real spherical harmonics to complex ones"""
     size = 2 * l + 1
     Q_ = np.zeros((size, size), dtype=complex)
@@ -42,6 +43,10 @@ def q_matrix(l: int) -> np.ndarray:
 
         Q_[-m, m] = -1j * (-1)**m  # Top right
         Q_[m, m] = (-1)**m  # Bottom right
+
+    if not direct_indexing:
+        # Shift the array such that m = m' = 0 is in the middle of the matrix, i.e. at l, l
+        Q_ = np.roll(Q_, (l, l), axis=(0, 1))
 
     return Q_ / SQRT_TWO
 
@@ -60,7 +65,7 @@ class InvertibleInvariants(invariants.MomentInvariants):
         self._index_traits = index_traits
 
     def invert(self, phi: np.array, moments_out):
-        l_max = self._index_traits.l[1]
+        lmax = self._index_traits.l[1]
 
         used_invariants = set()
         moments_out.array.fill(float('nan'))
@@ -69,7 +74,7 @@ class InvertibleInvariants(invariants.MomentInvariants):
 
         # Let's go up in l until we find an I2 we can solve for
         l = 1
-        while l < l_max:
+        while l <= lmax:
             gram, phi_indices = self.gram_matrix(phi, l=l)
             vectors, rank = self.get_vectors_from_gram(gram, l)
             self._place_vectors(moments_out, vectors, l)
@@ -185,15 +190,26 @@ class InvertibleInvariants(invariants.MomentInvariants):
         if rank == 0:
             return vectors, rank
 
-        L = u[:, :rank] * s[:rank]**0.5
+        real_vectors = np.zeros((gram.shape[0], (2 * l + 1)), dtype=complex)
+        # real_vectors = u[:, :rank] * s[:rank]**0.5
+        real_vectors[:, :rank] = u[:, :rank] * s[:rank]**0.5
 
-        bound = int(math.floor(rank / 2))
-        m_values = tuple(m for m in utils.inclusive(-bound, bound, 1) if not (mathutil.even(rank) and m == 0))
+        # bound = int(math.floor(rank / 2))
+        # m_values = tuple(m for m in utils.inclusive(-bound, bound, 1) if not (mathutil.even(rank) and m == 0))
+        # m_values = tuple(utils.inclusive(-l, l, 1))
 
         # Get a rotation matrix that makes the vectors respect the conjugate symmetry
-        Q = q_matrix(l)[m_values, :][:, m_values]
+        # Q = q_matrix(l)[m_values, :][:, m_values]
+        Q = q_matrix(l, direct_indexing=True)
         # Perform the rotation and multiply by the Clebsch-Gordan coefficient
-        vectors[:, m_values] = (2 * l + 1)**0.25 * L @ Q
+        # vectors[:, m_values] = (2 * l + 1)**0.25 * real_vectors @ Q
+        vectors = (2 * l + 1)**0.25 * real_vectors @ Q
+
+        if rank == 1:
+            # alpha, beta, gamma = sympy.symbols("alpha, beta, gamma", real=True)
+            sp_rot = wigner.wigner_d(sympy.Integer(l), 0, sympy.pi / 4, sympy.pi / 4)
+            rot = np.roll(np.array(sp_rot, dtype=complex), (-l, -l), axis=(0, 1))
+            vectors = vectors @ rot
 
         return vectors, rank
 
@@ -211,9 +227,12 @@ class InvertibleInvariants(invariants.MomentInvariants):
         return used_invariants
 
     def _place_vectors(self, moments, vectors, l: int):
-        m_range = tuple(utils.inclusive(-l, l))
+        # m_range = tuple(utils.inclusive(-l, l))
         for i, n in enumerate(self._index_traits.iter_n(l)):
-            moments.array[n, l, m_range] = vectors[i, m_range]
+            # moments.array[n, l, m_range] = vectors[i, m_range]
+
+            for m in utils.inclusive(0, l):
+                moments[n, l, m] = vectors[i, m]
         return moments
 
     def _determine_sign(self, phi: np.ndarray, moments_out, l: int):
