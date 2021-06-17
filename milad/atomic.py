@@ -2,7 +2,6 @@
 """
 Module containing functions and objects related to manipulating collections of atoms
 """
-import copy
 import logging
 import random
 from typing import Optional, Type, Tuple, Union, List
@@ -208,7 +207,13 @@ class AtomsCollectionBuilder(functions.Function):
         def output_length(self, _in_state: AtomsCollection) -> int:
             return self._builder.input_length
 
-        def evaluate(self, state: AtomsCollection, *, get_jacobian=False) -> np.ndarray:
+        def evaluate(
+            # pylint: disable=unused-argument
+            self,
+            state: AtomsCollection,
+            *,
+            get_jacobian=False
+        ) -> np.ndarray:
             output_length = self.output_length(state)
             if self.output_length(state) != output_length:
                 raise ValueError(f'Expected input of length {output_length} but got {state.vector.size}')
@@ -271,7 +276,6 @@ class FeatureMapper(functions.Function):
 
     def evaluate(self, atoms: AtomsCollection, *, get_jacobian=False) -> functions.Features:  # pylint: disable=arguments-differ
         features = functions.Features()
-
         jac = np.zeros((self.output_length(atoms), len(atoms))) if get_jacobian else None
 
         # Create the features one by one and add them to the features vector
@@ -288,10 +292,10 @@ class FeatureMapper(functions.Function):
                 # where we optionally map the species to the index s
                 pos_idx = atoms.linear_pos_idx(atom_idx).start
                 for i in range(0, 3):
-                    jac[idx + i, pos_idx + i] = 1.
+                    jac[idx + i, pos_idx + i] = 1.  # pylint: disable=unsupported-assignment-operation
 
                 if self._map_species_to:
-                    jac[idx + self._map_species_to, atoms.linear_number_idx(atom_idx)] = 1.
+                    jac[idx + self._map_species_to, atoms.linear_number_idx(atom_idx)] = 1.  # pylint: disable=unsupported-assignment-operation
 
             features.add(feature)
             idx += len(feature)
@@ -314,7 +318,12 @@ class FeatureMapper(functions.Function):
         def output_length(features: functions.Features) -> int:
             return AtomsCollection.total_length(len(features.features))
 
-        def evaluate(self, features: functions.Features, get_jacobian=False):  # pylint: disable=arguments-differ
+        def evaluate(
+            # pylint: disable=unused-argument, arguments-differ
+            self,
+            features: functions.Features,
+            get_jacobian=False
+        ):
             atoms_collection = AtomsCollection(len(features.features))
 
             for idx, feature in enumerate(features.features):
@@ -376,7 +385,13 @@ class CentreAtomsCollection(functions.Function):
     def output_length(in_state: AtomsCollection) -> int:
         return len(in_state)
 
-    def evaluate(self, in_atoms: AtomsCollection, get_jacobian=False) -> AtomsCollection:  # pylint: disable=arguments-differ
+    def evaluate(
+        # pylint: disable=unused-argument, arguments-differ
+        self,
+        in_atoms: AtomsCollection,
+        *,
+        get_jacobian=False
+    ) -> AtomsCollection:
         out_atoms = AtomsCollection(in_atoms.num_atoms)
 
         centre = np.sum(in_atoms.positions) / in_atoms.num_atoms
@@ -421,7 +436,12 @@ class MapNumbers(functions.Function):
     def output_length(in_state: AtomsCollection) -> int:
         return len(in_state)
 
-    def evaluate(self, in_atoms: AtomsCollection, get_jacobian=False) -> AtomsCollection:  # pylint: disable=arguments-differ
+    def evaluate(
+        # pylint: disable=unused-argument, arguments-differ
+        self,
+        in_atoms: AtomsCollection,
+        get_jacobian=False
+    ) -> AtomsCollection:
         out_atoms = in_atoms.copy()
 
         # Now adjust the numbers
@@ -449,7 +469,13 @@ class MapNumbers(functions.Function):
         def output_length(in_state: AtomsCollection) -> int:
             return len(in_state)
 
-        def evaluate(self, in_atoms: AtomsCollection, get_jacobian=False) -> AtomsCollection:  # pylint: disable=arguments-differ
+        def evaluate(
+            # pylint: disable=unused-argument, arguments-differ
+            self,
+            in_atoms: AtomsCollection,
+            *,
+            get_jacobian=False
+        ) -> AtomsCollection:  # pylint: disable=arguments-differ
             out_atoms = in_atoms.copy()
 
             # Now adjust the numbers

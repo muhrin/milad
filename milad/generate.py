@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
+from typing import Tuple
+
 import numpy as np
+from scipy.spatial import transform
+
+from . import mathutil
 
 
 def random_points_in_sphere(num: int, radius=1., centre=False) -> np.array:
@@ -30,3 +35,34 @@ def centeroid(pts: np.ndarray) -> np.ndarray:
     centroid[:, 1] = np.sum(pts[:, 1]) / length
     centroid[:, 2] = np.sum(pts[:, 2]) / length
     return centroid
+
+
+def chiral_tetrahedra() -> Tuple[np.ndarray, np.ndarray]:
+    """Create chiral structures that cannot be distinguished by bispectrum from
+    https://link.aps.org/doi/10.1103/PhysRevLett.125.166001
+    """
+    # pylint: disable=invalid-name
+    a = np.radians(0)
+    b = np.radians(32)
+    c = np.radians(124)
+
+    # First group of points
+    pts = np.zeros((3, 3))
+    pts[0, :2] = mathutil.pol2cart(1, a)
+    pts[1, :2] = mathutil.pol2cart(1, b)
+    pts[2, :2] = mathutil.pol2cart(1, c)
+
+    # Second group of points
+    rot = transform.Rotation.from_euler('z', 34, degrees=True)
+    pts2 = rot.apply(pts)
+
+    pts_dist = 0.2
+    pts[:, 2] += pts_dist
+    pts2[:, 2] -= pts_dist
+
+    pt_dist = 0.4
+
+    minus = np.concatenate((pts, np.array([[0, 0, -pt_dist], [0, 0, 0]])))
+    plus = np.concatenate((pts2, np.array([[0, 0, +pt_dist], [0, 0, 0]])))
+
+    return minus, plus

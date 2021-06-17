@@ -159,7 +159,7 @@ class MomentsCalculator(functions.Function, metaclass=abc.ABCMeta):
 
 
 class MomentsPolynomial:
-    """Represents a polyonimal of moments.  The terms are products of moments with a prefactor"""
+    """Represents a polynomial of moments.  The terms are products of moments with a prefactor"""
     __slots__ = ('_terms',)
 
     def __init__(self):

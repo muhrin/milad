@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+from typing import Tuple
+
 import numpy as np
 
 
@@ -79,3 +81,15 @@ def cholesky(gram: np.ndarray) -> np.array:
         mineig = np.min(np.real(np.linalg.eigvals(A3)))
         A3 += I * (-mineig * k**2 + spacing)
         k += 1
+
+
+def pol2cart(r: float, theta: float) -> Tuple[float, float]:
+    """
+    Parameters:
+    Convert from polar to Cartesian
+    """
+    # pylint: disable=invalid-name
+    z = r * np.exp(1j * theta)
+    x, y = z.real, z.imag
+
+    return x, y

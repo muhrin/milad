@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import abc
 import copy
+import functools
 import logging
 import numbers
 from typing import List, Union, Tuple, Callable, Any, Iterable, Type, Optional
@@ -9,6 +10,8 @@ import numpy as np
 import scipy
 
 _LOGGER = logging.getLogger(__name__)
+
+SQRT_TWO_PI = (2 * np.pi)**0.5
 
 
 class State(metaclass=abc.ABCMeta):
@@ -114,13 +117,16 @@ class Feature(State):
 
 
 class Features(State):
-    """An collection of features"""
+    """A collection of features"""
 
     def __init__(self, *feature: Feature):
         self._vector = np.empty(0)
         self._features: List[Feature] = []
         for entry in feature:
             self.add(entry)
+
+    def __getitem__(self, item):
+        return self._features[item]
 
     @property
     def features(self) -> List[Feature]:
@@ -243,6 +249,25 @@ class WeightedGaussian(Feature):
     @weight.setter
     def weight(self, value):
         self.vector[self.WEIGHT] = value
+
+
+@functools.singledispatch
+def evaluate_feature(feature: Feature, state: StateLike, *, get_jacobian=False):
+    raise RuntimeError('Cannot evaluate generic feature')
+
+
+@evaluate_feature.register
+def _(gaussian: WeightedGaussian, *, pos: np.ndarray, get_jacobian=False):
+    dr = np.linalg.norm(pos - gaussian.pos)
+    return gaussian.weight / (gaussian.sigma * SQRT_TWO_PI) * np.exp((-1 / 2) * (dr / gaussian.sigma)**2)
+
+
+@evaluate_feature.register
+def _(delta: WeightedDelta, *, pos: np.ndarray, get_jacobian=False):
+    if np.all(np.isclose(pos - delta, 0.)):
+        return delta.weight
+
+    return 0.
 
 
 # region Functions

@@ -86,3 +86,11 @@ def test_invertible_invariants_are_rotation_invariant(inv_invariants):
         phi = inv_invariants(moments)
 
         assert np.allclose(phi0, phi)
+
+
+def test_against_chiral_tetrahedra(inv_invariants, chiral_tetrahedra):
+    minus, plus = chiral_tetrahedra
+    minus_phi = inv_invariants(zernike.from_deltas(inv_invariants.max_order, minus)).real
+    plus_phi = inv_invariants(zernike.from_deltas(inv_invariants.max_order, plus)).real
+
+    assert np.allclose(minus_phi, plus_phi)

@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 import milad
-from milad import invariants
+from milad import invariants, generate
 
 READ_MAX = 128  # The maximum number of invariants to read from the file
 
@@ -34,3 +34,11 @@ def set_random_seed():
 def save_figures():
     """Return True if you want to save figures from tests"""
     return False
+
+
+@pytest.fixture()
+def chiral_tetrahedra():
+    """Create chiral structures that cannot be distinguished by bispectrum from
+    https://link.aps.org/doi/10.1103/PhysRevLett.125.166001
+    """
+    return generate.chiral_tetrahedra()

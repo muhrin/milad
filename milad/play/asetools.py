@@ -294,7 +294,7 @@ def extract_environments(system: ase.Atoms, atom_centered=True, cutoff=5., yield
     The central atom will always be at position 0 and the rest (if any) will follow.
 
     :param system: the atoms object to extract environments from
-    :param atom_centered: if True will centre the new environments on
+    :param atom_centered: if True will centre the new environments on the central (position 0) atom
     :param cutoff: a radial cuttoff for defining each environment
     :param yield_indices: if True will yield a tuple (idx, Atoms) where idx is the global index of the central atom
     """

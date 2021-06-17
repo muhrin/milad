@@ -6,6 +6,7 @@ import numpy as np
 import sympy
 
 import milad
+from milad import zernike
 from milad import functions
 from milad import generate
 from milad import geometric
@@ -119,3 +120,15 @@ def test_invariants_derivatives_correctness(complex_invariants):
                 # If they differ, check that it's by a meaningful amount
                 coeffs = np.array(tuple(difference.as_coefficients_dict().values()))
                 np.testing.assert_array_almost_equal(coeffs, 0., decimal=10)
+
+
+def test_against_chiral_tetrahedra(complex_invariants, chiral_tetrahedra):
+    minus, plus = chiral_tetrahedra
+
+    minus_moms = zernike.from_deltas(complex_invariants.max_order, minus)
+    plus_moms = zernike.from_deltas(complex_invariants.max_order, plus)
+
+    minus_phi = complex_invariants(minus_moms)
+    plus_phi = complex_invariants(plus_moms)
+
+    assert np.allclose(minus_phi, plus_phi)

@@ -108,8 +108,10 @@ def test_geom_moments_of_deltas():
 
 def test_delta_moments_derivatives():
     """Test that derivatives of moments calculated from delta functions are correct"""
+    # pylint: disable=too-many-locals
+
     ORDER = 5
-    NUM_POINTS = 4
+    NUM_POINTS = 2
     Delta = functions.WeightedDelta
 
     x = sympy.IndexedBase('x')
@@ -119,33 +121,20 @@ def test_delta_moments_derivatives():
     WEIGHTS = analytic.create_array(w, NUM_POINTS)
 
     # Get the moments and derivatives wrt to weights and positions
-    moments, jac = geometric.from_deltas(ORDER, POINTS, weights=WEIGHTS, get_jacobian=True)
+    moments, jacobian = geometric.from_deltas(ORDER, POINTS, weights=WEIGHTS, get_jacobian=True)
 
     for i in range(NUM_POINTS):
         delta_idx = i * Delta.LENGTH
         for j, (p, q, r) in enumerate(moments.iter_indices()):
+            jac = jacobian[j]
             moment = moments[p, q, r]
 
             # Check weight derivatives
-            dm_dx_calculated = jac[j, delta_idx + Delta.WEIGHT]
-            if isinstance(moment, float):
-                # We have a constant, so derivative is always 0
-                dw_dx_analytic = 0
-            else:
-                dw_dx_analytic = moment.diff(w[i])
-
-            assert dm_dx_calculated == dw_dx_analytic
+            check_derivative(moment, w[i], jac[delta_idx + Delta.WEIGHT])
 
             # Now loop over each x, y, z coordinate
             for dim in range(3):  # Look over x = 0, y = 1, z = 2
-                dm_dx_calculated = jac[j, delta_idx + dim]
-                if isinstance(moment, (float, sympy.core.numbers.Zero)):
-                    # We have a constant, so derivative is always 0
-                    dw_dx_analytic = 0
-                else:
-                    dw_dx_analytic = moment.diff(x[i, dim])
-
-                assert dm_dx_calculated == dw_dx_analytic
+                check_derivative(moment, x[i, dim], jac[delta_idx + dim])
 
 
 def test_geometric_moments_calculator_deltas():
@@ -195,3 +184,49 @@ def test_geometric_moments_calculator_gaussians():
     moms = calculator(env)
     moms2 = geometric.from_gaussians(max_order, positions, sigmas, weights)
     assert np.all(moms.moments == moms2.moments)
+
+
+def test_gaussian_moments_derivatives():
+    """Test that derivatives of moments calculated from delta functions are correct"""
+    # pylint: disable=too-many-locals
+
+    ORDER = 5
+    NUM_POINTS = 2
+    Gaussian = functions.WeightedGaussian
+
+    x = sympy.IndexedBase('x')
+    w = sympy.IndexedBase('w')
+    s = sympy.IndexedBase('s')
+
+    POINTS = analytic.create_array(x, (NUM_POINTS, 3))
+    WEIGHTS = analytic.create_array(w, NUM_POINTS)
+    SIGMAS = analytic.create_array(s, NUM_POINTS)
+
+    # Get the moments and derivatives wrt to weights and positions
+    moments, jacobian = geometric.from_gaussians(ORDER, POINTS, sigmas=SIGMAS, weights=WEIGHTS, get_jacobian=True)
+
+    for i in range(NUM_POINTS):
+        delta_idx = i * Gaussian.LENGTH
+        for j, (p, q, r) in enumerate(moments.iter_indices()):
+            moment = moments[p, q, r]
+            jac = jacobian[j]
+
+            # Check weight derivatives
+            check_derivative(moment, w[i], jac[delta_idx + Gaussian.WEIGHT])
+
+            # Check sigma derivatives
+            check_derivative(moment, s[i], jac[delta_idx + Gaussian.SIGMA])
+
+            # Now loop over each x, y, z coordinate
+            for dim in range(3):  # Look over x = 0, y = 1, z = 2
+                check_derivative(moment, x[i, dim], jac[delta_idx + dim])
+
+
+def check_derivative(function, variable: sympy.Symbol, calcualted_derivative):
+    if isinstance(function, (float, sympy.core.numbers.Zero)):
+        # We have a constant, so derivative is 0
+        derivative = 0
+    else:
+        derivative = function.diff(variable)
+
+    assert sympy.simplify(calcualted_derivative) == sympy.simplify(derivative)

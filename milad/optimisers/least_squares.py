@@ -40,7 +40,7 @@ class LeastSquaresOptimiser:
         :param jacobian: if 'native' the analytic Jacobian will be requested from 'func', otherwise this option is
             passed to optimize.least_squares
         :param bounds: place bounds on the possible inputs to func
-        :param max_func_evals: the maximum number of function evaluations.  If not specified will be 50 * len(initial).
+        :param max_func_evals: the maximum number of function evaluations.  If not specified will be 100 * len(initial).
         :param x_tol: tolerance for termination by change of the independent variables.
         :param cost_tol: tolerance in change of cost function.  If the difference between one step and another goes
             below this value the optimisation will stop

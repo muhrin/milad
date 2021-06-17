@@ -2,6 +2,7 @@
 """Module for calculating Zernike moments"""
 
 import collections
+import copy
 import logging
 import itertools
 import math
@@ -169,6 +170,15 @@ class ZernikeMoments(base_moments.Moments):
 
         return np.all(self.vector == other.vector)
 
+    def __add__(self, other: 'ZernikeMoments') -> 'ZernikeMoments':
+        if not isinstance(other, ZernikeMoments):
+            raise ValueError(f'Expected ZernikeMoments, got {type(other)}')
+
+        moms = copy.deepcopy(self)
+        moms.array.data[:] += other.array.data[:]
+
+        return moms
+
     @property
     def dtype(self):
         return self._dtype
@@ -235,7 +245,7 @@ class ZernikeMoments(base_moments.Moments):
                             'Trying to set value of moment %i,%i,%i to %d, '
                             'however these moment should always be real so discarding imaginary', n, l, m, value
                         )
-                    value = np.real(value)
+                    # value = np.real(value)
                 except AttributeError:
                     pass
             elif set_minus_m:
@@ -275,7 +285,10 @@ class ZernikeMoments(base_moments.Moments):
         order = order or self.n_max
         return self.reconstruct(self.create_reconstruction_query(x, order), order, zero_outside_domain=False)
 
-    def reconstruct(self, query: ZernikeReconstructionQuery, order=None, zero_outside_domain=True):
+    def reconstruct(self,
+                    query: ZernikeReconstructionQuery,
+                    order=None,
+                    zero_outside_domain=True) -> Union[float, np.ndarray]:
         """Given a reconstruction query this will return the values of the function at the specified grid values"""
         order = order if order is not None else query.max_order
         moments = query.moments
@@ -309,7 +322,12 @@ class ZernikeMoments(base_moments.Moments):
         return values.real
 
     def visualise(
-        self, viewer='plotly_widget', query: ZernikeReconstructionQuery = None, max_order=None, num_points=31
+        self,
+        viewer='plotly_widget',
+        query: ZernikeReconstructionQuery = None,
+        max_order=None,
+        num_points=31,
+        square=False
     ):
         # pylint: disable=too-many-locals
 
@@ -328,6 +346,8 @@ class ZernikeMoments(base_moments.Moments):
                 grid_points = query.points
 
             grid_values = self.reconstruct(query, max_order, zero_outside_domain=True)
+            if square:
+                grid_values = grid_values**2
 
             default_isomin = (grid_values.max() - grid_values.min()) * 0.6 + grid_values.min()
             default_isomax = grid_values.max()

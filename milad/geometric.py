@@ -204,22 +204,25 @@ def _(gaussian: functions.WeightedGaussian, max_order: int, get_jacobian: bool, 
     O = max_order
 
     partial_moments = np.empty((O + 1, 3), dtype=dtype)
-    partial_moments[0, :] = 1.0  # 0^th order, mass is multiplied in at end
+    partial_moments[0, :] = 1  # 0^th order, mass is multiplied in at end
 
     for order in utils.inclusive(0, O):
-        partial_moments[order, :] = np.array(gaussian_moment[order](gaussian.pos, gaussian.sigma))
+        partial_moments[order, :] = np.array(gaussian_moment[order](gaussian.pos, gaussian.sigma), dtype=dtype)
 
     moments = utils.outer_product(partial_moments[:, 0], partial_moments[:, 1], partial_moments[:, 2])
 
     if get_jacobian:
-        dg = np.empty((
-            O + 1,  # Order
-            2,  # d/dmu, d/dsigma
-            3,  # x, y, z
-        ))
+        dg = np.empty(
+            (
+                O + 1,  # Order
+                2,  # d/dmu, d/dsigma
+                3,  # x, y, z
+            ),
+            dtype=dtype
+        )
 
         for order in utils.inclusive(max_order):
-            dg[order, :, :] = np.array(gaussian_moment_derivatives[order](gaussian.pos, gaussian.sigma))
+            dg[order, :, :] = np.array(gaussian_moment_derivatives[order](gaussian.pos, gaussian.sigma), dtype=dtype)
 
         # Let's get the indices and create a Jacobian matrix
         indices = tuple(iter_indices(max_order))
@@ -238,8 +241,8 @@ def _(gaussian: functions.WeightedGaussian, max_order: int, get_jacobian: bool, 
                     partial_moments[p, 0] * partial_moments[q, 1] * dg[r, 1, 2]
             )
 
-        # Weights
-        jacobian[:, gaussian.WEIGHT] = moments[:, :, :]
+            # Weights
+            jacobian[i, gaussian.WEIGHT] = moments[p, q, r]
 
         return gaussian.weight * moments, jacobian
 
@@ -250,7 +253,6 @@ def _(gaussian: functions.WeightedGaussian, max_order: int, get_jacobian: bool, 
 def _(environment: functions.Features, max_order: int, get_jacobian, dtype):
     """Calculate the geometric moments for a set of features"""
     O = max_order
-    idx = 0
 
     moments = np.empty((O + 1, O + 1, O + 1), dtype=dtype)
     moments.fill(0.)
@@ -265,8 +267,6 @@ def _(environment: functions.Features, max_order: int, get_jacobian, dtype):
 
         moments += moms
 
-        idx += len(feature)
-
     if get_jacobian:
         return moments, np.concatenate(jacobians, axis=1)
 
@@ -277,7 +277,8 @@ def from_gaussians(
     max_order: int,
     positions: np.ndarray,
     sigmas: Union[numbers.Number, np.array] = 0.4,
-    weights: Union[numbers.Number, np.array] = 1.
+    weights: Union[numbers.Number, np.array] = 1.,
+    get_jacobian=False
 ) -> GeometricMoments:
     """Calculate the geometric moments for a collection of Gaussians at the given positions with
     the passed parameters.
@@ -297,7 +298,7 @@ def from_gaussians(
     for pos, sigma, weight in zip(positions, sigmas, weights):
         features.add(functions.WeightedGaussian(pos, sigma, weight))
 
-    return GeometricMomentsCalculator(max_order)(features)
+    return GeometricMomentsCalculator(max_order)(features, jacobian=get_jacobian)
 
 
 def from_deltas(
@@ -359,11 +360,11 @@ def from_deltas_analytic(max_order: int, num_particles: int, pos_symbols=None, w
 
 
 def gaussian_moment_0(mu: float, sigma: float = 1.) -> float:  # pylint: disable=unused-argument
-    return 1.
+    return 1
 
 
 def gaussian_moment_0_derivative(mu: float, sigma: float = 1.) -> Tuple[float, float]:  # pylint: disable=unused-argument
-    return 0., 0.
+    return 0, 0
 
 
 def gaussian_moment_1(mu: float, sigma: float = 1.) -> float:  # pylint: disable=unused-argument
@@ -371,7 +372,7 @@ def gaussian_moment_1(mu: float, sigma: float = 1.) -> float:  # pylint: disable
 
 
 def gaussian_moment_1_derivative(mu: float, sigma: float = 1.) -> Tuple[float, float]:  # pylint: disable=unused-argument
-    return 1., 0.
+    return 1, 0
 
 
 def gaussian_moment_2(mu: float, sigma: float = 1.) -> float:
@@ -578,7 +579,7 @@ http://www.randomservices.org/random/special/Normal.html
 :param order: the order of the moment to get
 :param weight: the total probability or mass of the normal distribution.  This is the zero^th
     moment be definition
-"""
+"""  # pylint: disable=pointless-string-statement
 gaussian_moment = [
     np.vectorize(gaussian_moment_0),
     np.vectorize(gaussian_moment_1),

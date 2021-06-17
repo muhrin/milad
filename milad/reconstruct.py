@@ -558,17 +558,7 @@ def find_iteratively(
         if verbose:
             print(f'{i} moms->fingerprint: {result.rmsd}')
 
-        # Find the peaks and create the corresponding collection of atoms
-        peaks = find_peaks(num_atoms, moments, descriptor, grid_query)
-        atoms = atomic.AtomsCollection(num_atoms, peaks, numbers=initial.numbers)
-
-        result = structure_optimiser.optimise(
-            descriptor,
-            target=moments,
-            initial=atoms,
-            mask=mask,
-            verbose=False,
-        )
+        result = find_atoms_from_moments(descriptor, moments, num_atoms, mask, grid_query=grid_query)
 
         if verbose:
             print(f'{i} atoms->moms: {result.rmsd}')
@@ -614,5 +604,29 @@ def find_iteratively(
             break
 
         atoms = result.value
+
+    return result
+
+
+def find_atoms_from_moments(
+    descriptor: fingerprinting.MomentInvariantsDescriptor,
+    moments,
+    num_atoms: int,
+    numbers=1.,
+    mask=None,
+    grid_query=None,
+    verbose=False,
+):
+    # Find the peaks and create the corresponding collection of atoms
+    peaks = find_peaks(num_atoms, moments, descriptor, grid_query)
+    atoms = atomic.AtomsCollection(num_atoms, peaks, numbers=numbers)
+
+    result = optimisers.StructureOptimiser().optimise(
+        descriptor,
+        target=moments,
+        initial=atoms,
+        mask=mask,
+        verbose=verbose,
+    )
 
     return result
