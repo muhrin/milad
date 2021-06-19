@@ -9,7 +9,7 @@ import math
 import numbers
 import functools
 import random
-from typing import Union, Tuple, Iterator, Dict, Optional
+from typing import Union, Tuple, Iterator, Optional
 
 import numpy as np
 from numpy import ma
@@ -116,6 +116,7 @@ ZernikeIndex = collections.namedtuple('ZernikeIndex', 'n l m')
 
 class ZernikeMoments(base_moments.Moments):
     """A container class for calculated Zernike moments"""
+    # pylint: disable=too-many-public-methods
 
     @classmethod
     def from_indexed(cls, indexed, max_order: int, dtype=None) -> 'ZernikeMoments':
@@ -261,8 +262,12 @@ class ZernikeMoments(base_moments.Moments):
         for indices in self.iter_indices(redundant=redundant):
             yield indices, self[indices]
 
+    @property
+    def indices(self):
+        return self._indices
+
     def iter_indices(self, redundant=True):
-        yield from iter_indices(n_max=self.n_max, redundant=redundant)
+        yield from iter_indices(n_max=self.n_max, l_max=self.l_max, redundant=redundant)
 
     def linear_index(self, index: base_moments.Index) -> int:
         """Given a triple of Zernike moment indices this will return the corresponding linearly ordered index"""
@@ -541,6 +546,16 @@ class ZernikeMomentCalculator(base_moments.MomentsCalculator):
     supports_jacobian = True
     dtype = complex
     input_type = geometric.GeometricMoments, np.ndarray, functions.Features
+    _change_of_basis_polys = dict()  # Change of basis polynomials
+
+    @classmethod
+    def change_of_basis(cls, n: int, l: int, m: int):
+        try:
+            return cls._change_of_basis_polys[(n, l, m)]
+        except KeyError:
+            poly = omega_nl_m(n, l, m, polynomials.PolyBuilder())
+            cls._change_of_basis_polys[(n, l, m)] = poly
+            return poly
 
     def __init__(self, n_max: int, l_max: int = None):
         super().__init__()
@@ -548,7 +563,6 @@ class ZernikeMomentCalculator(base_moments.MomentsCalculator):
         self._l_max = l_max
         self._geometric_moments_calculator = geometric.GeometricMomentsCalculator(n_max)
         self._jacobian = None
-        self._chi = None  # The omega_nl_m prefactors
 
     def evaluate(self,
                  state: functions.State,
@@ -564,9 +578,8 @@ class ZernikeMomentCalculator(base_moments.MomentsCalculator):
 
         moments = ZernikeMoments(self._n_max, self._l_max, dtype=object if geom_moments.dtype == object else complex)
 
-        # Get the moments themselves from polynomials of geometric moments
-        for (n, l, m), poly in self.chi.items():
-            moments[n, l, m] = poly.evaluate(geom_moments)
+        for (n, l, m) in moments.iter_indices(redundant=False):
+            moments[n, l, m] = self.change_of_basis(n, l, m)(geom_moments)
 
         if get_jacobian:
             jac = np.matmul(self._get_jacobian(), geom_jac)
@@ -580,38 +593,6 @@ class ZernikeMomentCalculator(base_moments.MomentsCalculator):
             self._jacobian = get_jacobian_wrt_geom_moments(self._n_max, redundant=True)
 
         return self._jacobian
-
-    @property
-    def chi(self) -> Dict[base_moments.Index, base_moments.MomentsPolynomial]:
-        """Get the chi_nlm dictionary.  Indices are moment indices and values are polynomials"""
-        if self._chi is None:
-
-            class Tracker:
-                """Keeps track of the moments evaluated by omega_nl_m"""
-
-                def __init__(self, max_order):
-                    self._max_order = max_order
-
-                def __getitem__(self, item):
-                    mtx = np.zeros((self._max_order + 1, self._max_order + 1, self._max_order + 1), dtype=complex)
-                    mtx[item] = 1.
-                    return mtx
-
-            chi = collections.OrderedDict()
-            for n, l, m in iter_indices(self._n_max, self._l_max, redundant=False):
-                used = omega_nl_m(n, l, m, Tracker(self._n_max))
-                indexes = np.argwhere(used)
-                poly = base_moments.MomentsPolynomial()
-
-                for index in indexes:
-                    index = tuple(index)
-                    poly.append(base_moments.Product(used[index], (index,)))
-
-                chi[(n, l, m)] = poly
-
-            self._chi = chi
-
-        return self._chi
 
     def create_random(self, max_order: int = None) -> ZernikeMoments:
         max_order = max_order or self._n_max

@@ -201,19 +201,3 @@ class MomentsPolynomial:
         for indices in product:
             powers[indices] += 1
         return powers
-
-
-class ProductBuilder:
-    """Helper to build a product of moments that can form part of a moments polynomial"""
-
-    def __init__(self, coeff):
-        self._coeff = coeff
-        self._terms = []
-
-    def add(self, index):
-        """Add a moment to the product using its index"""
-        self._terms.append(index)
-
-    def build(self) -> Product:
-        """Build the product into a fixed tuple"""
-        return Product(self._coeff, tuple(self._terms))
