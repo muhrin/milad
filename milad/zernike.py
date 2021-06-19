@@ -19,6 +19,7 @@ import scipy.special
 from . import base_moments
 from . import functions
 from . import geometric
+from . import polynomials
 from . import sph
 from .utils import even, inclusive
 

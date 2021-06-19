@@ -100,6 +100,8 @@ class IndexTraits:
             for m in self.iter_m(l, m_spec):
                 yield l, m
 
+    __iter__ = iter_nlm
+
 
 def make_range(spec: Optional[MaxOrRange], default: RangeType) -> Range:
     if spec is None:
