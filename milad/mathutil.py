@@ -85,7 +85,6 @@ def cholesky(gram: np.ndarray) -> np.array:
 
 def pol2cart(r: float, theta: float) -> Tuple[float, float]:
     """
-    Parameters:
     Convert from polar to Cartesian
     """
     # pylint: disable=invalid-name
@@ -93,3 +92,12 @@ def pol2cart(r: float, theta: float) -> Tuple[float, float]:
     x, y = z.real, z.imag
 
     return x, y
+
+
+def spherical2cart(r, theta, phi):
+    """Convert spherical coordinates to Cartesian using 'physicists convention'"""
+    # pylint: disable=invalid-name
+    x = r * np.sin(theta) * np.cos(phi)
+    y = r * np.sin(theta) * np.sin(phi)
+    z = r * np.cos(theta)
+    return x, y, z

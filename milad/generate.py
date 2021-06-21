@@ -43,26 +43,27 @@ def chiral_tetrahedra() -> Tuple[np.ndarray, np.ndarray]:
     """
     # pylint: disable=invalid-name
     a = np.radians(0)
-    b = np.radians(32)
-    c = np.radians(124)
+    b = np.radians(-92)
+    c = np.radians(176)
 
     # First group of points
-    pts = np.zeros((3, 3))
-    pts[0, :2] = mathutil.pol2cart(1, a)
-    pts[1, :2] = mathutil.pol2cart(1, b)
-    pts[2, :2] = mathutil.pol2cart(1, c)
+    b_i = np.zeros((3, 3))
+    r = 0.3
+    b_i[0, :] = mathutil.spherical2cart(r, a, 0.)
+    b_i[1, :] = mathutil.spherical2cart(r, b, 0.)
+    b_i[2, :] = mathutil.spherical2cart(r, c, 0.)
 
     # Second group of points
-    rot = transform.Rotation.from_euler('z', 34, degrees=True)
-    pts2 = rot.apply(pts)
+    rot = transform.Rotation.from_euler('y', 86, degrees=True)
+    b_i_prime = rot.apply(b_i)
 
-    pts_dist = 0.2
-    pts[:, 2] += pts_dist
-    pts2[:, 2] -= pts_dist
+    pts_dist = 0.4
+    b_i[:, 1] += pts_dist
+    b_i_prime[:, 1] -= pts_dist
 
-    pt_dist = 0.4
+    pt_dist = 0.8
 
-    minus = np.concatenate((pts, np.array([[0, 0, -pt_dist], [0, 0, 0]])))
-    plus = np.concatenate((pts2, np.array([[0, 0, +pt_dist], [0, 0, 0]])))
+    plus = np.concatenate((np.array([[0, 0, 0], [0, +pt_dist, 0.]]), b_i, b_i_prime))
+    minus = np.concatenate((np.array([[0, 0, 0], [0, -pt_dist, 0.]]), b_i, b_i_prime))
 
     return minus, plus
