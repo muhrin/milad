@@ -155,10 +155,10 @@ def get_invariant_header(invariant):
         if isinstance(term, sympy.Pow):
             exponent = term.args[1]
             power += exponent
-            weight += exponent * term.args[0].indices[0]
+            weight += exponent * term.args[0].terms[0]
         else:
             power += 1
-            weight += term.indices[0]
+            weight += term.terms[0]
 
     return f'{str(weight / 2)} {len(coeffs_dict)} {power}'
 
@@ -179,10 +179,10 @@ def get_string_block(invariant):
         for term in pts:
             if isinstance(term, sympy.Pow):
                 symbol, power = term.args
-                indices = symbol.indices
+                indices = symbol.terms
                 parts.extend([f'{indices[0]} {indices[1]} {indices[2]}'] * power)
             else:
-                indices = term.indices
+                indices = term.terms
                 parts.append(f'{indices[0]} {indices[1]} {indices[2]}')
         lines.append(' '.join(parts))
 

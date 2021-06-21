@@ -22,6 +22,7 @@ from sympy.physics import wigner
 from . import invariants
 from . import utils
 from . import mathutil
+from . import polynomials
 from . import sph
 
 _LOGGER = logging.getLogger(__name__)
@@ -294,7 +295,7 @@ class InvertibleInvariants(invariants.MomentInvariants):
                         prefactors = invariant.prefactors[mask]
                         indices = invariant.terms_array[:, 0:2, :][mask]
                         # pylint: disable=protected-access
-                        coeffs[i, j] = invariants._numpy_apply(prefactors, indices, moments)
+                        coeffs[i, j] = polynomials.numpy_evaluate(prefactors, indices, moments)
 
             # The known invariants
             phis = phi[i3_idx]

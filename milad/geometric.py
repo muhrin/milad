@@ -83,6 +83,10 @@ class GeometricMoments(base_moments.Moments):
     def moments(self) -> np.array:
         return self._moments
 
+    @property
+    def array(self) -> np.ndarray:
+        return self._moments
+
     def to_matrix(self) -> np.array:
         return self._moments
 

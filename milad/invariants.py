@@ -6,12 +6,12 @@ import operator
 import pathlib
 from typing import Sequence, Union, List, Set, Tuple, Dict, Iterator, Callable
 
-import numba
 import numpy as np
 
 from . import base_moments
 from . import functions
 from . import geometric
+from . import polynomials
 
 __all__ = ('MomentInvariant', 'read_invariants', 'RES_DIR', 'COMPLEX_INVARIANTS', 'GEOMETRIC_INVARIANTS', \
            'MomentInvariants')
@@ -175,9 +175,9 @@ class MomentInvariant:
 
         if self._terms:
             if raw_moments.dtype == object:
-                total += _numpy_apply(self.prefactors, self.terms_array, raw_moments)
+                total += polynomials.numpy_evaluate(self.prefactors, self.terms_array, raw_moments)
             else:
-                total += _numba_apply(self.prefactors, self.terms_array, raw_moments)
+                total += polynomials.numba_evaluate(self.prefactors, self.terms_array, raw_moments)
 
         return total
 
@@ -244,32 +244,6 @@ class MomentInvariant:
         for indices in product:
             powers[indices] += 1
         return powers
-
-
-def _numpy_apply(prefactors, indices: np.array, moments: np.ndarray):
-    """Fast method to get the invariant from a numpy array"""
-    total = 0.
-    total += np.dot(prefactors, np.prod(moments[indices[:, :, 0], indices[:, :, 1], indices[:, :, 2]], axis=1))
-
-    return total
-
-
-@numba.jit(parallel=False, nopython=True)
-def _numba_apply(prefactors, indices, moments):
-    """Generic apply for moments that support indexing.
-
-    This is slower version of above but compatible with moments that aren't numpy arrays"""
-    total = 0.
-    for idx in numba.prange(len(prefactors)):  # pylint: disable=not-an-iterable
-        factor = prefactors[idx]
-        entry = indices[idx]
-
-        product = 1.
-        for index in entry:
-            product *= moments[index[0], index[1], index[2]]
-
-        total += factor * product
-    return total
 
 
 class InvariantBuilder:

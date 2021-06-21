@@ -85,7 +85,7 @@ class HomogenousPolynomial(Polynomial):
         return self._prefactors
 
     @property
-    def indices(self) -> np.ndarray:
+    def terms(self) -> np.ndarray:
         return self._terms
 
     @property
@@ -115,9 +115,9 @@ class HomogenousPolynomial(Polynomial):
 
         if self._terms is not None:
             if values.dtype == object:
-                total += numpy_apply(self.prefactors, self._terms, values)
+                total += numpy_evaluate(self.prefactors, self._terms, values)
             else:
-                total += numba_apply(self.prefactors, self._terms, values)
+                total += numba_evaluate(self.prefactors, self._terms, values)
 
         return total
 
@@ -136,7 +136,7 @@ class HomogenousPolynomial(Polynomial):
     __call__ = evaluate
 
 
-def numpy_apply(prefactors, indices: np.array, values: np.ndarray):
+def numpy_evaluate(prefactors, indices: np.array, values: np.ndarray):
     """Fast method to get the polynomial from a numpy array"""
     total = 0.
     total += np.dot(prefactors, np.prod(values[indices[:, :, 0], indices[:, :, 1], indices[:, :, 2]], axis=1))
@@ -145,7 +145,7 @@ def numpy_apply(prefactors, indices: np.array, values: np.ndarray):
 
 
 @numba.jit(parallel=False, nopython=True)
-def numba_apply(prefactors, indices, moments):
+def numba_evaluate(prefactors, indices, moments):
     """Numba version to speed up calculation of larger polynomials"""
     total = 0.
     for idx in numba.prange(len(prefactors)):  # pylint: disable=not-an-iterable

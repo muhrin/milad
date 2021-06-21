@@ -106,7 +106,7 @@ class ZernikeReconstructionQuery(base_moments.ReconstructionQuery):
     def valid_idxs(self):
         """Get the indexes of points that are within the domain"""
         if self._valid_idxs is None:
-            self._valid_idxs = ZernikeMoments._get_indices_in_domain(self.points)
+            self._valid_idxs = _get_indices_in_domain(self.points)
         return self._valid_idxs
 
 
@@ -123,7 +123,7 @@ class ZernikeMoments(base_moments.Moments):
         dtype = dtype or type(indexed[0, 0, 0])
         moments = cls(max_order, dtype=dtype)
         for (n, l, m) in moments.iter_indices():
-            moments._set_moment(n, l, m, indexed[n, l, m], set_minus_m=False)
+            cls._set_moment(moments, n, l, m, indexed[n, l, m], set_minus_m=False)
         return moments
 
     @classmethod
@@ -421,11 +421,11 @@ class ZernikeMoments(base_moments.Moments):
 
         return moments
 
-    @staticmethod
-    def _get_indices_in_domain(points: np.ndarray) -> np.ndarray:
-        """Calculate the lengths squared and get the corresponding indexes"""
-        length_sq = (points**2).sum(axis=1)
-        return np.argwhere(length_sq < 1)
+
+def _get_indices_in_domain(points: np.ndarray) -> np.ndarray:
+    """Calculate the lengths squared and get the corresponding indexes"""
+    length_sq = (points**2).sum(axis=1)
+    return np.argwhere(length_sq < 1)
 
 
 class ZernikeMomentsBuilder(functions.Function):
@@ -473,10 +473,10 @@ class ZernikeMomentsBuilder(functions.Function):
             if get_jacobian:
                 n, l, m = zernike_idx
                 lin_idx = moms.linear_index(zernike_idx)
-                jac[lin_idx, idx] += 1 * num_type
+                jac[lin_idx, idx] += 1 * num_type  # pylint: disable=unsupported-assignment-operation
                 if zernike_idx.m > 0:
                     lin_idx = moms.linear_index((n, l, -m))
-                    jac[lin_idx, idx] += (-1)**m * (1 if num_type == 1. else -1j)
+                    jac[lin_idx, idx] += (-1)**m * (1 if num_type == 1. else -1j)  # pylint: disable=unsupported-assignment-operation
 
         if get_jacobian:
             return moms, jac
@@ -546,7 +546,7 @@ class ZernikeMomentCalculator(base_moments.MomentsCalculator):
     supports_jacobian = True
     dtype = complex
     input_type = geometric.GeometricMoments, np.ndarray, functions.Features
-    _change_of_basis_polys = dict()  # Change of basis polynomials
+    _change_of_basis_polys = dict()  # Change of basis polynomials (geometric -> spherical harmonic)
 
     @classmethod
     def change_of_basis(cls, n: int, l: int, m: int):
@@ -579,7 +579,7 @@ class ZernikeMomentCalculator(base_moments.MomentsCalculator):
         moments = ZernikeMoments(self._n_max, self._l_max, dtype=object if geom_moments.dtype == object else complex)
 
         for (n, l, m) in moments.iter_indices(redundant=False):
-            moments[n, l, m] = self.change_of_basis(n, l, m)(geom_moments)
+            moments[n, l, m] = self.change_of_basis(n, l, m)(geom_moments.array)
 
         if get_jacobian:
             jac = np.matmul(self._get_jacobian(), geom_jac)
@@ -851,7 +851,7 @@ def linear_index(index: base_moments.Index, redundant=True) -> int:
         if triple == index:
             return linear
 
-    assert False, 'Should never reach here'
+    raise RuntimeError('Should never reach here!')
 
 
 def _domain_check(positions: np.array):

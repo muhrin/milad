@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import abc
 import copy
-import functools
 import logging
 import numbers
 from typing import List, Union, Tuple, Callable, Any, Iterable, Type, Optional
@@ -28,7 +27,7 @@ class State(metaclass=abc.ABCMeta):
 
     @property
     def size(self):
-        return self.array.size
+        return self.vector.size
 
     @property
     def array(self) -> np.array:
@@ -249,25 +248,6 @@ class WeightedGaussian(Feature):
     @weight.setter
     def weight(self, value):
         self.vector[self.WEIGHT] = value
-
-
-@functools.singledispatch
-def evaluate_feature(feature: Feature, state: StateLike, *, get_jacobian=False):
-    raise RuntimeError('Cannot evaluate generic feature')
-
-
-@evaluate_feature.register
-def _(gaussian: WeightedGaussian, *, pos: np.ndarray, get_jacobian=False):
-    dr = np.linalg.norm(pos - gaussian.pos)
-    return gaussian.weight / (gaussian.sigma * SQRT_TWO_PI) * np.exp((-1 / 2) * (dr / gaussian.sigma)**2)
-
-
-@evaluate_feature.register
-def _(delta: WeightedDelta, *, pos: np.ndarray, get_jacobian=False):
-    if np.all(np.isclose(pos - delta, 0.)):
-        return delta.weight
-
-    return 0.
 
 
 # region Functions
@@ -570,7 +550,7 @@ class Native(Function):
 class CosineCutoff(Function):
     """A function that takes a set of Features and scales their weights by applying a cosine cutoff in the form
 
-    w' = w (cos(\pi * dr / r_\text{cut}) + 1.) / 2
+        w' = w (cos(\pi * dr / r_\text{cut}) + 1.) / 2
     """
     supports_jacobian = False
 
