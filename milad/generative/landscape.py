@@ -22,6 +22,7 @@ class Gaussian(functions.Function):
         """
         super().__init__()
         self._loc = loc
+        self._loc_sum = np.sum(self._loc * self._loc)
         self._weight = weight
         self._sigma = sigma
         self._debug = debug
@@ -38,11 +39,16 @@ class Gaussian(functions.Function):
         *,
         get_jacobian=False
     ):
-        dr = np.linalg.norm(pos - self._loc)  # pylint: disable=invalid-name
+        dr = self.dist(pos)  # pylint: disable=invalid-name
         val = self._weight / (self._sigma * ROOT_TWO_PI) * np.exp(-(1 / 2) * (dr / self._sigma)**2)
         if self._debug:
             print('Dist: {}, Energy: {}'.format(dr, val))
         return val
+
+    def dist(self, pos):
+        """Get the distance to the given position"""
+        dr = np.linalg.norm(pos - self._loc, ord=2)  # pylint: disable=invalid-name
+        return dr
 
     @property
     def extremum(self) -> float:
@@ -84,13 +90,9 @@ class RepulsiveForce(functions.Function):
     output_type = float
     supports_jacobian = False
 
-    def __init__(self, background: zernike.ZernikeMoments, strength: float = 1., resolution=10):
+    def __init__(self, background: zernike.ZernikeMoments, strength: float = 1.):
         super().__init__()
         self.background = background
-        self._reconstruction_query = background.create_reconstruction_query_from_grid(
-            background.max_order, resolution, restrict_to_domain=True
-        )
-        self._background = self.background.reconstruct(self._reconstruction_query)**2
         self.strength = strength
 
     def evaluate(
@@ -100,15 +102,9 @@ class RepulsiveForce(functions.Function):
         *,
         get_jacobian=False
     ):
-        # added = self.background + foreground
-        foreground = foreground.reconstruct(self._reconstruction_query)**2
-
-        # added_sq = (self._background + foreground)**2
-
-        # return self.strength * np.mean(added_sq - (self._background**2 + foreground**2))
-
-        force = np.sum(np.multiply(self._background, foreground)) / np.sum(self._background + foreground)
-        return self.strength * force
+        force = self.strength * max(np.sum(foreground.array * self.background.array).real, 0.)
+        print(f'Force: {force}')
+        return force
 
 
 class GenerativeLoss(functions.Function):
