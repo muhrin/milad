@@ -402,15 +402,14 @@ class InvariantsGenerator:
     def generate_degree_3(cls, index_traits: sph.IndexTraits) -> invariants.MomentInvariants:
         """Generate third degree invariants up to maximum n, and optionally max l"""
         # pylint: disable=too-many-locals
-
-        l_max = index_traits.l[1]
+        lmax = index_traits.l[1]
         done = set()
 
         invs = invariants.MomentInvariants()
 
         # We need one 3rd degree invariant at l1=l2=l3 that includes three radial terms in order to resolve
         # the sign ambiguity on the unitary matrix from Cholesky decomposition
-        for l in utils.inclusive(1, l_max):
+        for l in utils.inclusive(1, lmax):
             for n1 in index_traits.iter_n(l):
                 for n2 in index_traits.iter_n(l, n_spec=(n1, None)):
                     for n3 in index_traits.iter_n(l, n_spec=(n2, None)):

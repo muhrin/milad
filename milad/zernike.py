@@ -194,15 +194,15 @@ class ZernikeMoments(base_moments.Moments):
 
     @property
     def max_order(self) -> int:
-        return self._indices.n[1]
+        return self._indices.n.max
 
     @property
     def n_max(self) -> int:
-        return self._indices.n[1]
+        return self._indices.n.max
 
     @property
     def l_max(self) -> int:
-        return self._indices.l[1]
+        return self._indices.l.max
 
     def get_builder(self, mask: 'Optional[ZernikeMoments]' = None):
         return ZernikeMomentsBuilder(self.max_order, mask=mask)

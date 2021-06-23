@@ -12,8 +12,8 @@ from . import utils
 
 
 class InclusiveRange(NamedTuple):
-    min: int
-    max: int
+    min: numbers.Number
+    max: numbers.Number
 
     def __contains__(self, x: numbers.Number):
         return self.min <= x <= self.max

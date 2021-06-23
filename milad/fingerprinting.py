@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import abc
 from typing import Optional, Tuple, List
 
 import numpy as np
@@ -12,7 +13,25 @@ from . import zernike
 __all__ = 'MomentInvariantsDescriptor', 'descriptor', 'Fingerprinter', 'fingerprinter'
 
 
-class MomentInvariantsDescriptor(functions.Function):
+class Descriptor(functions.Function):
+    input_type = atomic.AtomsCollection
+
+    @property
+    @abc.abstractmethod
+    def fingerprint_len(self) -> int:
+        """Get the length of the fingerprint vector that will be returned"""
+
+    @property
+    @abc.abstractmethod
+    def cutoff(self) -> float:
+        """Get the descriptor cutoff radius"""
+
+    @abc.abstractmethod
+    def evaluate(self, atoms: atomic.AtomsCollection, *, get_jacobian=False):  # pylint: disable=arguments-differ
+        """Custom evaluate for descriptors.  These always take an AtomsCollection"""
+
+
+class MomentInvariantsDescriptor(Descriptor):
     """Class that is responsible for producing fingerprints form atomic environments"""
     scaler = None
 
@@ -105,8 +124,8 @@ class MomentInvariantsDescriptor(functions.Function):
             atoms = self.preprocess(atoms)
         return self.process[:-1](atoms)
 
-    def evaluate(self, state: atomic.AtomsCollection, *, get_jacobian=False):
-        result = self._calculator(state, get_jacobian)
+    def evaluate(self, atoms: atomic.AtomsCollection, *, get_jacobian=False):
+        result = self._calculator(atoms, get_jacobian)
         if get_jacobian:
             return result[0].real, result[1].real
 
@@ -186,7 +205,7 @@ def descriptor(
     invs: invariants.MomentInvariants = None,
     apply_cutoff=True,
     smooth_cutoff=False,
-):
+) -> MomentInvariantsDescriptor:
     """
 
     :param features:

@@ -18,9 +18,7 @@ __all__ = 'NeuralNetwork', 'create_fingerprint_set'
 
 
 def create_fingerprint_set(
-    descriptor: fingerprinting.MomentInvariantsDescriptor,
-    systems: Sequence[ase.Atoms],
-    get_derivatives=False
+    descriptor: fingerprinting.Descriptor, systems: Sequence[ase.Atoms], get_derivatives=False
 ) -> utils.FingerprintSet:
     # WARNING: The calculation of derivatives only takes into account positional degrees of freedom (not species) and
     # makes assumptions about the shape of the derivatives tensor
