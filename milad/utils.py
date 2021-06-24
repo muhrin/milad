@@ -183,7 +183,7 @@ class FingerprintSet:
                 'got {} atoms and {} environments'.format(len(system), len(fingerprints)))
 
         derivatives = np.array(derivatives) if derivatives is not None else None
-        self._system_info.append(SystemInfo(system, fingerprints, derivatives))
+        self._system_info.append(SystemInfo(system, np.array(fingerprints), derivatives))
 
     def systemwise_sum(self, values, normalise=True):
         """Given a vector of values, one per environment, this will sum up the values for each atomic system
@@ -244,34 +244,3 @@ class FingerprintSet:
             two.add_system(*info)
 
         return one, two
-
-
-def nl_pairs(     # pylint: disable=invalid-name
-    n: Union[int, Tuple[int, int]],
-    l: Union[int, Tuple[int, int]] = None,
-    l_le_n=True,
-    n_minus_l_even=True
-) -> Iterator[Tuple]:
-    """Generator that will create n,l pairs for spherical harmonics optionally with l <= s
-
-    :param n: the maximum value of n to go up to
-    :param l: the maximum value of l to go up to
-    :param l_le_n: only yield pairs that satisfy l <= n
-    :param n_minus_l_even: only yield pairs that satisfy even(l - n) == True
-    """
-    if not isinstance(n, tuple):
-        n = (0, n)
-    if l is None:
-        l = 0, n[1]
-    elif not isinstance(l, tuple):
-        # have max l
-        l = 0, l
-
-    for n_ in inclusive(*n, 1):  # pylint: disable=invalid-name
-        if n_minus_l_even and odd(l[0] - n_):
-            l_start = l[0] + 1
-        else:
-            l_start = l[0]
-
-        for l_ in inclusive(l_start, min(n_, l[1]) if l_le_n else l[1], 2 if n_minus_l_even else 1):  # pylint: disable=invalid-name
-            yield n_, l_

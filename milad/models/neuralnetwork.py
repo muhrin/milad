@@ -4,6 +4,10 @@ import math
 from typing import Union, Callable, Sequence, Optional, List
 
 import ase
+try:
+    import functorch
+except ImportError:
+    functorch = None
 import torch
 import torch.nn.functional
 from torch.autograd import functional
@@ -362,7 +366,7 @@ class NeuralNetwork:
             self._device = device
         self._dtype = dtype
         self._bias = bias
-        self._vectorise_jacobian = vectorise_jacobian
+        self.vectorise_jacobian: bool = vectorise_jacobian
 
         self._fingerprint_scaler = DataScaler(out_range=(-1., 1.), device=self._device, dtype=self._dtype)
         self._energy_scaler = DataScaler(in_range=(-1., 1.), device=self._device, dtype=self._dtype)
@@ -463,22 +467,32 @@ class NeuralNetwork:
 
         forces = None
         if get_forces:
-            forces = []
             # Need to calculate the forces using the chain rule with the fingerprints derivative and the
             # neural network derivative
-            if self._vectorise_jacobian:
-                jac = functional.jacobian(
-                    self._network, fitting_data.fingerprints, create_graph=create_graph, vectorize=True
-                )
-                jacs = [jac[i, :, i, :] for i in range(len(fitting_data.fingerprints))]
+            if self.vectorise_jacobian:
+                if functorch is not None:
+                    # fingerprints = torch.stack(tuple(fitting_data.fingerprints))
+                    jacs = functorch.vmap(functorch.jacrev(self._network))(fitting_data.fingerprints)
+                    forces = -torch.matmul(jacs, fitting_data.derivatives)[:, 0, :]
+                else:
+                    forces = []
 
-                for fingerprint, derivatives, network_deriv in zip(
-                    fitting_data.fingerprints, fitting_data.derivatives, jacs
-                ):
-                    # Get the derivative of the energy wrt to input vector
-                    predicted_force = -torch.matmul(network_deriv, derivatives)
-                    forces.append(predicted_force)
+                    jac = functional.jacobian(
+                        self._network, fitting_data.fingerprints, create_graph=create_graph, vectorize=True
+                    )
+                    jacs = [jac[i, :, i, :] for i in range(len(fitting_data.fingerprints))]
+
+                    for fingerprint, derivatives, network_deriv in zip(
+                        fitting_data.fingerprints, fitting_data.derivatives, jacs
+                    ):
+                        # Get the derivative of the energy wrt to input vector
+                        predicted_force = -torch.matmul(network_deriv, derivatives)
+                        forces.append(predicted_force)
+
+                    forces = torch.cat(forces)
             else:
+                forces = []
+
                 # Fallback, lower memory version
                 for fingerprint, derivatives in zip(fitting_data.fingerprints, fitting_data.derivatives):
                     # Get the derivative of the energy wrt to input vector
@@ -487,6 +501,8 @@ class NeuralNetwork:
                     )
                     predicted_force = -torch.matmul(network_deriv, derivatives)
                     forces.append(predicted_force)
+
+                forces = torch.cat(forces)
 
             # VMAP version, doesn't work yet but may be fixed soon and would almost certainly be fast and relatively
             # low-memory.  See:
@@ -502,8 +518,6 @@ class NeuralNetwork:
             #     # Get the derivative of the energy wrt to input vector
             #     predicted_force = -torch.matmul(network_deriv, derivatives)
             #     forces.append(predicted_force)
-
-            forces = torch.cat(forces)
 
         return Predictions(fitting_data.num_atoms, fitting_data.index, local_energies=local_energies, forces=forces)
 

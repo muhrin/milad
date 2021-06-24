@@ -43,7 +43,7 @@ def chiral_tetrahedra() -> Tuple[np.ndarray, np.ndarray]:
     """
     # pylint: disable=invalid-name
     a = np.radians(0)
-    b = np.radians(-92)
+    b = np.radians(-87)
     c = np.radians(176)
 
     # First group of points
