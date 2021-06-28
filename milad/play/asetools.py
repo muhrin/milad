@@ -1,65 +1,14 @@
 # -*- coding: utf-8 -*-
-from typing import Union, Any, Callable, Dict, Tuple, List
+from typing import Union, Any, Callable
 
 import ase.neighborlist
 import miniball
 import numpy as np
 
-import dscribe.utils.geometry
-
 import milad
 from milad import atomic
-from milad import fingerprinting
 from . import distances
 from . import envs
-from . import fingerprints
-
-
-def calculate_fingerprint(atoms: ase.Atoms, calculator: fingerprints.FingerprintCalculator):
-    num_atoms = len(atoms)
-    nlist = ase.neighborlist.NeighborList(
-        cutoffs=[0.5 * calculator.cutoff] * num_atoms, self_interaction=False, bothways=True
-    )
-    nlist.update(atoms)
-
-    fps = []
-
-    for idx, pos in enumerate(atoms.positions):
-        indices, offsets = nlist.get_neighbors(idx)
-
-        positions = []
-        for i, offset in zip(indices, offsets):
-            positions.append(atoms.positions[i] + np.dot(offset, atoms.get_cell()))
-
-        # positions.append(pos)
-
-        fps.append(calculator.calculate_neighbours(pos, positions))
-
-    return np.array(fps)
-
-
-def calculate_fingerprints_dscribe(atoms: ase.Atoms, calculator: fingerprints.FingerprintCalculator):
-    positions = atoms.positions
-    cutoff = calculator.cutoff
-    cutoff_sq = cutoff * cutoff
-
-    system = dscribe.utils.geometry.get_extended_system(atoms, cutoff, return_cell_indices=False)
-
-    fps = []
-    for i, pos in enumerate(positions):
-        neighbours = []
-        for j, neighbour in enumerate(system.positions):
-            if i == j:
-                continue
-
-            dr = pos - neighbour
-            dr_sq = np.dot(dr, dr)
-            if dr_sq < cutoff_sq:
-                neighbours.append(neighbour)
-
-        fps.append(calculator.calculate_neighbours(pos, neighbours))
-
-    return np.array(fps)
 
 
 def _create_params_dict(species: list, value: Union[Any, dict]) -> dict:
@@ -119,7 +68,8 @@ class MiladFingerprint:
         if cutoff_fn is not None:
             self._cutoff_fns[specie] = cutoff_fn
 
-    def create(self, system: ase.Atoms, *args, **kwargs):
+    def create(self, system: ase.Atoms):
+        # pylint: disable=too-many-locals
         positions = system.positions
         symbols = system.symbols
 
@@ -152,7 +102,9 @@ class MiladFingerprint:
 
         return fingerprint
 
-    def create_old(self, system: ase.Atoms, *args, **kwargs):
+    def create_old(self, system: ase.Atoms):
+        # pylint: disable=too-many-locals
+
         positions = system.positions
         symbols = system.symbols
 
@@ -184,6 +136,8 @@ class MiladFingerprint:
         return fingerprint
 
     def create_single_old(self, system: ase.Atoms, index):
+        # pylint: disable=too-many-locals
+
         positions = system.positions
         symbols = system.symbols
 
@@ -331,26 +285,6 @@ def extract_environments(system: ase.Atoms, atom_centered=True, cutoff=5., yield
             yield i, ase.Atoms(positions=env_positions, symbols=env_symbols)
         else:
             yield ase.Atoms(positions=env_positions, symbols=env_symbols)
-
-
-class AseFingerprintsCalculator:
-    """Convenience class for using ASE atoms objects with generic fingerprinting methods"""
-
-    def __init__(self, fingerprinter: fingerprinting.MomentInvariantsDescriptor):
-        self._fingerprinter = fingerprinter
-
-    @property
-    def fingerprinter(self):
-        return self._fingerprinter
-
-    def evaluate(self, atoms: ase.Atoms, get_jacobian=False):
-        return self._fingerprinter(ase2milad(atoms), get_jacobian)
-
-    def fingerprint_and_derivatives(self, atoms: ase.Atoms) -> Tuple[np.ndarray, np.ndarray]:
-        return self._fingerprinter.fingerprint_and_derivatives(ase2milad(atoms))
-
-    def __call__(self, atoms: ase.Atoms, get_jacobian=False):
-        return self.evaluate(atoms, get_jacobian)
 
 
 def ase2milad(atoms: ase.Atoms):

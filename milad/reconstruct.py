@@ -33,7 +33,7 @@ def find_clusters(spec, num_clusters: int, **kwargs) -> np.ndarray:
 
 @find_clusters.register(base_moments.Moments)
 def _(moments: base_moments.Moments, num_clusters: int, query: base_moments.ReconstructionQuery,
-      fingerprinter: fingerprinting.MomentInvariantsDescriptor) -> np.ndarray:
+      descriptor: fingerprinting.MomentInvariantsDescriptor) -> np.ndarray:
     """Find clusters from moments.  This will take the moments and reconstruct values on a grid
     which will be used for the actual cluster determination"""
     # Calculate the grid values

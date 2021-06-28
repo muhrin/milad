@@ -1,34 +1,16 @@
 # -*- coding: utf-8 -*-
-import abc
 from typing import Optional, Tuple, List
 
 import numpy as np
 
 from . import atomic
 from . import base_moments
+from .descriptors.interfaces import Descriptor
 from . import invariants
 from . import functions
 from . import zernike
 
 __all__ = 'MomentInvariantsDescriptor', 'descriptor', 'Fingerprinter', 'fingerprinter'
-
-
-class Descriptor(functions.Function):
-    input_type = atomic.AtomsCollection
-
-    @property
-    @abc.abstractmethod
-    def fingerprint_len(self) -> int:
-        """Get the length of the fingerprint vector that will be returned"""
-
-    @property
-    @abc.abstractmethod
-    def cutoff(self) -> float:
-        """Get the descriptor cutoff radius"""
-
-    @abc.abstractmethod
-    def evaluate(self, atoms: atomic.AtomsCollection, *, get_jacobian=False):  # pylint: disable=arguments-differ
-        """Custom evaluate for descriptors.  These always take an AtomsCollection"""
 
 
 class MomentInvariantsDescriptor(Descriptor):

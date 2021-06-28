@@ -4,7 +4,6 @@ from typing import Iterable
 import numpy
 
 import milad
-from milad import reconstruct
 from . import envs
 
 __all__ = ('FingerprintCalculator',)

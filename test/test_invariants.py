@@ -131,4 +131,4 @@ def test_against_chiral_tetrahedra(complex_invariants, chiral_tetrahedra):
     minus_phi = complex_invariants(minus_moms)
     plus_phi = complex_invariants(plus_moms)
 
-    assert np.allclose(minus_phi, plus_phi)
+    assert not np.allclose(minus_phi, plus_phi)

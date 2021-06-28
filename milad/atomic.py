@@ -7,6 +7,7 @@ import random
 from typing import Optional, Type, Tuple, Union, List
 
 import numpy as np
+import numpy.ma as ma
 from scipy.spatial.distance import pdist
 
 from . import functions
@@ -405,7 +406,7 @@ class MapNumbers(functions.Function):
     """Map the given set of atom numbers onto a continuous range"""
     input_type = AtomsCollection
     output_type = AtomsCollection
-    supports_jacobian = False
+    supports_jacobian = True
 
     def __init__(self, species: set, map_to: Union[float, Tuple[float, float]] = (1.0, 6.0)):
         super().__init__()
@@ -441,7 +442,7 @@ class MapNumbers(functions.Function):
         self,
         in_atoms: AtomsCollection,
         get_jacobian=False
-    ) -> AtomsCollection:
+    ) -> Union[AtomsCollection, Tuple[AtomsCollection, np.ndarray]]:
         out_atoms = in_atoms.copy()
 
         # Now adjust the numbers
@@ -454,6 +455,16 @@ class MapNumbers(functions.Function):
                 if num is not None:
                     new_numbers = (num_idx / len(self._numbers)) * self._range_size + self._mapped_range[0]
                     out_atoms.numbers[idx] = new_numbers + self._half_bin
+
+        if get_jacobian:
+            # Create Jacobian that is identity apart from the species.
+            # This part needs to be masked of as this mapping is not a continuous function
+            natoms = in_atoms.num_atoms
+            jac = ma.array(np.zeros((len(in_atoms), len(out_atoms))), mask=False)
+            jac[:3 * natoms, :3 * natoms] = np.eye(natoms * 3)
+            jac.mask[3 * natoms:, 3 * natoms] = True
+
+            return out_atoms, jac
 
         return out_atoms
 

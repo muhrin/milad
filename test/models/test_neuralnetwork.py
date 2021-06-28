@@ -1,46 +1,68 @@
 # -*- coding: utf-8 -*-
-import ase
 import torch
-from ase.calculators import singlepoint
 import numpy as np
-import pytest
 
-from milad import models
+from milad import dat
 from milad.models import neuralnetwork
-from milad import generate
-from milad import fingerprinting
-from milad import utils
+
+# pylint: disable=invalid-name, redefined-outer-name
 
 
-@pytest.fixture
-def fake_data() -> utils.FingerprintSet:
-    # Settings
-    np.random.seed(5)
-    num_atoms = 6
-    cutoff = 2.5
-    descriptor = fingerprinting.descriptor(cutoff=cutoff)
+def test_fitting_data(descriptor, training_data):
+    fingerprint_set = dat.create_fingerprint_set(descriptor, training_data, get_derivatives=True)
+    fitting_data = neuralnetwork.FittingData.from_fingerprint_set(fingerprint_set, requires_grad=True)
 
-    positions = generate.random_points_in_sphere(num_atoms, cutoff)
-    atoms = ase.Atoms(positions=positions, numbers=(1.,) * num_atoms)
-    atoms.set_array('force', np.zeros((6, 3)))
-    calc = singlepoint.SinglePointCalculator(atoms, energy=-10)
-    atoms.set_calculator(calc)
+    num_systems = len(training_data)
+    total_environments = sum([len(atoms) for atoms in training_data])
 
-    return models.create_fingerprint_set(descriptor, [atoms], get_derivatives=True)
+    assert len(fitting_data) == num_systems
+    assert fitting_data.fingerprint_len == fingerprint_set.fingerprint_len
+    assert len(fitting_data.fingerprints) == total_environments
+
+    total_atoms = 0
+    for idx, atoms in enumerate(training_data):
+        natoms = len(atoms)
+
+        assert np.isclose(fitting_data.num_atoms[idx].item(), natoms)
+        assert np.isclose(fitting_data.total_energies[idx].item(), atoms.get_potential_energy())
+        assert np.isclose(fitting_data.get_normalised_energies()[idx].item(), atoms.get_potential_energy() / natoms)
+        assert np.all(fitting_data.index[total_atoms:total_atoms + natoms].detach().numpy() == idx)
+
+        total_atoms += natoms
+
+    assert fitting_data.batch_split(len(training_data))[0] is fitting_data
 
 
-def test_create_fingerprint_set(fake_data):
-    assert len(fake_data) == 1
+def test_neural_network_basics(descriptor, training_data):
+    nn = neuralnetwork.NeuralNetwork()
+    fingerprint_set = dat.create_fingerprint_set(descriptor, training_data, get_derivatives=True)
+    fitting_data = neuralnetwork.FittingData.from_fingerprint_set(fingerprint_set, requires_grad=True)
+
+    nn.init(fitting_data)
+
+    predictions = nn.make_prediction(fitting_data)
+    assert torch.all(predictions.indices == fitting_data.index)
+    assert torch.all(predictions.sizes == fitting_data.num_atoms)
 
 
-def test_neural_network_basics(fake_data: utils.FingerprintSet):
-    nn = models.NeuralNetwork()
-    nn._create_network(fake_data.fingerprint_len)
-    fitting_data = neuralnetwork.FittingData.from_fingerprint_set(fake_data, requires_grad=True)
-    res = nn.make_prediction(fitting_data, get_forces=True)
+def test_predictions(descriptor, training_data):
+    fingerprint_set = dat.create_fingerprint_set(descriptor, training_data, get_derivatives=True)
+    fitting_data = neuralnetwork.FittingData.from_fingerprint_set(fingerprint_set, requires_grad=True)
 
-    # Check that the answer is the same with standard or vectorised Jacobian calculation
-    nn.vectorise_jacobian = True
-    res_vec = nn.make_prediction(fitting_data, get_forces=True)
-    assert torch.allclose(res.forces, res_vec.forces)
-    assert torch.allclose(res.local_energies, res_vec.local_energies)
+    # Artificially create per-atom energies (just split the total energy evenly
+    env_energies = torch.zeros((fitting_data.index.shape[0], 1), dtype=fitting_data.total_energies.dtype)
+    total_atoms = 0
+    for idx, energy in enumerate(fitting_data.get_normalised_energies()):
+        natoms = fitting_data.num_atoms[idx]
+        env_energies[total_atoms:total_atoms + natoms, 0] = energy
+        total_atoms += natoms
+
+    pred = neuralnetwork.Predictions(fitting_data.num_atoms, fitting_data.index, env_energies)
+    predicted_energies = pred.get_normalised_energies()
+    known_energies = fitting_data.get_normalised_energies()
+    assert torch.allclose(predicted_energies, known_energies)
+
+    loss_fn = neuralnetwork.LossFunction()
+    loss = loss_fn.get_loss(pred, fitting_data)
+    assert torch.isclose(loss.energy, torch.tensor(0.))
+    assert torch.isclose(loss.total, torch.tensor(0.))

@@ -9,19 +9,7 @@ import numpy as np
 import milad
 from milad.play import asetools
 
-
-def test_simple_atoms_fp(moment_invariants):
-    cu_fcc = ase.build.bulk('Cu', 'sc', a=2.)
-    ase.io.write('cu_sc.cif', cu_fcc)
-
-    calculator = milad.play.FingerprintCalculator(moment_invariants, cutoff=2.5, cutoff_function=None)
-    fps = asetools.calculate_fingerprint(cu_fcc, calculator)
-    fps2 = asetools.calculate_fingerprints_dscribe(cu_fcc, calculator)
-
-    diff = fps - fps2
-
-    assert diff.max() == 0.
-    assert len(fps) == 1
+# pylint: disable=invalid-name
 
 
 def test_multiple_species(moment_invariants, request):
@@ -93,7 +81,7 @@ def test_generate_environments_solid():
     found_positions = []
     for i, central in enumerate(diamond.positions):
         env_positions = []
-        for j, other in enumerate(diamond.positions):
+        for _j, other in enumerate(diamond.positions):
             r_ij = other - central
 
             for l in range(-lattice_max, lattice_max + 1):

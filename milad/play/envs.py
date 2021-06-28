@@ -5,13 +5,15 @@ from typing import List, Callable, Union, Sequence
 
 import numpy
 
-import milad
+from milad import invariants
 from milad import geometric
 
 __all__ = (
     'CutoffFunction', 'Distribution', 'Gaussian3D', 'GaussianEnvironment', 'SmoothGaussianEnvironment', 'cos_cutoff',
     'make_cutoff_params'
 )
+
+# pylint: disable=invalid-name
 
 CutoffFunction = Callable[[float], float]
 
@@ -38,9 +40,7 @@ class Distribution(metaclass=abc.ABCMeta):
         """Calculate the moment tensor up to the given maximum order, optionally normalising.
         This will result in a numpy.array which has dimensions max_order * max_order * max_order"""
 
-    def calc_moment_invariants(
-        self, invariants: Sequence[milad.invariants.MomentInvariant], normalise=True
-    ) -> numpy.array:
+    def calc_moment_invariants(self, invariants: Sequence[invariants.MomentInvariant], normalise=True) -> numpy.array:
         """Given a sequence of invariants, calculate their values using the moments of this
         distribution"""
         # Figure out the maximum order of moment we will need for this set of invariants

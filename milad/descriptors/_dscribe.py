@@ -8,11 +8,11 @@ except ImportError:
 else:
     from milad.play import asetools
     from milad import atomic
-    from milad import fingerprinting
+    from . import interfaces
 
     __all__ = ('DScribeDescriptor',)
 
-    class DScribeDescriptor(fingerprinting.Descriptor):
+    class DScribeDescriptor(interfaces.Descriptor):
 
         def __init__(self, dscribe_descriptor: dscribe.descriptors.Descriptor):
             super().__init__()

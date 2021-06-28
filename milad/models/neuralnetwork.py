@@ -4,6 +4,7 @@ import math
 from typing import Union, Callable, Sequence, Optional, List
 
 import ase
+
 try:
     import functorch
 except ImportError:
@@ -12,43 +13,11 @@ import torch
 import torch.nn.functional
 from torch.autograd import functional
 
-from milad.play import asetools
-from milad import fingerprinting
-from milad import utils
+from milad import dat
 
-__all__ = 'NeuralNetwork', 'create_fingerprint_set'
+__all__ = ('NeuralNetwork',)
 
 # pylint: disable=no-member, not-callable
-
-
-def create_fingerprint_set(
-    descriptor: fingerprinting.Descriptor, systems: Sequence[ase.Atoms], get_derivatives=False
-) -> utils.FingerprintSet:
-    # WARNING: The calculation of derivatives only takes into account positional degrees of freedom (not species) and
-    # makes assumptions about the shape of the derivatives tensor
-
-    fp_length = descriptor.fingerprint_len
-
-    fingerprints = utils.FingerprintSet(descriptor.fingerprint_len)
-    for system in systems:
-        fps = []
-        fp_derivatives = []
-        for env in asetools.extract_environments(system, cutoff=descriptor.cutoff):
-            milad_env = asetools.ase2milad(env)
-            if get_derivatives:
-                fingerprint, jacobian = descriptor(milad_env, jacobian=True)
-                # Now, let's deal with the derivatives extracting just the positional parts and summing over all
-                # neighbours keeping x, y, z separate
-                derivatives = jacobian[:, 3:3 * len(env)].reshape(fp_length, -1, 3).sum(1)
-
-                fps.append(fingerprint)
-                fp_derivatives.append(derivatives)
-            else:
-                fps.append(descriptor(milad_env))
-
-        fingerprints.add_system(system, fps, derivatives=fp_derivatives)
-
-    return fingerprints
 
 
 class Predictions:
@@ -96,7 +65,7 @@ class FittingData:
     """Data used during a fitting procedure"""
 
     @classmethod
-    def from_fingerprint_set(cls, fingerprint_set: utils.FingerprintSet, device=None, dtype=None, requires_grad=False):
+    def from_fingerprint_set(cls, fingerprint_set: dat.FingerprintSet, device=None, dtype=None, requires_grad=False):
         tensor_kwargs = dict(dtype=dtype, device=device, requires_grad=requires_grad)
         fingerprints = torch.cat(tuple(torch.tensor(fps, **tensor_kwargs) for fps in fingerprint_set.fingerprints))
 
@@ -137,6 +106,8 @@ class FittingData:
         """
         Construct a set of fitting data.
 
+        :param sizes: a tensor containing the number of atoms in each system.  The length of the tensor should be equal
+            to that of total_energies
         :param fingerprints: a tuple containing a set of fingerprints for each atom in the structure
         :param total_energies: the corresponding energy for each structure
         :param forces: the (optional) forces for each atom in the structure
@@ -187,8 +158,13 @@ class FittingData:
         return slice(start, stop)
 
     @property
+    def fingerprint_len(self) -> int:
+        """Get the length of the fingerprint vector"""
+        return self._fingerprints.shape[1]
+
+    @property
     def fingerprints(self) -> torch.Tensor:
-        """Fingerprints tensors.  One entry per system."""
+        """Fingerprints tensors.  One entry per atomic environment."""
         return self._fingerprints
 
     @property
@@ -212,8 +188,8 @@ class FittingData:
 
     @property
     def index(self) -> torch.Tensor:
-        """Get an tensor of structure indices that each local environment datum belongs to
-        (e.g. force, derivatices, etc)"""
+        """Get a tensor of structure indices that each local environment datum belongs to
+        (e.g. force, derivatives, etc)"""
         return self._index
 
     def get_normalised_energies(self) -> torch.Tensor:
@@ -222,6 +198,9 @@ class FittingData:
     def batch_split(self, batchsize: int) -> List['FittingData']:
         total_samples = len(self)
         num_batches = int(math.ceil(total_samples / batchsize))
+        if num_batches == 1:
+            return [self]
+
         batches = []
         for batch_num in range(num_batches):
             start_idx = batch_num * batchsize
@@ -294,13 +273,12 @@ class Range:
             self._range[1] = self.max if self.max > vals_max else vals_max
 
 
-class DataScaler(torch.nn.Module):
+class GlobalScaler(torch.nn.Module):
     """Scale data to be in the range in a particular range.  Handles scaling on both input and output sides
     so if you can set the range of input and outputs separately."""
 
     def __init__(self, in_range=(0., 1.), out_range=(0., 1.), device=None, dtype=None):
         super().__init__()
-        # Default to range [-1, 1]
         self._in_range = Range(in_range, device=device, dtype=dtype)  # Input range
         self._out_range = Range(out_range, device=device, dtype=dtype)  # Output range
 
@@ -323,6 +301,25 @@ class DataScaler(torch.nn.Module):
 
     def forward(self, x: torch.Tensor):  # pylint: disable=invalid-name
         return self.scale(x)
+
+
+class ComponentWiseInputScaler(torch.nn.Module):
+
+    def __init__(self, inputs: torch.Tensor):
+        super().__init__()
+        xmin = torch.min(inputs, dim=0)[0]
+        xmax = torch.max(inputs, dim=0)[0]
+        delta = xmax - xmin
+
+        self._scale = 2 / delta
+        self._offset = (2 * xmin + delta) / delta
+
+        zeros = delta.isclose(torch.tensor(0., dtype=delta.dtype))
+        self._scale[zeros] = 1.
+        self._offset[zeros] = 0.
+
+    def forward(self, inp: torch.Tensor) -> torch.Tensor:
+        return inp * self._scale - self._offset
 
 
 class NeuralNetwork:
@@ -368,28 +365,27 @@ class NeuralNetwork:
         self._bias = bias
         self.vectorise_jacobian: bool = vectorise_jacobian
 
-        self._fingerprint_scaler = DataScaler(out_range=(-1., 1.), device=self._device, dtype=self._dtype)
-        self._energy_scaler = DataScaler(in_range=(-1., 1.), device=self._device, dtype=self._dtype)
+        self._fingerprint_scaler = GlobalScaler(out_range=(-1., 1.), device=self._device, dtype=self._dtype)
+        self._energy_scaler = GlobalScaler(in_range=(-1., 1.), device=self._device, dtype=self._dtype)
         self.loss_function = loss_function or LossFunction()
 
         self._network = None
 
+    def init(self, training_data: FittingData):
+        """Reinitialise the model.  This will throw away anything learned so far"""
+        self._create_network(training_data)
+
     def fit(
         self,
-        training_set: Union[Sequence[ase.Atoms], utils.FingerprintSet],
+        training_set: Union[Sequence[ase.Atoms], dat.FingerprintSet],
         max_epochs=200,
         progress_callback: Callable = None,
         learning_rate=5e-4,
         batchsize=16,
     ):
-        if self._network is None:
-            self._create_network(training_set.fingerprint_len)
-
         training_data = self.create_fitting_data(training_set, requires_grad=True)
-
-        # Scale the inputs and outputs to match the ranges
-        norm_energies = training_data.get_normalised_energies()
-        self._energy_scaler.output.expand(norm_energies)
+        if self._network is None:
+            self._create_network(training_data)
 
         def stopping_function(epoch, _training, _loss):
             if epoch >= max_epochs:
@@ -397,7 +393,9 @@ class NeuralNetwork:
 
             return False  # Don't stop
 
-        optimiser = torch.optim.Adam(self._network.parameters(), lr=learning_rate)
+        optimiser = torch.optim.AdamW(self._network.parameters(), lr=learning_rate)
+        # optimiser = torch.optim.SGD(self._network.parameters(), lr=learning_rate, momentum=0.9)
+        # optimiser = torch.optim.LBFGS(self._network.parameters(), lr=learning_rate)
         loss = self._train(
             training_data,
             stopping_function,
@@ -407,7 +405,7 @@ class NeuralNetwork:
         )
         return training_data, loss
 
-    def create_fitting_data(self, fingerprint_set: utils.FingerprintSet, requires_grad=False):
+    def create_fitting_data(self, fingerprint_set: dat.FingerprintSet, requires_grad=False):
         return FittingData.from_fingerprint_set(
             fingerprint_set,
             device=self._device,
@@ -431,12 +429,14 @@ class NeuralNetwork:
         get_forces = self.loss_function.force_coeff != 0.
         while True:
             for batch in batches:
-                predictions = self.make_prediction(batch, get_forces=get_forces, create_graph=True)
-
                 optimiser.zero_grad()
+
+                predictions = self.make_prediction(batch, get_forces=get_forces, create_graph=True)
                 loss_result = self.loss_function.get_loss(predictions, batch)
-                loss = loss_result.total
-                loss.backward(retain_graph=True)
+
+                # Ask the optimiser to make a step
+                loss_result.total.backward(retain_graph=True)
+
                 optimiser.step()
 
             # Use no_grad to reduce memory footprint
@@ -521,10 +521,11 @@ class NeuralNetwork:
 
         return Predictions(fitting_data.num_atoms, fitting_data.index, local_energies=local_energies, forces=forces)
 
-    def _create_network(self, input_size):
+    def _create_network(self, training_data: FittingData):
         # Create the network
-        sequence = []
-        prev_size = input_size
+        sequence = [ComponentWiseInputScaler(training_data.fingerprints)]
+
+        prev_size = training_data.fingerprint_len
         # Create the fully connected (hidden) layers
         for size in self._hidden:
             sequence.append(torch.nn.Linear(prev_size, size, bias=self._bias))
@@ -532,6 +533,9 @@ class NeuralNetwork:
             prev_size = size
         # Add the output layer
         sequence.extend((torch.nn.Linear(prev_size, 1, bias=self._bias), self._energy_scaler))
+
+        # Scale the energy outputs to match the ranges
+        self._energy_scaler.output.expand(training_data.get_normalised_energies())
 
         self._network = torch.nn.Sequential(*sequence)
         self._network.to(self._device, self._dtype)

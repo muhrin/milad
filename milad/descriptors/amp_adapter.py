@@ -12,6 +12,11 @@ else:
     __all__ = ('AmpDescriptor',)
 
     class AmpDescriptor:
+        """This adapter allows MILAD descriptors to be used by the amp code:
+         https://amp.readthedocs.io/en/latest/
+
+         Functionality is not complete but the basics do work.
+         """
 
         def __init__(self, descriptor, dblabel=None):
             self._descriptor = descriptor

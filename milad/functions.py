@@ -491,7 +491,7 @@ class Chain(Function):
                     previous_jacobian = current_jacobian
                 else:
                     # Apply chain rule and propagate jacobians
-                    previous_jacobian = np.matmul(current_jacobian, previous_jacobian)
+                    previous_jacobian = matmul(current_jacobian, previous_jacobian)
 
             # Make this output the input to the next function
             current_in = current_out
@@ -502,9 +502,20 @@ class Chain(Function):
         current_out = function(current_in, get_jacobian)
         if get_jacobian:
             current_out, current_jacobian = current_out
-            return current_out, np.matmul(current_jacobian, previous_jacobian)
+
+            return current_out, matmul(current_jacobian, previous_jacobian)
 
         return current_out
+
+
+def matmul(mat1, mat2):
+    try:
+        return mat1 @ mat2
+    except ValueError:
+        # Use einsum here as matrix multiply fro masked arrays doesn't work yet, see:
+        # https://github.com/numpy/numpy/issues/14992
+        # https://stackoverflow.com/questions/63218951/masked-matrix-multiplication
+        return np.einsum('ij,jk', mat1, mat2)
 
 
 class Residuals(Function):
