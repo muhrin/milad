@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import collections
 import math
-from typing import Union, Callable, Sequence, Optional, List
+from typing import Union, Callable, Sequence, Optional, List, Tuple, Iterator
 
 import ase
 
@@ -61,6 +61,11 @@ class Predictions:
         return self.total_energies / self.sizes
 
 
+SystemFittingData = collections.namedtuple(
+    'SystemFittingData', 'index num_atoms total_energy forces fingerprints derivatives'
+)
+
+
 class FittingData:
     """Data used during a fitting procedure"""
 
@@ -80,15 +85,13 @@ class FittingData:
 
         derivatives = None
         if fingerprint_set.has_all_derivatives():
-            derivatives = torch.cat(
-                tuple(
-                    torch.tensor(derivatives, **tensor_kwargs) if derivatives is not None else None
-                    for derivatives in fingerprint_set.fingerprint_derivatives
-                )
+            derivatives = tuple(
+                torch.tensor(derivatives, **tensor_kwargs) if derivatives is not None else None
+                for derivatives in fingerprint_set.fingerprint_derivatives
             )
 
         return FittingData(
-            torch.tensor(fingerprint_set.sizes, dtype=torch.int, device=device),
+            torch.tensor(fingerprint_set.sizes, dtype=torch.int64, device=device),
             fingerprints,
             total_energies=torch.tensor(fingerprint_set.get_potential_energies(normalise=False), **tensor_kwargs),
             forces=forces,
@@ -101,7 +104,7 @@ class FittingData:
         fingerprints: torch.Tensor,
         total_energies: torch.Tensor,
         forces: Optional[torch.Tensor] = None,
-        derivatives: Optional[torch.Tensor] = None
+        derivatives: Tuple[Optional[torch.Tensor]] = None
     ):
         """
         Construct a set of fitting data.
@@ -122,13 +125,16 @@ class FittingData:
                 f"The number of total energies ({len(total_energies)}) doesn't match the number of "
                 f'systems (sizes) ({len(sizes)}).'
             )
+        if len(derivatives) != len(sizes):
+            raise ValueError("Number of system-wise derivatives doesn't match the number of sizes")
 
-        self._num_atoms = sizes
-        self._fingerprints = fingerprints
-        self._total_energies = total_energies
-        self._forces = forces
-        self._derivatives = derivatives
-        self._index = _create_index_from_sizes(self._num_atoms)
+        self._num_atoms = sizes  # Per-system
+        self._total_energies = total_energies  # Per-system
+        self._derivatives = derivatives  # Per system
+
+        self._fingerprints = fingerprints  # Per-environment
+        self._forces = forces  # Per-environment
+        self._index = _create_index_from_sizes(self._num_atoms)  # Per-environment
 
     def __getitem__(self, item) -> 'FittingData':
         if isinstance(item, slice):
@@ -138,7 +144,7 @@ class FittingData:
             total_energies = self._total_energies[item]
             fingerprints = self._fingerprints[atomic_slice]
             forces = self._forces[atomic_slice] if self._forces is not None else None
-            derivatives = self._derivatives[atomic_slice] if self._derivatives is not None else None
+            derivatives = self._derivatives[item] if self._derivatives is not None else None
 
             return FittingData(sizes, fingerprints, total_energies, forces, derivatives)
 
@@ -156,6 +162,20 @@ class FittingData:
         start = self._num_atoms[:item.start].sum().cpu().item()
         stop = self._num_atoms[:item.stop].sum().cpu().item()
         return slice(start, stop)
+
+    def iter_systemwise(self) -> Iterator[SystemFittingData]:
+        env_idx = 0
+        for system_idx, natoms in enumerate(self._num_atoms):
+            env_slice = slice(env_idx, env_idx + natoms)
+            yield SystemFittingData(
+                index=system_idx,
+                num_atoms=natoms,
+                total_energy=self._total_energies[system_idx],
+                derivatives=self._derivatives[system_idx],
+                fingerprints=self._fingerprints[env_slice],
+                forces=self._forces[env_slice],
+            )
+            env_idx += natoms
 
     @property
     def fingerprint_len(self) -> int:
@@ -178,7 +198,10 @@ class FittingData:
         return self._forces
 
     @property
-    def derivatives(self) -> Optional[torch.Tensor]:
+    def derivatives(self) -> Tuple[Optional[torch.Tensor]]:
+        """Get the derivatives for each environment in the structure.  This returns a tuple with one entry per system.
+
+        Each entry is a tensor in the format [central atom idx, neighbour idx, 3 (x, y, z), fingerprint length]"""
         return self._derivatives
 
     @property
@@ -382,8 +405,12 @@ class NeuralNetwork:
         progress_callback: Callable = None,
         learning_rate=5e-4,
         batchsize=16,
-    ):
-        training_data = self.create_fitting_data(training_set, requires_grad=True)
+    ) -> Tuple[FittingData, LossFunction]:
+        if isinstance(training_set, FittingData):
+            training_data = training_set
+        else:
+            training_data = self.create_fitting_data(training_set, requires_grad=True)
+
         if self._network is None:
             self._create_network(training_data)
 
@@ -437,6 +464,8 @@ class NeuralNetwork:
                 # Ask the optimiser to make a step
                 loss_result.total.backward(retain_graph=True)
 
+                print(f'{loss_result.energy.item()} {loss_result.force.item()}')
+
                 optimiser.step()
 
             # Use no_grad to reduce memory footprint
@@ -471,7 +500,9 @@ class NeuralNetwork:
             # neural network derivative
             if self.vectorise_jacobian:
                 if functorch is not None:
-                    # fingerprints = torch.stack(tuple(fitting_data.fingerprints))
+                    # VMAP version, This came from a discussion with Richard Zou about.  See:
+                    # https://github.com/pytorch/pytorch/issues/42368
+
                     jacs = functorch.vmap(functorch.jacrev(self._network))(fitting_data.fingerprints)
                     forces = -torch.matmul(jacs, fitting_data.derivatives)[:, 0, :]
                 else:
@@ -491,33 +522,24 @@ class NeuralNetwork:
 
                     forces = torch.cat(forces)
             else:
+                # Fallback: lower memory, but slow, version
                 forces = []
 
-                # Fallback, lower memory version
-                for fingerprint, derivatives in zip(fitting_data.fingerprints, fitting_data.derivatives):
-                    # Get the derivative of the energy wrt to input vector
-                    network_deriv = functional.jacobian(
-                        self._network, fingerprint, create_graph=create_graph, vectorize=True
+                for system in fitting_data.iter_systemwise():
+                    natoms = system.num_atoms
+                    denergy_dphi = tuple(
+                        functional.jacobian(self._network, fingerprint, create_graph=create_graph, strict=True)[0]
+                        for fingerprint in system.fingerprints
                     )
-                    predicted_force = -torch.matmul(network_deriv, derivatives)
-                    forces.append(predicted_force)
+                    # Calculate the force on each atom
+                    for i in range(natoms):
+                        total_force = torch.zeros(3)
+                        for j in range(natoms):
+                            if not torch.all(system.derivatives[j, i, :, :] == 0):
+                                total_force += -torch.matmul(system.derivatives[j, i, :, :], denergy_dphi[j])
+                        forces.append(total_force)
 
-                forces = torch.cat(forces)
-
-            # VMAP version, doesn't work yet but may be fixed soon and would almost certainly be fast and relatively
-            # low-memory.  See:
-            # https://github.com/pytorch/pytorch/issues/42368
-            # def get_jacobian(fingerprint):
-            #     return functional.jacobian(self._network, fingerprint, create_graph=False)
-            #
-            # jac = torch.vmap(get_jacobian)(tuple(fitting_data.fingerprints))
-            # jacs = [jac[i, :, i, :] for i in range(len(fitting_data.fingerprints))]
-            #
-            # for fingerprint, derivatives, network_deriv
-            #   in zip(fitting_data.fingerprints, fitting_data.derivatives, jacs):
-            #     # Get the derivative of the energy wrt to input vector
-            #     predicted_force = -torch.matmul(network_deriv, derivatives)
-            #     forces.append(predicted_force)
+                forces = torch.stack(forces)
 
         return Predictions(fitting_data.num_atoms, fitting_data.index, local_energies=local_energies, forces=forces)
 

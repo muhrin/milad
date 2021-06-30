@@ -1,11 +1,8 @@
 # -*- coding: utf-8 -*-
 from milad import dat
-from milad import descriptors
 
 
-def test_fingerprint_set(descriptor: descriptors.Descriptor, training_data):
-    fingerprint_set = dat.create_fingerprint_set(descriptor, training_data, get_derivatives=True)
-
+def test_fingerprint_set(fingerprint_set: dat.FingerprintSet, descriptor, training_data):
     assert descriptor.fingerprint_len == fingerprint_set.fingerprint_len
     assert fingerprint_set.has_all_forces()
     assert fingerprint_set.has_all_derivatives()

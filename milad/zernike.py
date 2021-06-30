@@ -629,18 +629,30 @@ def get_jacobian_wrt_geom_moments(max_order: int, redundant=True):
     num_geometric_moments = geometric.GeometricMoments.num_moments(max_order)
     jacobian = np.zeros((num_moments, num_geometric_moments), dtype=complex)
 
+    cache = {}
     for idx, (n, l, m) in enumerate(iter_indices(max_order, redundant=redundant)):
-        if m < 0:
-            # These are taken care of during the positive m iteration
-            continue
+        if redundant and m < 0:
+            jacobian[idx, :] = (-1)**(-m) * cache.pop((n, l, -m)).conjugate()
+        else:
+            vec = ZernikeMomentCalculator.change_of_basis(n, l, m)(tracker)
+            jacobian[idx, :] = vec
+            if redundant and m > 0:
+                # Because of the iteration order (m=0 to l followed by m=-l to 0) the positives will always be
+                # calculated first, so cache these for when we get around to the positive m's
+                cache[(n, l, m)] = vec
 
-        vec = omega_nl_m(n, l, m, tracker)
-        jacobian[idx, :] = vec
-
-        if redundant and m != 0:
-            minus_m = (-1)**m * vec.conjugate()
-            minus_m_idx = linear_index((n, l, -m))
-            jacobian[minus_m_idx, :] = minus_m
+        # if m < 0:
+        #     # These are taken care of during the positive m iteration
+        #     continue
+        #
+        # vec = ZernikeMomentCalculator.change_of_basis(n, l, m)(tracker)
+        #
+        # jacobian[idx, :] = vec
+        #
+        # if redundant and m != 0:
+        #     minus_m = (-1)**m * vec.conjugate()
+        #     minus_m_idx = linear_index((n, l, -m))
+        #     jacobian[minus_m_idx, :] = minus_m
 
     return jacobian
 

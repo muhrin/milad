@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 import milad
-from milad import invariants, generate
+from milad import invariants, generate, dat
 
 READ_MAX = 128  # The maximum number of invariants to read from the file
 
@@ -28,8 +28,7 @@ def complex_invariants():
 
 @pytest.fixture(autouse=True)
 def set_random_seed():
-    random.seed(1234)
-    np.random.seed(1234)
+    do_set_random_seeds()
 
 
 @pytest.fixture()
@@ -46,14 +45,20 @@ def chiral_tetrahedra():
     return generate.chiral_tetrahedra()
 
 
-@pytest.fixture()
+@pytest.fixture(scope='session')
 def training_data():
+    do_set_random_seeds()
     return create_fake_training_data()
 
 
-@pytest.fixture()
+@pytest.fixture(scope='session')
 def descriptor(complex_invariants):
     return create_descriptor(complex_invariants)
+
+
+@pytest.fixture(scope='session')
+def fingerprint_set(descriptor, training_data):
+    return dat.create_fingerprint_set(descriptor, training_data, get_derivatives=True)
 
 
 def create_descriptor(invs, _species=('Si',)):
@@ -71,12 +76,12 @@ def create_descriptor(invs, _species=('Si',)):
     )
 
 
-def create_fake_training_data(num_atoms=10, max_atoms=10, species=('Si',)):
+def create_fake_training_data(num_systems=10, max_atoms=28, species=('Si',)):
     import ase
     from ase.calculators.singlepoint import SinglePointCalculator
 
     training_data = []
-    for _ in range(num_atoms):
+    for _ in range(num_systems):
         natoms = random.randint(1, max_atoms)
 
         atoms = ase.Atoms(positions=generate.random_points_in_sphere(natoms), symbols=random.choices(species, k=natoms))
@@ -86,3 +91,8 @@ def create_fake_training_data(num_atoms=10, max_atoms=10, species=('Si',)):
         training_data.append(atoms)
 
     return training_data
+
+
+def do_set_random_seeds():
+    random.seed(1234)
+    np.random.seed(1234)

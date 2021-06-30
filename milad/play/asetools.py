@@ -267,6 +267,7 @@ def extract_environments(system: ase.Atoms, atom_centered=True, cutoff=5., yield
     for i, (central_pos, central_symbol) in enumerate(zip(positions, symbols)):
         env_positions = [central_pos if not atom_centered else np.zeros(3)]
         env_symbols = [central_symbol]
+        orig_indices = [i]
 
         # Visit all neighbours
         for j, neighbour_pos in enumerate(positions):
@@ -279,12 +280,17 @@ def extract_environments(system: ase.Atoms, atom_centered=True, cutoff=5., yield
                 env_positions.append(vec if atom_centered else vec + central_pos)
                 # ...and the symbol
                 env_symbols.append(neighbour_symbol)
+                # Keep track of the index in the original structure
+                orig_indices.append(j)
+
+        atoms = ase.Atoms(positions=env_positions, symbols=env_symbols)
+        atoms.set_array('orig_indices', np.array(orig_indices, dtype=int))
 
         # Finally yield the environment
         if yield_indices:
-            yield i, ase.Atoms(positions=env_positions, symbols=env_symbols)
+            yield i, atoms
         else:
-            yield ase.Atoms(positions=env_positions, symbols=env_symbols)
+            yield atoms
 
 
 def ase2milad(atoms: ase.Atoms):

@@ -91,6 +91,8 @@ class FingerprintSet:
             raise ValueError(
                 'There must be as many fingerprints as there are atoms, ' \
                 'got {} atoms and {} environments'.format(len(system), len(fingerprints)))
+        if derivatives is not None and len(derivatives) != len(system):
+            raise ValueError('Number of derivatives must match the number of atoms (environments) in the system')
 
         derivatives = np.array(derivatives) if derivatives is not None else None
         self._system_info.append(SystemInfo(system, np.array(fingerprints), derivatives))
@@ -160,6 +162,7 @@ def create_fingerprint_set(
     descriptor: descriptors.Descriptor, systems: Sequence[ase.Atoms], get_derivatives=False
 ) -> FingerprintSet:
     """Given a descriptor and a sequence of ase.Atoms objects this will create a fignerprint set"""
+    # pylint: disable=too-many-locals
     # WARNING: The calculation of derivatives only takes into account positional degrees of freedom (not species) and
     # makes assumptions about the shape of the derivatives tensor
     fp_length = descriptor.fingerprint_len
@@ -167,20 +170,26 @@ def create_fingerprint_set(
     fingerprints = FingerprintSet(descriptor.fingerprint_len)
     for system in systems:
         fps = []
-        fp_derivatives = []
-        for env in asetools.extract_environments(system, cutoff=descriptor.cutoff):
+        natoms = len(system)
+        derivs = np.zeros((natoms, natoms, 3, fp_length)) if get_derivatives else None
+
+        for my_idx, env in asetools.extract_environments(system, cutoff=descriptor.cutoff, yield_indices=True):
             milad_env = asetools.ase2milad(env)
             if get_derivatives:
                 fingerprint, jacobian = descriptor(milad_env, jacobian=True)
-                # Now, let's deal with the derivatives extracting just the positional parts and summing over all
-                # neighbours keeping x, y, z separate
-                derivatives = jacobian[:, 3:3 * len(env)].reshape(fp_length, -1, 3).sum(1)
+
+                # The yielded environment has this array that allows us to map back on to the index in the original
+                # structure
+                orig_indices = env.get_array('orig_indices', copy=False)
+                for i in range(len(env)):
+                    neighbour_idx = orig_indices[i]
+                    # Add the derivatives as the same neighbour may contribute more than once
+                    derivs[my_idx, neighbour_idx, :, :] += jacobian[:, i * 3:(i + 1) * 3].T  # pylint: disable=unsupported-assignment-operator
 
                 fps.append(fingerprint)
-                fp_derivatives.append(derivatives)
             else:
                 fps.append(descriptor(milad_env))
 
-        fingerprints.add_system(system, fps, derivatives=fp_derivatives)
+        fingerprints.add_system(system, fps, derivatives=derivs)
 
     return fingerprints

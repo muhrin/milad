@@ -1,13 +1,21 @@
 # -*- coding: utf-8 -*-
+
 try:
     import amp  # pylint: disable=unused-import
 except ImportError:
     __all__ = tuple()
 else:
+    import argparse
+    import collections
+    from typing import Dict, Any
+
     from amp import utilities
+    import ase
     from ase.calculators.calculator import Parameters
+    import numpy as np
 
     from milad.play import asetools
+    from . import interfaces
 
     __all__ = ('AmpDescriptor',)
 
@@ -18,11 +26,10 @@ else:
          Functionality is not complete but the basics do work.
          """
 
-        def __init__(self, descriptor, dblabel=None):
+        def __init__(self, descriptor: interfaces.Descriptor, dblabel=None):
             self._descriptor = descriptor
             self.dblabel = dblabel
             self.parent = None
-            self.fingerprints = None
             self.parameters = Parameters({
                 'importname': 'milad.descriptors.amp_adapter.AmpDescriptor',
                 'mode': 'atom-centered'
@@ -36,7 +43,7 @@ else:
         def calculate_fingerprints(
             # pylint: disable=unused-argument
             self,
-            images,
+            images: Dict[Any, ase.Atoms],
             parallel=None,
             log=None,
             calculate_derivatives=False
@@ -47,14 +54,71 @@ else:
                 else:
                     self.dblabel = 'amp-data'
 
-            if self.fingerprints is None:
-                self.fingerprints = utilities.Data(filename=f'{self.dblabel}-fingerprints')
+            log('Fingerprinting images...', tic='fp')
+            if not hasattr(self, 'fingerprints'):
+                self.fingerprints = utilities.Data(
+                    filename=f'{self.dblabel}-fingerprints',
+                    calculator=argparse.Namespace(calculate=self._calc_fingerprint)
+                )  # pylint: disable=attribute-defined-outside-init
 
-            self.fingerprints.open()
-            for hashval, atoms in images.items():
-                fps = []
-                for env in asetools.extract_environments(atoms, cutoff=self._descriptor.cutoff):
-                    milad_env = asetools.ase2milad(env)
-                    fps.append((env.symbols[0], self._descriptor(milad_env)))
-                self.fingerprints.d[hashval] = fps
-            self.fingerprints.close()
+            self.fingerprints.calculate_items(images, parallel=dict(cores=1), log=log)
+            log('...fingerprints calculated.', toc='fp')
+
+            if calculate_derivatives:
+                log('Calculating fingerprint derivatives of images...', tic='derfp')
+                if not hasattr(self, 'fingerprintprimes'):
+                    self.fingerprintprimes = utilities.Data(
+                        filename=f'{self.dblabel}-fingerprints-primes',
+                        calculator=argparse.Namespace(calculate=self._calc_fingerprint_derivatives)
+                    )  # pylint: disable=attribute-defined-outside-init
+
+                self.fingerprintprimes.calculate_items(images, parallel=dict(cores=1), log=log)
+                log('...fingerprint derivatives calculated.', toc='derfp')
+
+        def _calc_fingerprint(self, system: ase.Atoms, _hashval):
+            fingerprints = []
+
+            for my_idx, env in asetools.extract_environments(
+                system, cutoff=self._descriptor.cutoff, yield_indices=True
+            ):
+                my_symbol = system.symbols[my_idx]
+                milad_env = asetools.ase2milad(env)
+                fingerprints.append((my_symbol, self._descriptor(milad_env)))
+
+            return fingerprints
+
+        def _calc_fingerprint_derivatives(self, system: ase.Atoms, _hashval):
+            # pylint: disable=too-many-locals
+            fp_length = self._descriptor.fingerprint_len
+            derivatives = {}
+
+            for my_idx, env in asetools.extract_environments(
+                system, cutoff=self._descriptor.cutoff, yield_indices=True
+            ):
+                my_symbol = system.symbols[my_idx]
+                milad_env = asetools.ase2milad(env)
+
+                _, jac = self._descriptor(milad_env, jacobian=True)
+
+                natoms = len(env)  # Number of atoms in the environment
+
+                # The yielded environment has this array that allows us to map back on to the index in the
+                # original structure
+                orig_indices = env.get_array('orig_indices', copy=False)
+                derivs = collections.defaultdict(lambda: np.zeros((3, fp_length)))
+
+                for i in range(natoms):
+                    neighbour_idx = orig_indices[i]
+                    # Add to the derivatives as the same neighbour may contribute more than once
+                    local_derivs = jac[:, i * 3:(i + 1) * 3].T
+                    derivs[neighbour_idx] += local_derivs
+
+                # Now copy over the derivatives to AMP format
+                for i in range(natoms):
+                    neighbour_idx = orig_indices[i]
+                    neighbour_symbol = system.symbols[neighbour_idx]
+                    for coord in range(3):  # XYZ
+                        deriv_idx = (neighbour_idx, neighbour_symbol, my_idx, my_symbol, coord)
+                        derivatives[deriv_idx] = derivs[neighbour_idx][coord]
+
+            return derivatives
