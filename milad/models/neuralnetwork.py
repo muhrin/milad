@@ -125,7 +125,7 @@ class FittingData:
                 f"The number of total energies ({len(total_energies)}) doesn't match the number of "
                 f'systems (sizes) ({len(sizes)}).'
             )
-        if len(derivatives) != len(sizes):
+        if derivatives and len(derivatives) != len(sizes):
             raise ValueError("Number of system-wise derivatives doesn't match the number of sizes")
 
         self._num_atoms = sizes  # Per-system
@@ -464,8 +464,6 @@ class NeuralNetwork:
                 # Ask the optimiser to make a step
                 loss_result.total.backward(retain_graph=True)
 
-                print(f'{loss_result.energy.item()} {loss_result.force.item()}')
-
                 optimiser.step()
 
             # Use no_grad to reduce memory footprint
@@ -513,7 +511,7 @@ class NeuralNetwork:
                     )
                     jacs = [jac[i, :, i, :] for i in range(len(fitting_data.fingerprints))]
 
-                    for fingerprint, derivatives, network_deriv in zip(
+                    for _fingerprint, derivatives, network_deriv in zip(
                         fitting_data.fingerprints, fitting_data.derivatives, jacs
                     ):
                         # Get the derivative of the energy wrt to input vector

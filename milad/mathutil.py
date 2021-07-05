@@ -3,6 +3,8 @@ from typing import Tuple
 
 import numpy as np
 
+# pylint: disable=invalid-name
+
 
 def to_real(vec: np.array) -> np.array:
     """Convert a given numpy vector containing complex numbers to one twice as long containing
@@ -94,10 +96,27 @@ def pol2cart(r: float, theta: float) -> Tuple[float, float]:
     return x, y
 
 
-def spherical2cart(r, theta, phi):
+def sph2cart(vec) -> np.array:
     """Convert spherical coordinates to Cartesian using 'physicists convention'"""
     # pylint: disable=invalid-name
+    r = vec[0]
+    theta = vec[1]
+    phi = vec[2]
+
     x = r * np.sin(theta) * np.cos(phi)
     y = r * np.sin(theta) * np.sin(phi)
     z = r * np.cos(theta)
-    return x, y, z
+    return np.array([x, y, z])
+
+
+def cart2sph(vec) -> np.array:
+    x = vec[0]
+    y = vec[1]
+    z = vec[2]
+
+    hxy = np.hypot(x, y)
+    r = np.hypot(hxy, z)
+
+    theta = np.arctan2(hxy, z)
+    phi = np.arctan2(y, x)
+    return np.array([r, theta, phi])

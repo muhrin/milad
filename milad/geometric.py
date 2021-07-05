@@ -104,14 +104,16 @@ class GeometricMoments(base_moments.Moments):
         """Reconstruct the value at x from the moments
 
         :param x: the point to get the value at
-        :param max_order: the maximum order to go up to (defaults to the maximum order of these
-            moments)
+        :param max_order: the maximum order to go up to (defaults to the maximum order of these moments)
         """
         shape = self._moments.shape
         value = 0.
         for p in range(shape[0]):
             for q in range(shape[1]):
                 for r in range(shape[2]):
+                    if (p + q + r) > max_order:
+                        continue
+
                     value += self._moments[p, q, r] * (x**(p, q, r)).prod(axis=-1)
 
         return value
@@ -121,7 +123,11 @@ class GeometricMoments(base_moments.Moments):
         geom_moms.fill(None)
         return GeometricMoments(geom_moms)
 
-    def get_builder(self, mask=None) -> Optional[functions.Function]:
+    def get_builder(
+        # pylint: disable=unused-argument
+        self,
+        mask=None
+    ) -> Optional[functions.Function]:
         return functions.FromVectorBuilder(GeometricMoments, kwargs=dict(max_order=self.max_order))
 
 
@@ -257,9 +263,7 @@ def _(gaussian: functions.WeightedGaussian, max_order: int, get_jacobian: bool, 
 def _(environment: functions.Features, max_order: int, get_jacobian, dtype):
     """Calculate the geometric moments for a set of features"""
     O = max_order
-
-    moments = np.empty((O + 1, O + 1, O + 1), dtype=dtype)
-    moments.fill(0.)
+    moments = np.zeros((O + 1, O + 1, O + 1), dtype=dtype)
 
     jacobians = []
     for feature in environment.features:
@@ -272,7 +276,13 @@ def _(environment: functions.Features, max_order: int, get_jacobian, dtype):
         moments += moms
 
     if get_jacobian:
-        return moments, np.concatenate(jacobians, axis=1)
+        if jacobians:
+            jac = np.concatenate(jacobians, axis=1)
+        else:
+            total = sum(1 for _ in iter_indices(O))
+            jac = np.zeros((total, 0))
+
+        return moments, jac
 
     return moments
 
@@ -568,6 +578,7 @@ def gaussian_moment_16(mu: float, sigma: float = 1.) -> float:
            2027025 * sigma ** 16
 
 
+# pylint: disable=pointless-string-statement
 """Get the nt^h moment of a n-dim Gaussian (or normal distribution) centred at `mu`
 with a standard deviation of `sigma`.
 
@@ -583,7 +594,7 @@ http://www.randomservices.org/random/special/Normal.html
 :param order: the order of the moment to get
 :param weight: the total probability or mass of the normal distribution.  This is the zero^th
     moment be definition
-"""  # pylint: disable=pointless-string-statement
+"""
 gaussian_moment = [
     np.vectorize(gaussian_moment_0),
     np.vectorize(gaussian_moment_1),

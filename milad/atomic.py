@@ -460,9 +460,9 @@ class MapNumbers(functions.Function):
             # Create Jacobian that is identity apart from the species.
             # This part needs to be masked of as this mapping is not a continuous function
             natoms = in_atoms.num_atoms
-            jac = ma.array(np.zeros((len(in_atoms), len(out_atoms))), mask=False)
+            jac = ma.array(np.zeros((len(out_atoms), len(in_atoms))), mask=False)
             jac[:3 * natoms, :3 * natoms] = np.eye(natoms * 3)
-            jac.mask[3 * natoms:, 3 * natoms] = True
+            jac.mask[3 * natoms:, 3 * natoms:] = True
 
             return out_atoms, jac
 

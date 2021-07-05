@@ -49,9 +49,9 @@ def chiral_tetrahedra() -> Tuple[np.ndarray, np.ndarray]:
     # First group of points
     b_i = np.zeros((3, 3))
     r = 0.3
-    b_i[0, :] = mathutil.spherical2cart(r, a, 0.)
-    b_i[1, :] = mathutil.spherical2cart(r, b, 0.)
-    b_i[2, :] = mathutil.spherical2cart(r, c, 0.)
+    b_i[0, :] = mathutil.sph2cart([r, a, 0.])
+    b_i[1, :] = mathutil.sph2cart([r, b, 0.])
+    b_i[2, :] = mathutil.sph2cart([r, c, 0.])
 
     # Second group of points
     rot = transform.Rotation.from_euler('y', 86, degrees=True)

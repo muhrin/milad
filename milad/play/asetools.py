@@ -242,14 +242,20 @@ class MiladFingerprint:
         return fingerprint
 
 
-def extract_environments(system: ase.Atoms, atom_centered=True, cutoff=5., yield_indices=False):
+def extract_environments(
+    system: ase.Atoms,
+    atom_centered=True,
+    cutoff=5.,
+    yield_indices=False,
+    include_central_atom=True,
+):
     """Given an ase.Atoms this will extract atomic environments and yield them as new Atoms objects
 
     The central atom will always be at position 0 and the rest (if any) will follow.
 
     :param system: the atoms object to extract environments from
     :param atom_centered: if True will centre the new environments on the central (position 0) atom
-    :param cutoff: a radial cuttoff for defining each environment
+    :param cutoff: a radial cutoff for defining each environment
     :param yield_indices: if True will yield a tuple (idx, Atoms) where idx is the global index of the central atom
     """
     # pylint: disable=too-many-locals
@@ -265,9 +271,13 @@ def extract_environments(system: ase.Atoms, atom_centered=True, cutoff=5., yield
 
     # Go over each atom and create the environment
     for i, (central_pos, central_symbol) in enumerate(zip(positions, symbols)):
-        env_positions = [central_pos if not atom_centered else np.zeros(3)]
-        env_symbols = [central_symbol]
-        orig_indices = [i]
+        env_positions = []
+        env_symbols = []
+        orig_indices = []
+        if include_central_atom:
+            env_positions.append(central_pos if not atom_centered else np.zeros(3))
+            env_symbols.append(central_symbol)
+            orig_indices.append(i)
 
         # Visit all neighbours
         for j, neighbour_pos in enumerate(positions):
@@ -293,7 +303,7 @@ def extract_environments(system: ase.Atoms, atom_centered=True, cutoff=5., yield
             yield atoms
 
 
-def ase2milad(atoms: ase.Atoms):
+def ase2milad(atoms: ase.Atoms) -> atomic.AtomsCollection:
     return atomic.AtomsCollection(len(atoms), positions=atoms.positions, numbers=atoms.numbers)
 
 

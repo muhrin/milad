@@ -8,6 +8,7 @@ from . import base_moments
 from .descriptors.interfaces import Descriptor
 from . import invariants
 from . import functions
+from . import invariants_
 from . import zernike
 
 __all__ = 'MomentInvariantsDescriptor', 'descriptor', 'Fingerprinter', 'fingerprinter'
@@ -21,7 +22,7 @@ class MomentInvariantsDescriptor(Descriptor):
         self,
         feature_mapper: atomic.FeatureMapper,
         moments_calculator: base_moments.MomentsCalculator,
-        invs: invariants.MomentInvariants,
+        invs: invariants_.Invariants,
         cutoff: float = None,
         scale: bool = True,
         species_mapper: atomic.MapNumbers = None,
@@ -53,7 +54,8 @@ class MomentInvariantsDescriptor(Descriptor):
 
         process.append(feature_mapper)
         if smooth_cutoff:
-            process.append(functions.CosineCutoff(cutoff))
+            # Cutoff is 1.0 because we have already scaled the structure to fit in the unit sphere
+            process.append(functions.CosineCutoff(cutoff=1.0))
 
         process.append(moments_calculator)
         process.append(self._invariants)
@@ -65,7 +67,7 @@ class MomentInvariantsDescriptor(Descriptor):
         self._calculator = functions.Chain(self._preprocess, self._process)
 
     @property
-    def invariants(self) -> invariants.MomentInvariants:
+    def invariants(self) -> invariants_.Invariants:
         return self._invariants
 
     @property
@@ -184,7 +186,7 @@ def descriptor(
     cutoff: float = None,
     scale=True,
     moments_calculator: base_moments.MomentsCalculator = None,
-    invs: invariants.MomentInvariants = None,
+    invs: invariants_.Invariants = None,
     apply_cutoff=True,
     smooth_cutoff=False,
 ) -> MomentInvariantsDescriptor:

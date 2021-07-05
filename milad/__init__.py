@@ -9,6 +9,7 @@ from . import functions
 from . import generate
 # from . import generative
 from . import geometric
+from . import invariants_
 from . import models
 from . import optimisers
 from . import polynomials
@@ -29,6 +30,6 @@ from .zernike import *
 __all__ = ('analytic', 'atomic', 'invariants', 'functions', 'geometric', 'utils', 'play', 'plot', 'reconstruct',
            'zernike', 'exceptions', 'models', 'optimisers', 'generate', 'asetools', 'sph',
            # 'generative',
-           'polynomials', 'descriptors', 'dat') \
+           'polynomials', 'descriptors', 'dat', 'invariants_') \
           + zernike.__all__ + fingerprinting.__all__ + reconstruct.__all__ + atomic.__all__ + invariants.__all__ + \
           geometric.__all__

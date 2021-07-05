@@ -3,6 +3,7 @@ import math
 
 import ase.build
 import ase.io
+import ase.neighborlist
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -66,6 +67,7 @@ def test_generate_environments_molecule():
 
 
 def test_generate_environments_solid():
+    # pylint: disable=too-many-nested-blocks
     lattice_param = 2.5
     cutoff = 4.
 
@@ -104,3 +106,35 @@ def test_generate_environments_solid():
                sorted(np.sum(known_positions * known_positions, axis=1))
 
     assert len(envs) == len(found_positions)
+
+
+def test_extract_environments():
+    num_atoms = 5
+    cutoff = 0.7
+    system = ase.Atoms(
+        positions=[[0., 0., 0.]] * num_atoms, numbers=[6] * num_atoms, cell=[1, 1, 1, 47, 97, 121], pbc=True
+    )
+    system.rattle(stdev=156)
+    system.wrap()
+
+    nlist = ase.neighborlist.NeighborList([cutoff / 2.] * num_atoms, skin=0., self_interaction=False, bothways=True)
+    nlist.update(system)
+
+    for i, env in tuple(
+        asetools.extract_environments(system, cutoff=cutoff, yield_indices=True, include_central_atom=False)
+    ):
+        indices, offsets = nlist.get_neighbors(i)
+        pos = system.positions[i]
+
+        Rs = np.array([
+            system.positions[j] + np.dot(offset, system.cell) - pos for (j, offset) in zip(indices, offsets)
+        ])
+
+        indices = sorted(indices)
+        env_indices = sorted(env.get_array('orig_indices'))
+        assert env_indices == indices
+
+        dots = np.array(sorted(np.sum(Rs * Rs, axis=1)))
+        env_dots = np.array(sorted(np.sum(env.positions * env.positions, axis=1)))
+
+        assert np.allclose(dots, env_dots)

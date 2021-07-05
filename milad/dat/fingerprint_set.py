@@ -21,7 +21,8 @@ class FingerprintSet:
         self._fingerprint_length = fingerprint_length
         self._system_info: List[SystemInfo] = []
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """Return the number of systems (not, this is NOT the number of environments)"""
         return len(self._system_info)
 
     @property
@@ -55,6 +56,10 @@ class FingerprintSet:
     @property
     def sizes(self):
         return tuple(len(info.atoms) for info in self._system_info)
+
+    @property
+    def systems(self) -> List[ase.Atoms]:
+        return [info.atoms for info in self._system_info]
 
     def get_potential_energies(self, normalise=True) -> tuple:
         """Get the potential energies of all systems in the set"""
@@ -173,7 +178,9 @@ def create_fingerprint_set(
         natoms = len(system)
         derivs = np.zeros((natoms, natoms, 3, fp_length)) if get_derivatives else None
 
-        for my_idx, env in asetools.extract_environments(system, cutoff=descriptor.cutoff, yield_indices=True):
+        for my_idx, env in asetools.extract_environments(
+            system, cutoff=descriptor.cutoff, yield_indices=True, include_central_atom=False
+        ):
             milad_env = asetools.ase2milad(env)
             if get_derivatives:
                 fingerprint, jacobian = descriptor(milad_env, jacobian=True)
@@ -184,7 +191,7 @@ def create_fingerprint_set(
                 for i in range(len(env)):
                     neighbour_idx = orig_indices[i]
                     # Add the derivatives as the same neighbour may contribute more than once
-                    derivs[my_idx, neighbour_idx, :, :] += jacobian[:, i * 3:(i + 1) * 3].T  # pylint: disable=unsupported-assignment-operator
+                    derivs[my_idx, neighbour_idx, :, :] += jacobian[:, i * 3:(i + 1) * 3].T  # pylint: disable=unsupported-assignment-operation
 
                 fps.append(fingerprint)
             else:

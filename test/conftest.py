@@ -76,7 +76,7 @@ def create_descriptor(invs, _species=('Si',)):
     )
 
 
-def create_fake_training_data(num_systems=10, max_atoms=28, species=('Si',)):
+def create_fake_training_data(num_systems=10, max_atoms=18, species=('Si',)):
     import ase
     from ase.calculators.singlepoint import SinglePointCalculator
 

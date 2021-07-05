@@ -7,6 +7,7 @@ import sympy
 from milad import geometric
 from milad import zernike
 from milad import invariants
+from milad import mathutil
 from milad import utils
 from milad import generate
 from milad import transform
@@ -165,3 +166,31 @@ def test_zernike_builder():
     # Now let's create a set of moments from the vector and check that it's all the same
     recreated, _jac = builder(vec, jacobian=True)
     assert recreated == moms
+
+
+def test_direct_calculation():
+    nmax = 4
+    lmax = 4
+
+    num_atoms = 4
+    pos = generate.random_points_in_sphere(num_atoms)
+    from_deltas = zernike.from_deltas(n_max=nmax, l_max=lmax, positions=pos)
+
+    from_deltas_direct = zernike.from_deltas_direct(nmax=nmax, lmax=lmax, positions=pos)
+
+    diff = from_deltas.array - from_deltas_direct.array
+
+    print(diff)
+
+    spherical = mathutil.cart2sph(pos.T)  # Spherical coordinates
+    for n in utils.inclusive(nmax):
+        for l in utils.inclusive(n):
+            if utils.odd(n - l):
+                continue
+            for m in utils.inclusive(-l, l):
+                vals = 3 / (4 * np.pi) * zernike.zernike_poly(n, l, m, spherical).conjugate()
+                total = np.sum(vals)
+
+                from_deltas_val = from_deltas[n, l, m]
+
+                print(n, l, m, total, from_deltas_val)

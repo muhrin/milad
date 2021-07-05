@@ -13,21 +13,23 @@ from typing import Union, Tuple, Iterator, Optional
 
 import numpy as np
 from numpy import ma
-import scipy
-import scipy.special
+from scipy import special
 
 from . import base_moments
 from . import functions
+from . import mathutil
 from . import geometric
 from . import polynomials
 from . import sph
-from .utils import even, inclusive
+from .utils import even, odd, inclusive
 
 _LOGGER = logging.getLogger(__name__)
 
 # pylint: disable=invalid-name
 
 __all__ = 'ZernikeMoments', 'ZernikeMomentCalculator', 'from_deltas', 'from_gaussians'
+
+NORMALISTAION = 3. / (4. * np.pi)
 
 
 def from_deltas(
@@ -47,6 +49,34 @@ def from_deltas(
     _domain_check(positions)
     geom_moments = geometric.from_deltas(n_max, positions, weights)
     return from_geometric_moments(n_max, geom_moments, l_max)
+
+
+def from_deltas_direct(
+    nmax: int, positions: np.ndarray, weights: Union[numbers.Number, np.array] = 1., lmax=None
+) -> 'ZernikeMoments':
+    """This is the method used to calcualte fingerprints by AMP (at least when not using gradients).
+
+    There is some discreptancy between this and the method from geometric moments proposed by Novotni and Klein, however
+    it amounts to a simple rotation as the invariants are still the same.  We have this here, mainly so that
+    we can easily compare with AMP code.
+    """
+    norm = 1.0  # NORMALISTAION
+    zernike_moms = ZernikeMoments(n_max=nmax, l_max=lmax)
+
+    if len(positions) > 0:
+        spherical = mathutil.cart2sph(positions.T)  # Spherical coordinates
+        for n in inclusive(nmax):
+            for l in inclusive(n):
+                if odd(n - l):
+                    continue
+
+                for m in inclusive(-l, l):
+                    vals = norm * zernike_poly(n, l, m, spherical).conjugate()
+                    zernike_moms.array[n, l, m] = np.sum(weights * vals)
+    else:
+        zernike_moms.array.fill(0.)
+
+    return zernike_moms
 
 
 def from_gaussians(
@@ -116,6 +146,7 @@ ZernikeIndex = collections.namedtuple('ZernikeIndex', 'n l m')
 
 class ZernikeMoments(base_moments.Moments):
     """A container class for calculated Zernike moments"""
+
     # pylint: disable=too-many-public-methods
 
     @classmethod
@@ -476,7 +507,8 @@ class ZernikeMomentsBuilder(functions.Function):
                 jac[lin_idx, idx] += 1 * num_type  # pylint: disable=unsupported-assignment-operation
                 if zernike_idx.m > 0:
                     lin_idx = moms.linear_index((n, l, -m))
-                    jac[lin_idx, idx] += (-1)**m * (1 if num_type == 1. else -1j)  # pylint: disable=unsupported-assignment-operation
+                    # pylint: disable=unsupported-assignment-operation
+                    jac[lin_idx, idx] += (-1)**m * (1 if num_type == 1. else -1j)
 
         if get_jacobian:
             return moms, jac
@@ -557,21 +589,41 @@ class ZernikeMomentCalculator(base_moments.MomentsCalculator):
             cls._change_of_basis_polys[(n, l, m)] = poly
             return poly
 
-    def __init__(self, n_max: int, l_max: int = None):
+    def __init__(self, n_max: int, l_max: int = None, use_direct=False):
         super().__init__()
         self._n_max = n_max
         self._l_max = l_max
         self._geometric_moments_calculator = geometric.GeometricMomentsCalculator(n_max)
         self._jacobian = None
+        self._use_direct = use_direct
 
     def evaluate(self,
                  state: functions.State,
                  *,
                  get_jacobian=False) -> Union[ZernikeMoments, Tuple[ZernikeMoments, np.ndarray]]:
+        if self._use_direct:
+            if not isinstance(state, functions.Features) or not all(
+                isinstance(feature, functions.WeightedDelta) for feature in state
+            ):
+                raise ValueError('Can only use direct method on a set of features that are delta functions')
+
+            return from_deltas_direct(
+                self._n_max,
+                positions=np.array([feature.pos for feature in state]),
+                weights=np.array([feature.weight for feature in state]),
+                lmax=self._l_max
+            )
+
         if isinstance(state, geometric.GeometricMoments):
             geom_moments = state
             geom_jac = np.eye(state.size)
         else:
+            # if not get_jacobian and isinstance(state, functions.Features) and \
+            #         all(isinstance(feature, functions.WeightedDelta) for feature in state):
+            #     positions = np.array([feature.pos for feature in state])
+            #     weights = np.array([feature.weight for feature in state])
+            #     return from_deltas_direct(self._n_max, positions, weights, lmax=self._l_max)
+
             geom_moments = self._geometric_moments_calculator(state, get_jacobian)
             if get_jacobian:
                 geom_moments, geom_jac = geom_moments
@@ -629,7 +681,7 @@ def get_jacobian_wrt_geom_moments(max_order: int, redundant=True):
     num_geometric_moments = geometric.GeometricMoments.num_moments(max_order)
     jacobian = np.zeros((num_moments, num_geometric_moments), dtype=complex)
 
-    cache = {}
+    cache = {}  # Used for negative m coefficients
     for idx, (n, l, m) in enumerate(iter_indices(max_order, redundant=redundant)):
         if redundant and m < 0:
             jacobian[idx, :] = (-1)**(-m) * cache.pop((n, l, -m)).conjugate()
@@ -641,47 +693,34 @@ def get_jacobian_wrt_geom_moments(max_order: int, redundant=True):
                 # calculated first, so cache these for when we get around to the positive m's
                 cache[(n, l, m)] = vec
 
-        # if m < 0:
-        #     # These are taken care of during the positive m iteration
-        #     continue
-        #
-        # vec = ZernikeMomentCalculator.change_of_basis(n, l, m)(tracker)
-        #
-        # jacobian[idx, :] = vec
-        #
-        # if redundant and m != 0:
-        #     minus_m = (-1)**m * vec.conjugate()
-        #     minus_m_idx = linear_index((n, l, -m))
-        #     jacobian[minus_m_idx, :] = minus_m
-
     return jacobian
 
 
 @functools.lru_cache(maxsize=None)
 def factorial(n: int) -> int:
-    return scipy.special.factorial(n, exact=True)
+    return special.factorial(n, exact=True)
 
 
 @functools.lru_cache(maxsize=None)
 def binomial_coeff(n: int, k: int) -> int:
-    return scipy.special.comb(n, k, exact=True)
+    return special.comb(n, k, exact=False)
 
 
 @functools.lru_cache(maxsize=None)
 def c_l_m(l: int, m: int) -> float:
     """Calculate the normalisation factor"""
     if m < 0:
-        # make use of symmetry c_l^m == c_l^-m
+        # make use of symmetry c_l^m == c_l^-m (no conjugate because these are real)
         return c_l_m(l, -m)
 
-    return ((2 * l + 1) * factorial(l + m) * factorial(l - m))**0.5 / factorial(l)
+    return math.sqrt((2 * l + 1) * factorial(l + m) * factorial(l - m)) / factorial(l)
 
 
 @functools.lru_cache(maxsize=None)
 def q_kl_nu(k: int, l: int, nu: int) -> float:
     """Calculate the Zernike geometric moment conversion factors"""
     return (-1) ** k / 2 ** (2 * k) * \
-           ((2 * l + 4 * k + 3) / 3) ** 0.5 * \
+           np.sqrt((2 * l + 4 * k + 3) / 3) * \
            binomial_coeff(2 * k, k) * \
            (-1) ** nu * \
            (binomial_coeff(k, nu) * binomial_coeff(2 * (k + l + nu) + 1, 2 * k)) / \
@@ -774,7 +813,7 @@ def omega_nl_m(n: int, l: int, m: int, geom_moments: np.array) -> complex:
         # Symmetry relation
         return (-1)**(-m) * omega_nl_m(n, l, -m, geom_moments).conjugate()
 
-    return 3. / (4. * np.pi) * sum_chi_nlm(n, l, m, geom_moments).conjugate()
+    return NORMALISTAION * sum_chi_nlm(n, l, m, geom_moments).conjugate()
 
 
 def iter_indices(n_max: int = None, l_max: int = None, *, redundant=False) -> Iterator[ZernikeIndex]:
@@ -882,3 +921,38 @@ def _domain_check(positions: np.array):
 
 def index_traits(n, l) -> sph.IndexTraits:
     return sph.IndexTraits(n, l, l_le_n=True, n_minus_l_even=True)
+
+
+def zernike_poly(n: int, l: int, m: int, pt):
+    """Evaluate the 3D Zernike polynomial at the given spherical coordinates"""
+    rho = pt[0]
+    theta = pt[1]
+    phi = pt[2]
+
+    radial = r_nl(n, l, rho)
+    # Note that scipy uses the opposite of the physics convention, in scipy
+    #   theta = azimuth (longitudinal) coord
+    #   phi = polar (colatitudinal) coord
+    # while we use the opposite convention
+    angular = special.sph_harm(m, l, phi, theta)
+
+    return radial * angular
+
+
+def r_nl(n: int, l: int, rho) -> numbers.Number:
+    """Evaluate a Zernike radial polynomial at the given value of rho"""
+    if not even(n - l):
+        return 0.
+
+    D = 3.
+    k = (n - l) / 2.
+
+    normalisation = np.sqrt(2 * n + D)
+    total = np.sum(((-1)**s) * binomial_coeff(k, s) * binomial_coeff(n - s - 1. + D / 2., k) * rho**(n - 2 * s)
+                   for s in inclusive(int(k)))
+
+    # Alternative method
+    # total2 = (-1)**k * binomial_coeff((n + l + D) / 2 - 1, k) * rho**l * \
+    #          special.hyp2f1(-k, (n + l + D) / 2., l + D / 2., rho**2)
+
+    return normalisation * total

@@ -7,15 +7,14 @@ from milad import atomic
 from milad import functions
 from milad import invariants
 
+# pylint: disable=invalid-name
+
 
 def test_descriptor_derivatives():
     invs = invariants.read(invariants.COMPLEX_INVARIANTS, max_order=3)
 
     descriptor = milad.descriptor(
-        features=dict(type=milad.functions.WeightedDelta, map_species_to=None),
-        cutoff=5.,
-        apply_cutoff=False,
-        invs=invs
+        features=dict(type=functions.WeightedDelta, map_species_to=None), cutoff=5., apply_cutoff=False, invs=invs
     )
 
     # Create a structure with just one atom, all symbolic
@@ -36,3 +35,20 @@ def test_descriptor_derivatives():
                 # If they differ, check that it's by a meaningful amount
                 coeffs = np.array(tuple(difference.as_coefficients_dict().values()))
                 np.testing.assert_array_almost_equal(coeffs, 0., decimal=10)
+
+
+def test_descriptor_smoothness(descriptor):
+    last_max = 0.
+    for x in np.linspace(1.01, 0.9, 12):
+        atoms = milad.AtomsCollection(1, positions=[x, 0., 0.], numbers=1)
+        fingerprint = descriptor(atoms)
+
+        fingerprint_max = np.abs(fingerprint).max()
+
+        if x >= 1.:
+            assert fingerprint_max == 0.
+
+        assert fingerprint_max >= last_max
+        print(x, fingerprint_max)
+
+        last_max = fingerprint_max
