@@ -102,8 +102,7 @@ class RepulsiveForce(functions.Function):
         *,
         get_jacobian=False
     ):
-        force = self.strength * max(np.sum(foreground.array * self.background.array).real, 0.)
-        print(f'Force: {force}')
+        force = np.abs(self.strength * np.sum(foreground.array * self.background.array).real)
         return force
 
 

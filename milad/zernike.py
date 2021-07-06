@@ -948,8 +948,9 @@ def r_nl(n: int, l: int, rho) -> numbers.Number:
     k = (n - l) / 2.
 
     normalisation = np.sqrt(2 * n + D)
-    total = np.sum(((-1)**s) * binomial_coeff(k, s) * binomial_coeff(n - s - 1. + D / 2., k) * rho**(n - 2 * s)
-                   for s in inclusive(int(k)))
+    total = np.sum([((-1)**s) * binomial_coeff(k, s) * binomial_coeff(n - s - 1. + D / 2., k) * rho**(n - 2 * s)
+                    for s in inclusive(int(k))],
+                   axis=0)
 
     # Alternative method
     # total2 = (-1)**k * binomial_coeff((n + l + D) / 2 - 1, k) * rho**l * \

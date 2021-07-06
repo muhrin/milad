@@ -558,7 +558,7 @@ def find_iteratively(
         if verbose:
             print(f'{i} moms->fingerprint: {result.rmsd}')
 
-        result = find_atoms_from_moments(descriptor, moments, num_atoms, mask, grid_query=grid_query)
+        result = find_atoms_from_moments(descriptor, moments, num_atoms, mask=mask, grid_query=grid_query)
 
         if verbose:
             print(f'{i} atoms->moms: {result.rmsd}')
