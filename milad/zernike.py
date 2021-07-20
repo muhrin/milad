@@ -278,7 +278,7 @@ class ZernikeMoments(base_moments.Moments):
                             'Trying to set value of moment %i,%i,%i to %d, '
                             'however these moment should always be real so discarding imaginary', n, l, m, value
                         )
-                    # value = np.real(value)
+                    value = np.real(value)
                 except AttributeError:
                     pass
             elif set_minus_m:
@@ -581,12 +581,17 @@ class ZernikeMomentCalculator(base_moments.MomentsCalculator):
     _change_of_basis_polys = dict()  # Change of basis polynomials (geometric -> spherical harmonic)
 
     @classmethod
-    def change_of_basis(cls, n: int, l: int, m: int):
+    def change_of_basis(cls, n: int, l: int, m: int) -> polynomials.HomogenousPolynomial:
         try:
             return cls._change_of_basis_polys[(n, l, m)]
         except KeyError:
             poly = omega_nl_m(n, l, m, polynomials.PolyBuilder())
             cls._change_of_basis_polys[(n, l, m)] = poly
+
+            if m != 0 and (n, l, -m) not in cls._change_of_basis_polys:
+                # Cache the conjugate as well
+                cls._change_of_basis_polys[(n, l, -m)] = (-1)**m * poly.conjugate()
+
             return poly
 
     def __init__(self, n_max: int, l_max: int = None, use_direct=False):
@@ -630,6 +635,7 @@ class ZernikeMomentCalculator(base_moments.MomentsCalculator):
 
         moments = ZernikeMoments(self._n_max, self._l_max, dtype=object if geom_moments.dtype == object else complex)
 
+        # Get the moments themselves from polynomials of geometric moments
         for (n, l, m) in moments.iter_indices(redundant=False):
             moments[n, l, m] = self.change_of_basis(n, l, m)(geom_moments.array)
 
@@ -689,7 +695,7 @@ def get_jacobian_wrt_geom_moments(max_order: int, redundant=True):
             vec = ZernikeMomentCalculator.change_of_basis(n, l, m)(tracker)
             jacobian[idx, :] = vec
             if redundant and m > 0:
-                # Because of the iteration order (m=0 to l followed by m=-l to 0) the positives will always be
+                # Because of the iteration order (m=0 to l followed by m=-l to -1) the positives will always be
                 # calculated first, so cache these for when we get around to the positive m's
                 cache[(n, l, m)] = vec
 

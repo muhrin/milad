@@ -2,8 +2,7 @@
 """Abstract base classes and utilities for moments"""
 
 import abc
-import collections
-from typing import Tuple, List, Dict, Iterator, Union
+from typing import Tuple, Iterator, Union
 
 import numpy as np
 
@@ -147,57 +146,8 @@ class Moments(functions.State, metaclass=abc.ABCMeta):
         return ReconstructionQuery(order, points)
 
 
-ProductTerm = collections.namedtuple('ProductTerm', 'index terms')
-Product = collections.namedtuple('Product', 'coeff terms')
-
-
 class MomentsCalculator(functions.Function, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def create_random(self, max_order: int = None):
         """Create a random set of moments (optionally) up to a certain order."""
-
-
-class MomentsPolynomial:
-    """Represents a polynomial of moments.  The terms are products of moments with a prefactor"""
-    __slots__ = ('_terms',)
-
-    def __init__(self):
-        self._terms: List[Product] = []
-
-    def __str__(self):
-        sum_parts = []
-        for prefactor, product in self._terms:
-            powers = self.collect_powers(product)
-            product_parts = [str(prefactor)]
-            product_parts.extend(
-                'm{},{},{}^{}'.format(indices[0], indices[1], indices[2], power) for indices, power in powers.items()
-            )
-
-            string = ' '.join(product_parts)
-            sum_parts.append(string)
-
-        return ' + '.join(sum_parts)
-
-    def append(self, term: Product):
-        """Append a term to the polynomial"""
-        self._terms.append(term)
-
-    def evaluate(self, moments):
-        """Evaluate the polynomial for a given set of moments"""
-        total = 0.
-
-        for term in self._terms:
-            partial = term.coeff
-            for product_term in term.terms:
-                partial *= moments[product_term]
-            total += partial
-
-        return total
-
-    @staticmethod
-    def collect_powers(product: List[Tuple]) -> Dict[Tuple, int]:
-        powers = collections.defaultdict(int)
-        for indices in product:
-            powers[indices] += 1
-        return powers

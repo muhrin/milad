@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import abc
+import collections
 import numbers
+from typing import Tuple, Dict, Set
 
 import numpy as np
 
@@ -21,23 +23,46 @@ class HomogenousPolynomial(Polynomial):
     constant e.g. 5 x_0,0,0 + 2.  This makes them easier to work with and a better fit for our use case.
     """
 
-    def __init__(self, degree: int, prefactors: np.ndarray = None, terms: np.ndarray = None, constant=0., real=True):
+    def __init__(
+        self,
+        degree: int,
+        prefactors: np.ndarray = None,
+        terms: np.ndarray = None,
+        constant=0.,
+        conjugate_values=False,
+        simplify=True,
+    ):
         """
         Create a new homogenous polynomial of a given degree
 
         :param degree: the degree of the polynomial
-        :param prefactors: the set of prefactors
-        :param terms: the set of array indices that make up this polynomial
-        :param real: the variables (and therefore value) of this polynomial are real
+        :param prefactors: the array of prefactors
+        :param terms: the array indices that make up this polynomial where the array is interpreted as
+            [sum index, product index, value array index]
+        :param constant: the additive constant
         """
+        prefactors = np.array(prefactors)
+        terms = np.array(terms)
+        if len(prefactors) != len(terms):
+            raise ValueError(
+                f'prefactors and terms must have same length, got prefactors={len(prefactors)}, terms={len(terms)}'
+            )
+
+        if simplify:
+            prefactors, terms = self._simplify(prefactors, terms)
+
         self._degree = degree
         self._prefactors = prefactors
         self._terms = terms
         self._constant = constant
-        self._real = real
+        self._conjugate = conjugate_values
+        self._derivatives_cache = {}
 
     def __mul__(self, value: numbers.Number):
         if isinstance(value, numbers.Number):
+            if value == 1.:
+                return self
+
             return HomogenousPolynomial(
                 self._degree, self._prefactors * value if self._prefactors is not None else None,
                 self._terms if self._terms is not None else None, self._constant * value
@@ -72,9 +97,13 @@ class HomogenousPolynomial(Polynomial):
         if self._prefactors is None:
             return 'None'
 
-        return ' + '.join([
+        terms = [
             f"{prefactor} * x_{','.join(map(str, term))}" for prefactor, term in zip(self._prefactors, self._terms)
-        ])
+        ]
+        if self._constant:
+            terms.append(str(self._constant))
+
+        return ' + '.join(terms)
 
     @property
     def degree(self) -> int:
@@ -92,18 +121,29 @@ class HomogenousPolynomial(Polynomial):
     def constant(self):
         return self._constant
 
+    @property
+    def variables(self) -> Set[Tuple]:
+        """Return a set of all the the indices used by these invariants"""
+        indices = set()
+        for product in self._terms:
+            for idx in product:
+                indices.add(tuple(idx))
+        return indices
+
     def conjugate(self):
         """Return the complex conjugate of this polynomial"""
-        if self._real:
-            return HomogenousPolynomial(
-                self._degree,
-                self._prefactors.conjugate() if self._prefactors is not None else None,
-                self._terms if self._terms is not None else None, self._constant.conjugate()
-            )
-
-        raise RuntimeError("Haven't implemented conjugates of complex polynomials yet")
+        return HomogenousPolynomial(
+            self._degree,
+            self._prefactors.conjugate() if self._prefactors is not None else None,
+            self._terms if self._terms is not None else None,
+            self._constant.conjugate(),
+            conjugate_values=not self._conjugate
+        )
 
     def evaluate(self, values: np.ndarray):
+        if self._conjugate:
+            values = values.conjugate()
+
         if isinstance(values, np.ndarray):
             return self._numpy_evaluate(values)
 
@@ -122,7 +162,7 @@ class HomogenousPolynomial(Polynomial):
         return total
 
     def _generic_evaluate(self, values):
-        """Generic apply for moments that support indexing.
+        """Generic apply for values that support indexing.
 
         This is slower version of above but compatible with values that aren't numpy arrays"""
         total = self._constant
@@ -134,6 +174,80 @@ class HomogenousPolynomial(Polynomial):
         return total
 
     __call__ = evaluate
+
+    def get_partial_derivative(self, variable) -> 'HomogenousPolynomial':
+        variable = tuple(variable)
+        try:
+            return self._derivatives_cache[variable]
+        except KeyError:
+            pass
+
+        prefactors = []
+        terms = []
+        constant = 0.
+
+        for prefactor, product in zip(self._prefactors, self._terms):
+            # Gather the terms in this product
+            powers = collections.defaultdict(int)
+            for indices in product:
+                powers[tuple(indices)] += 1
+
+            try:
+                power = powers.pop(variable)
+            except KeyError:
+                # This term will not be in the derivative
+                pass
+            else:
+                # Calculate the new prefactor
+                new_prefactor = prefactor * power
+
+                new_product = []
+                # And add in the correct multiple of this variable
+                if power != 1:
+                    new_product.extend((variable,) * (power - 1))
+
+                for var, power in powers.items():
+                    # The other terms keep their exponent unchanged
+                    new_product.extend((var,) * power)
+
+                if power == 1 and len(product) == 1:
+                    constant += new_prefactor
+                else:
+                    prefactors.append(new_prefactor)
+                    terms.append(new_product)
+
+        new_degree = self.degree - 1 if prefactors else 0.
+        deriv = HomogenousPolynomial(new_degree, prefactors, terms, constant, conjugate_values=self._conjugate)
+
+        self._derivatives_cache[variable] = deriv
+        return deriv
+
+    def get_gradient(self) -> Dict[Tuple, 'HomogenousPolynomial']:
+        return {variable: self.get_partial_derivative(variable) for variable in self.variables}
+
+    @staticmethod
+    def _simplify(prefactors: np.ndarray, terms: np.ndarray):
+        new_prefactors = []
+        new_terms = []
+        for prefactor, product in zip(prefactors.tolist(), terms.tolist()):
+            if prefactor == 0:
+                continue
+
+            found = False
+            for i, new_term in enumerate(new_terms):
+                if product == new_term:
+                    new_prefactors[i] += prefactor
+                    found = True
+                    break
+
+            if not found:
+                new_prefactors.append(prefactor)
+                new_terms.append(product)
+
+        if new_prefactors:
+            new_terms, new_prefactors = tuple(zip(*sorted(zip(new_terms, new_prefactors))))
+
+        return np.array(new_prefactors), np.array(new_terms)
 
 
 def numpy_evaluate(prefactors, indices: np.array, values: np.ndarray):
@@ -152,11 +266,11 @@ def numba_evaluate(prefactors, indices, moments):
         factor = prefactors[idx]
         entry = indices[idx]
 
-        product = 1.
+        product = factor
         for index in entry:
             product *= moments[index[0], index[1], index[2]]
 
-        total += factor * product
+        total += product
     return total
 
 
@@ -170,7 +284,6 @@ class PolyBuilder:
     def __getitem__(self, indices):
         return HomogenousPolynomial(
             1,
-            prefactors=np.array([1]),
+            prefactors=np.array([1.]),
             terms=np.array([[list(indices)]]),
-            real=True,
         )
