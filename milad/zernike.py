@@ -27,7 +27,7 @@ _LOGGER = logging.getLogger(__name__)
 
 # pylint: disable=invalid-name
 
-__all__ = 'ZernikeMoments', 'ZernikeMomentCalculator', 'from_deltas', 'from_gaussians'
+__all__ = 'ZernikeMoments', 'ZernikeMomentsCalculator', 'from_deltas', 'from_gaussians'
 
 NORMALISTAION = 3. / (4. * np.pi)
 
@@ -109,7 +109,7 @@ def from_geometric_moments(
     :param geom_moments: the geometric moments
     :param l_max: the maximum spherical harmonic angular frequency, l, to go up to
     """
-    return ZernikeMomentCalculator(n_max, l_max)(geom_moments)
+    return ZernikeMomentsCalculator(n_max, l_max)(geom_moments)
 
 
 class ZernikeReconstructionQuery(base_moments.ReconstructionQuery):
@@ -212,6 +212,14 @@ class ZernikeMoments(base_moments.Moments):
 
         return moms
 
+    def __sub__(self, other: 'ZernikeMoments') -> 'ZernikeMoments':
+        if not isinstance(other, ZernikeMoments):
+            raise ValueError(f'Expected ZernikeMoments, got {type(other)}')
+
+        moms = copy.deepcopy(self)
+        moms.array.data[:] -= other.array.data[:]
+        return moms
+
     @property
     def dtype(self):
         return self._dtype
@@ -259,7 +267,7 @@ class ZernikeMoments(base_moments.Moments):
         return self._moments.compressed()
 
     def __getitem__(self, item):
-        return self.moment(*item)
+        return self._moments[item[0], item[1], item[2]]
 
     def __setitem__(self, key: Union[int, Tuple], value):
         self._set_moment(*key, value)
@@ -343,15 +351,15 @@ class ZernikeMoments(base_moments.Moments):
             calculated_values = values
 
         for n, l, m in iter_indices(n_max=order, redundant=False):
-            omega = self.moment(n, l, m)
-            z = sum_chi_nlm(n, l, m, moments)
+            omega = self._moments[n, l, m]
+            z = ZernikeMomentsCalculator.change_of_basis(n, l, m)(moments)
             calculated_values += omega * z
 
             if m != 0:
                 # Now do the symmetric -m part
                 z_conj = (-1)**m * z.conjugate()
 
-                calculated_values += z_conj * self.moment(n, l, -m)
+                calculated_values += z_conj * self._moments[n, l, -m]
 
         if zero_outside_domain:
             np.put(values, query.valid_idxs, calculated_values)
@@ -569,7 +577,7 @@ class ZernikeMomentsBuilder(functions.Function):
             return np.array(moms)
 
 
-class ZernikeMomentCalculator(base_moments.MomentsCalculator):
+class ZernikeMomentsCalculator(base_moments.MomentsCalculator):
     """Calculate Zernike moments.
 
     Takes as input geometric moments or any state vector that is a valid input to GeometricMomentsCalculator
@@ -585,11 +593,11 @@ class ZernikeMomentCalculator(base_moments.MomentsCalculator):
         try:
             return cls._change_of_basis_polys[(n, l, m)]
         except KeyError:
-            poly = omega_nl_m(n, l, m, polynomials.PolyBuilder())
+            poly = sum_chi_nlm(n, l, m, polynomials.PolyBuilder())
             cls._change_of_basis_polys[(n, l, m)] = poly
 
             if m != 0 and (n, l, -m) not in cls._change_of_basis_polys:
-                # Cache the conjugate as well
+                # Cache the -m version as well
                 cls._change_of_basis_polys[(n, l, -m)] = (-1)**m * poly.conjugate()
 
             return poly
@@ -637,7 +645,7 @@ class ZernikeMomentCalculator(base_moments.MomentsCalculator):
 
         # Get the moments themselves from polynomials of geometric moments
         for (n, l, m) in moments.iter_indices(redundant=False):
-            moments[n, l, m] = self.change_of_basis(n, l, m)(geom_moments.array)
+            moments[n, l, m] = omega_nl_m(n, l, m, geom_moments.array)
 
         if get_jacobian:
             jac = np.matmul(self._get_jacobian(), geom_jac)
@@ -657,8 +665,12 @@ class ZernikeMomentCalculator(base_moments.MomentsCalculator):
         return ZernikeMoments.rand(max_order)
 
 
+ZernikeMomentCalculator = ZernikeMomentsCalculator
+"""An alias left here for compatibility reasons"""
+
+
 def rand(max_order: int) -> ZernikeMoments:
-    return ZernikeMomentCalculator(max_order).create_random()
+    return ZernikeMomentsCalculator(max_order).create_random()
 
 
 def get_jacobian_wrt_geom_moments(max_order: int, redundant=True):
@@ -692,7 +704,7 @@ def get_jacobian_wrt_geom_moments(max_order: int, redundant=True):
         if redundant and m < 0:
             jacobian[idx, :] = (-1)**(-m) * cache.pop((n, l, -m)).conjugate()
         else:
-            vec = ZernikeMomentCalculator.change_of_basis(n, l, m)(tracker)
+            vec = omega_nl_m(n, l, m, tracker)
             jacobian[idx, :] = vec
             if redundant and m > 0:
                 # Because of the iteration order (m=0 to l followed by m=-l to -1) the positives will always be
@@ -733,12 +745,17 @@ def q_kl_nu(k: int, l: int, nu: int) -> float:
            binomial_coeff(k + l + nu, k)
 
 
-def sum_chi_nlm(n: int, l: int, m: int, geom_moments: np.ndarray) -> Union[complex, np.array]:
-    """Calculate the Zernike geometric moment conversion factors"""
+def sum_chi_nlm(n: int, l: int, m: int, geom_moments: base_moments.MomentsProto) -> Union[complex, np.array]:
+    """This call performs the change of basis transformation from a polynomial basis to Zernike"""
+    assert_valid(n, l, m)
+    if m < 0:
+        # Symmetry relation
+        return (-1)**(-m) * sum_chi_nlm(n, l, -m, geom_moments).conjugate()
+
     return c_l_m(l, m) * 2**(-m) * sum1(n=n, l=l, m=m, geom_moments=geom_moments)
 
 
-def sum1(n: int, l: int, m: int, geom_moments: np.ndarray) -> Union[complex, np.array]:
+def sum1(n: int, l: int, m: int, geom_moments: base_moments.MomentsProto) -> Union[complex, np.array]:
     """Calculate the Zernike geometric moment conversion factors"""
     k = int(math.floor((n - l) / 2))  # n - l is always even
     total = 0.
@@ -748,7 +765,7 @@ def sum1(n: int, l: int, m: int, geom_moments: np.ndarray) -> Union[complex, np.
     return total
 
 
-def sum2(n: int, l: int, m: int, nu: int, geom_moments: np.ndarray) -> Union[complex, np.array]:
+def sum2(n: int, l: int, m: int, nu: int, geom_moments: base_moments.MomentsProto) -> Union[complex, np.array]:
     total = 0.
     for alpha in inclusive(nu):
         total += binomial_coeff(nu, alpha) * \
@@ -756,7 +773,8 @@ def sum2(n: int, l: int, m: int, nu: int, geom_moments: np.ndarray) -> Union[com
     return total
 
 
-def sum3(n: int, l: int, m: int, nu: int, alpha: int, geom_moments: np.ndarray) -> Union[complex, np.array]:
+def sum3(n: int, l: int, m: int, nu: int, alpha: int,
+         geom_moments: base_moments.MomentsProto) -> Union[complex, np.array]:
     total = 0.
     for beta in inclusive(nu - alpha):
         total += binomial_coeff(nu - alpha, beta) * \
@@ -764,7 +782,8 @@ def sum3(n: int, l: int, m: int, nu: int, alpha: int, geom_moments: np.ndarray) 
     return total
 
 
-def sum4(n: int, l: int, m: int, nu: int, alpha: int, beta: int, geom_moments: np.ndarray) -> Union[complex, np.array]:
+def sum4(n: int, l: int, m: int, nu: int, alpha: int, beta: int,
+         geom_moments: base_moments.MomentsProto) -> Union[complex, np.array]:
     total = 0.
     for u in inclusive(m):
         total += (-1) ** (m - u) * binomial_coeff(m, u) * 1j ** u * \
@@ -774,7 +793,7 @@ def sum4(n: int, l: int, m: int, nu: int, alpha: int, beta: int, geom_moments: n
 
 
 def sum5(n: int, l: int, m: int, nu: int, alpha: int, beta: int, u: int,
-         geom_moments: np.ndarray) -> Union[complex, np.array]:
+         geom_moments: base_moments.MomentsProto) -> Union[complex, np.array]:
     total = 0.
     for mu in inclusive(int(math.floor((l - m) / 2.))):
         total += (-1) ** mu * 2 ** (-2 * mu) * binomial_coeff(l, mu) * \
@@ -784,8 +803,9 @@ def sum5(n: int, l: int, m: int, nu: int, alpha: int, beta: int, u: int,
     return total
 
 
-def sum6(n: int, l: int, m: int, nu: int, alpha: int, beta: int, u: int, mu: int,
-         geom_moments: np.ndarray) -> Union[complex, np.array]:
+def sum6(
+    n: int, l: int, m: int, nu: int, alpha: int, beta: int, u: int, mu: int, geom_moments: base_moments.MomentsProto
+) -> Union[complex, np.array]:
     total = 0.
     for v in inclusive(mu):
         r = 2 * (v + alpha) + u
@@ -811,7 +831,7 @@ def assert_valid(n: int, l: int, m: int):
         raise ValueError('n - l must be even')
 
 
-def omega_nl_m(n: int, l: int, m: int, geom_moments: np.array) -> complex:
+def omega_nl_m(n: int, l: int, m: int, geom_moments: base_moments.MomentsProto) -> complex:
     """Given a set of geometric moments this function will compute the corresponding Zernike moments
     """
     assert_valid(n, l, m)
@@ -819,7 +839,7 @@ def omega_nl_m(n: int, l: int, m: int, geom_moments: np.array) -> complex:
         # Symmetry relation
         return (-1)**(-m) * omega_nl_m(n, l, -m, geom_moments).conjugate()
 
-    return NORMALISTAION * sum_chi_nlm(n, l, m, geom_moments).conjugate()
+    return NORMALISTAION * ZernikeMomentsCalculator.change_of_basis(n, l, m)(geom_moments).conjugate()
 
 
 def iter_indices(n_max: int = None, l_max: int = None, *, redundant=False) -> Iterator[ZernikeIndex]:

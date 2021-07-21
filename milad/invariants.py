@@ -417,6 +417,7 @@ def apply_invariants(invariants: List[MomentInvariant], moms: np.array, normalis
     return results
 
 
+
 def read_invariants(filename: str = GEOMETRIC_INVARIANTS, read_max: int = None) -> \
         List[MomentInvariant]:
     """Read invariants in the format use by Flusser, Suk and Zitová.

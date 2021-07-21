@@ -16,6 +16,7 @@ from . import atomic
 from . import base_moments
 from . import exceptions
 from . import fingerprinting
+from . import mathutil
 from . import optimisers
 
 __all__ = ('Decoder',)
@@ -58,28 +59,6 @@ def _(grid, num_clusters: int) -> np.ndarray:
         )
 
     return kmeans.cluster_centers_
-
-
-def find_maximum(moments: base_moments.Moments, initial: np.ndarray) -> np.ndarray:
-    """Find the maximum of a set of moments"""
-
-    def calc(pos: np.ndarray):
-        return -moments.value_at(pos)
-
-    res = optimize.minimize(calc, initial)
-    return res.x
-
-
-def find_peaks(
-    num_peaks: int,
-    moments: base_moments.Moments,
-    descriptor: fingerprinting.MomentInvariantsDescriptor,
-    query: base_moments.ReconstructionQuery = None,
-    grid_size=31,
-):
-    query = query or moments.create_reconstruction_query(moments.get_grid(grid_size), moments.max_order)
-    current_grid = moments.reconstruct(query, zero_outside_domain=True)
-    return find_peaks_from_grid(num_peaks, current_grid, descriptor, query)
 
 
 class FoundPeaks:
@@ -155,55 +134,6 @@ def find_peaks_from_maxima(
         current_grid[outside] = 0.
 
     return peaks.positions / scale
-
-
-def find_peaks_from_grid(
-    num_peaks: int,
-    grid,
-    descriptor: fingerprinting.MomentInvariantsDescriptor,
-    query: base_moments.ReconstructionQuery,
-    exclude_radius=0.51,
-):
-    # pylint: disable=too-many-locals
-    subtract_signal = True
-    scale = 1.0 if descriptor.cutoff is None else 1. / descriptor.cutoff
-
-    current_grid = grid.copy()
-
-    exclude = exclude_radius * scale
-    outside = get_buffer_indices(query, current_grid)
-
-    mask = np.zeros(current_grid.shape, dtype=bool)
-    mask[outside] = True
-
-    found_positions = []
-    for _ in range(num_peaks):
-        # Find the index of the maximum value in the current grid
-        max_idx = current_grid.argmax()
-
-        # Get that position in the grid
-        atom_pos = query.points[max_idx]
-        found_positions.append(atom_pos / scale)
-
-        if subtract_signal:
-            # Build an atoms collection with a single atom at that position
-            single_atom = atomic.AtomsCollection(1, positions=[atom_pos / scale], numbers=[1.])
-
-            # Get the moments so we can subtract this from the grid
-            single_moments = descriptor.get_moments(single_atom, preprocess=False)
-
-            # Get the grid for just that atom on its own
-            atom_grid = single_moments.reconstruct(query, zero_outside_domain=True)
-
-            # Subtract off the single atom grid
-            current_grid -= atom_grid
-
-        # Now mask off the gridpoints associated with this atom
-        mask |= get_surrounding_gridpoints(query, atom_pos, exclude)
-
-        current_grid[mask] = 0.
-
-    return np.array(found_positions)
 
 
 def get_surrounding_gridpoints(
@@ -407,7 +337,7 @@ class Decoder:
         # atoms.numbers[:] = random.choices(self._descriptor.species, k=num)
         # return atoms
 
-        peaks = find_peaks(num, moments, self._descriptor, self._query)
+        peaks = find_peaks(self._descriptor, moments, num, query=self._query)
         return atomic.AtomsCollection(num, peaks, random.choices(self._descriptor.species, k=num))
 
 
@@ -608,17 +538,22 @@ def find_iteratively(
     return result
 
 
+# Interface for atoms finder:
+# (descriptor, moments, num_atoms: int, *, verbose: Bool)
+
+
 def find_atoms_from_moments(
     descriptor: fingerprinting.MomentInvariantsDescriptor,
     moments,
     num_atoms: int,
+    *,
     numbers=1.,
     mask=None,
     grid_query=None,
     verbose=False,
 ):
     # Find the peaks and create the corresponding collection of atoms
-    peaks = find_peaks(num_atoms, moments, descriptor, grid_query)
+    peaks = find_peaks(descriptor, moments, num_atoms, query=grid_query, subtract_signal=True)
     atoms = atomic.AtomsCollection(num_atoms, peaks, numbers=numbers)
 
     result = optimisers.StructureOptimiser().optimise(
@@ -630,3 +565,98 @@ def find_atoms_from_moments(
     )
 
     return result
+
+
+def find_maximum(
+    descriptor: fingerprinting.MomentInvariantsDescriptor,
+    moments: base_moments.Moments,
+    num_samples=128,
+) -> optimize.OptimizeResult:
+    """Given a set of moments this function will use a function minimisation algorithm to find
+    the global maximum of the moments reconstruction
+
+    :param descriptor: the descriptor that created the moments
+    :param moments: the moments
+    :param num_samples: the number of samples to use for the first pass of the global maximum search
+    """
+    # pylint: disable=invalid-name
+    cutoff = descriptor.cutoff
+
+    def adapter(moms, pt):
+        return -moms.value_at(np.array([mathutil.sph2cart(pt)]))
+
+    res = optimize.shgo(
+        lambda pt: adapter(moments, pt),
+        bounds=[(0.0, 1.), (0., np.pi), (0., 2 * np.pi)],
+        n=num_samples,
+        sampling_method='sobol'
+    )
+    # Convert coordinates back to cartesian and scale
+    res.update(dict(x=mathutil.sph2cart(res.x) / cutoff, xl=mathutil.sph2cart(res.x) / cutoff))
+    return res
+
+
+def find_peaks(
+    descriptor: fingerprinting.MomentInvariantsDescriptor,
+    moments: base_moments.Moments,
+    num: int,
+    *,
+    query: base_moments.ReconstructionQuery = None,
+    grid_size=31,
+    exclude_radius=0.9,
+    subtract_signal=True
+):
+    query = query or moments.create_reconstruction_query(moments.get_grid(grid_size), moments.max_order)
+    current_grid = moments.reconstruct(query, zero_outside_domain=True)
+    return find_peaks_from_grid(
+        descriptor, num, current_grid, query, exclude_radius=exclude_radius, subtract_signal=subtract_signal
+    )
+
+
+def find_peaks_from_grid(
+    descriptor: fingerprinting.MomentInvariantsDescriptor,
+    num_peaks: int,
+    grid_values: np.ndarray,
+    query: base_moments.ReconstructionQuery,
+    exclude_radius=0.9,
+    subtract_signal=True
+):
+    # pylint: disable=too-many-locals
+    scale = 1.0 if descriptor.cutoff is None else 1. / descriptor.cutoff
+
+    current_grid = grid_values.copy()
+
+    exclude = exclude_radius * scale
+    outside = get_buffer_indices(query, current_grid)
+
+    mask = np.zeros(current_grid.shape, dtype=bool)
+    mask[outside] = True
+
+    found_positions = []
+    for _ in range(num_peaks):
+        # Find the index of the maximum value in the current grid
+        max_idx = current_grid.argmax()
+
+        # Get that position in the grid
+        atom_pos = query.points[max_idx]
+        found_positions.append(atom_pos / scale)
+
+        if subtract_signal:
+            # Build an atoms collection with a single atom at that position
+            single_atom = atomic.AtomsCollection(1, positions=[atom_pos / scale], numbers=[1.])
+
+            # Get the moments so we can subtract this from the grid
+            single_moments = descriptor.get_moments(single_atom, preprocess=False)
+
+            # Get the grid for just that atom on its own
+            atom_grid = single_moments.reconstruct(query, zero_outside_domain=True)
+
+            # Subtract off the single atom grid
+            current_grid -= atom_grid
+
+        # Now mask off the gridpoints associated with this atom
+        mask |= get_surrounding_gridpoints(query, atom_pos, exclude)
+
+        current_grid[mask] = 0.
+
+    return np.array(found_positions)

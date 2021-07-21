@@ -8,6 +8,8 @@ from typing import List, Union, Tuple, Callable, Any, Iterable, Type, Optional
 import numpy as np
 import scipy
 
+from . import mathutil
+
 _LOGGER = logging.getLogger(__name__)
 
 SQRT_TWO_PI = (2 * np.pi)**0.5
@@ -275,6 +277,7 @@ class Function(metaclass=abc.ABCMeta):
         self._callbacks.remove(func)
 
     def __call__(self, state: State, jacobian=False):
+        # pylint: disable=too-many-branches
         name = self.__class__.__name__
 
         if self.input_type is not None:
@@ -559,6 +562,7 @@ class Native(Function):
 
 
 class CosineCutoff(Function):
+    # pylint: disable=anomalous-backslash-in-string
     """A function that takes a set of Features and scales their weights by applying a cosine cutoff in the form
 
         w' = w (cos(\pi * dr / r_\text{cut}) + 1.) / 2
@@ -637,6 +641,23 @@ class CosineCutoff(Function):
     ):
         import sympy as sp
         return weight * (sp.cos(sp.pi * dr / rcut) + 1) / 2
+
+
+class SphericalToCart(Function):
+
+    def evaluate(
+        # pylint: disable=arguments-differ
+        self,
+        spherical: np.ndarray,
+        *,
+        get_jacobian=False
+    ):
+        cart = mathutil.sph2cart(spherical)
+
+        if get_jacobian:
+            pass
+
+        return cart
 
 
 # endregion

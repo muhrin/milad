@@ -29,7 +29,7 @@ def test_structure_optimiser_invariants(complex_invariants):
         },
         cutoff=cutoff,
         invs=complex_invariants,
-        moments_calculator=zernike.ZernikeMomentCalculator(complex_invariants.max_order),
+        moments_calculator=zernike.ZernikeMomentsCalculator(complex_invariants.max_order),
         apply_cutoff=False,
     )
     fingerprint = descriptor(milad_molecule)
@@ -66,7 +66,7 @@ def test_structure_optimiser_moments(complex_invariants):
         },
         cutoff=cutoff,
         invs=complex_invariants,
-        moments_calculator=zernike.ZernikeMomentCalculator(complex_invariants.max_order),
+        moments_calculator=zernike.ZernikeMomentsCalculator(complex_invariants.max_order),
         apply_cutoff=False,
     )
     target = descriptor.get_moments(milad_molecule)

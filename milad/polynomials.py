@@ -5,7 +5,6 @@ import numbers
 from typing import Tuple, Dict, Set
 
 import numpy as np
-
 import numba
 
 
@@ -154,7 +153,7 @@ class HomogenousPolynomial(Polynomial):
         total = self._constant  # type: float
 
         if self._terms is not None:
-            if values.dtype == object:
+            if values.dtype == object or len(values.shape) > 3:
                 total += numpy_evaluate(self.prefactors, self._terms, values)
             else:
                 total += numba_evaluate(self.prefactors, self._terms, values)

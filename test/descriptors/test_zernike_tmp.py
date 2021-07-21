@@ -26,7 +26,7 @@ def test_amp_zernike_comparison():
     atoms = atomic.AtomsCollection(natoms - 1, positions=pts, numbers=14)
 
     milad_descriptor = functions.Chain(
-        atomic.FeatureMapper(), functions.CosineCutoff(rcut), zernike.ZernikeMomentCalculator(nmax, use_direct=True),
+        atomic.FeatureMapper(), functions.CosineCutoff(rcut), zernike.ZernikeMomentsCalculator(nmax, use_direct=True),
         invariants_.PowerSpectrum(mix_radials=False, radials_first=True)
     )
 

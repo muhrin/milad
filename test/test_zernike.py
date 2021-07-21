@@ -6,7 +6,6 @@ import sympy
 
 from milad import geometric
 from milad import zernike
-from milad import invariants
 from milad import mathutil
 from milad import utils
 from milad import generate
@@ -47,12 +46,12 @@ def test_zernike_of_deltas(complex_invariants):
     max_order = 10
 
     moms = zernike.from_deltas(max_order, positions, weights=weights)
-    invs_one = invariants.apply_invariants(complex_invariants, moms)
+    invs_one = complex_invariants.apply(moms)
 
     # Now rotate the system randomly and recalculate the invariants
     rotated = transform.randomly_rotate(positions)
     rot_moms = zernike.from_deltas(max_order, rotated)
-    invs_two = invariants.apply_invariants(complex_invariants, rot_moms)
+    invs_two = complex_invariants.apply(rot_moms)
 
     np.testing.assert_array_almost_equal(invs_two, invs_one)
 
@@ -65,13 +64,13 @@ def test_zernike_of_gaussians(complex_invariants):
 
     geom_moments = geometric.from_gaussians(max_order, positions, sigma, mass)
     zmoments = zernike.from_geometric_moments(max_order, geom_moments)
-    invs_one = invariants.apply_invariants(complex_invariants, zmoments)
+    invs_one = complex_invariants.apply(zmoments)
 
     # Now rotate the system randomly and recalculate the invariants
     rotated = transform.randomly_rotate(positions)
     rot_geom_moments = geometric.from_gaussians(max_order, rotated, sigma, mass)
     rot_zmoments = zernike.from_geometric_moments(max_order, rot_geom_moments)
-    invs_two = invariants.apply_invariants(complex_invariants, rot_zmoments)
+    invs_two = complex_invariants.apply(rot_zmoments)
 
     np.testing.assert_array_almost_equal(invs_two, invs_one)
 

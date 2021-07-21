@@ -2,15 +2,22 @@
 """Abstract base classes and utilities for moments"""
 
 import abc
-from typing import Tuple, Iterator, Union
+from typing import Tuple, Iterator, Union, Protocol
 
 import numpy as np
 
 from . import functions
 
-__all__ = 'Moments', 'Index', 'ReconstructionQuery'
+__all__ = 'Moments', 'Index', 'ReconstructionQuery', 'MomentsProto'
 
 Index = Tuple[int, int, int]  # A three dimensional moment index
+
+
+class MomentsProto(Protocol):
+    """This protocol defines a generic type that provides moments from a 3-tuple of integers"""
+
+    def __getitem__(self, index: Index):
+        """Get the moments with the passed index"""
 
 
 class ReconstructionQuery:

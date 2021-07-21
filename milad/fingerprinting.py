@@ -218,7 +218,7 @@ def descriptor(
 
     # Default to Zernike moments if not supplied
     invs = invs or invariants.read(invariants.COMPLEX_INVARIANTS)
-    moments_calculator = moments_calculator or zernike.ZernikeMomentCalculator(invs.max_order)
+    moments_calculator = moments_calculator or zernike.ZernikeMomentsCalculator(invs.max_order)
 
     features = features or dict(type=functions.WeightedDelta, map_species_to=species_map.get('to', None))
     return MomentInvariantsDescriptor(

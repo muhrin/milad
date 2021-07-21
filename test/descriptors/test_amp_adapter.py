@@ -36,7 +36,7 @@ def test_compare_zernike_with_amp():
     milad_descriptor = descriptors.AmpDescriptor(
         fingerprinting.descriptor(
             features=dict(type=functions.WeightedDelta, kwargs=dict(weight=specie_weight)),
-            moments_calculator=zernike.ZernikeMomentCalculator(7, use_direct=True),
+            moments_calculator=zernike.ZernikeMomentsCalculator(7, use_direct=True),
             invs=invariants_.PowerSpectrum(mix_radials=False, radials_first=True),
             cutoff=rcut,
             apply_cutoff=True,

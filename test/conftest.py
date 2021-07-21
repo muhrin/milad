@@ -68,7 +68,7 @@ def create_descriptor(invs, _species=('Si',)):
     return milad.descriptor(
         species=dict(map=dict(numbers=specie_numbers, range=(0.5, 1.5))),
         features=dict(type=milad.functions.WeightedDelta, map_species_to='WEIGHT'),
-        moments_calculator=milad.zernike.ZernikeMomentCalculator(invs.max_order),
+        moments_calculator=milad.zernike.ZernikeMomentsCalculator(invs.max_order),
         invs=invs,
         cutoff=cutoff,
         apply_cutoff=True,
