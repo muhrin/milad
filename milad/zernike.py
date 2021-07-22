@@ -9,7 +9,7 @@ import math
 import numbers
 import functools
 import random
-from typing import Union, Tuple, Iterator, Optional
+from typing import Union, Tuple, Iterator
 
 import numpy as np
 from numpy import ma
@@ -27,7 +27,7 @@ _LOGGER = logging.getLogger(__name__)
 
 # pylint: disable=invalid-name
 
-__all__ = 'ZernikeMoments', 'ZernikeMomentsCalculator', 'from_deltas', 'from_gaussians'
+__all__ = 'ZernikeMoments', 'ZernikeMomentsCalculator', 'ZernikeMomentCalculator', 'from_deltas', 'from_gaussians'
 
 NORMALISTAION = 3. / (4. * np.pi)
 
@@ -472,7 +472,7 @@ class ZernikeMomentsBuilder(functions.Function):
     input_type = np.ndarray
     supports_jacobian = True
 
-    def __init__(self, n_max: int, l_max: int = None, mask: Optional[ZernikeMoments] = None):
+    def __init__(self, n_max: int, l_max: int = None, mask: ZernikeMoments = None):
         super().__init__()
         self._n_max = n_max
         self._l_max = n_max if l_max is None else l_max

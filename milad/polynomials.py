@@ -64,6 +64,10 @@ class HomogenousPolynomial(Polynomial):
         self._conjugate = conjugate_values
         self._derivatives_cache = {}
         self._variables = None
+        if self._terms.size > 0:
+            self._evaluate_method = self._numpy_evaluate
+        else:
+            self._evaluate_method = lambda *args: self._constant
 
     def __mul__(self, value: numbers.Number):
         if isinstance(value, numbers.Number):
@@ -154,7 +158,8 @@ class HomogenousPolynomial(Polynomial):
         if self._conjugate:
             values = values.conjugate()
 
-        if isinstance(values, np.ndarray) and values.dtype != object:
+        if isinstance(values, np.ndarray):
+            # return self._evaluate_method(values)
             return self._numpy_evaluate(values)
 
         return self._generic_evaluate(values)
