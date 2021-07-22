@@ -168,6 +168,7 @@ def test_zernike_builder():
 
 
 def test_direct_calculation():
+    # pylint: disable=unused-variable
     nmax = 4
     lmax = 4
 
@@ -179,8 +180,6 @@ def test_direct_calculation():
 
     diff = from_deltas.array - from_deltas_direct.array
 
-    print(diff)
-
     spherical = mathutil.cart2sph(pos.T)  # Spherical coordinates
     for n in utils.inclusive(nmax):
         for l in utils.inclusive(n):
@@ -189,7 +188,4 @@ def test_direct_calculation():
             for m in utils.inclusive(-l, l):
                 vals = 3 / (4 * np.pi) * zernike.zernike_poly(n, l, m, spherical).conjugate()
                 total = np.sum(vals)
-
                 from_deltas_val = from_deltas[n, l, m]
-
-                print(n, l, m, total, from_deltas_val)

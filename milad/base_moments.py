@@ -2,7 +2,8 @@
 """Abstract base classes and utilities for moments"""
 
 import abc
-from typing import Tuple, Iterator, Union, Protocol
+from typing import Tuple, Iterator, Union
+from typing_extensions import Protocol
 
 import numpy as np
 

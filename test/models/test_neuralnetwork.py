@@ -132,5 +132,3 @@ def test_nn_lennard_jones(descriptor, lj_training_data):
 
     nn = neuralnetwork.NeuralNetwork(hiddenlayers=(10, 10))
     training, loss_fn = nn.fit(fingerprint_set, max_epochs=500, batchsize=1000, learning_rate=1e-3)
-
-    print(loss_fn)

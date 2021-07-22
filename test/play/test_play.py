@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import matplotlib.pyplot as plt
-import numpy
+import numpy as np
 from scipy.spatial.transform import Rotation
 
 import milad
@@ -9,17 +9,17 @@ import milad
 
 
 def generate_vectors_on_sphere(num):
-    vecs = numpy.empty((num, 3))
+    vecs = np.empty((num, 3))
     for i in range(num):
-        vec = numpy.random.rand(3)
-        vec /= numpy.linalg.norm(vec, axis=0)
+        vec = np.random.rand(3)
+        vec /= np.linalg.norm(vec, axis=0)
         vecs[i] = vec
     return vecs
 
 
 def test_env_simple_no_cutoff_fn(moment_invariants, request, save_figures):
     # Settings
-    numpy.random.seed(5)
+    np.random.seed(5)
     num_atoms = 6
     sigma = 0.5
     volume = 1.
@@ -109,7 +109,7 @@ def test_atom_entering(moment_invariants, request, save_figures):
     cutoff_params = milad.play.make_cutoff_params(milad.play.cos_cutoff, cutoff)
 
     # The second atom just outside the cutoff zone
-    positions = cutoff * numpy.random.rand(num_atoms, 3)
+    positions = cutoff * np.random.rand(num_atoms, 3)
     target = num_atoms - 1
     positions[target] = (start_x, 0., 0.)
 
@@ -118,7 +118,7 @@ def test_atom_entering(moment_invariants, request, save_figures):
 
     for i in range(num_steps):
         x_pos = start_x - i * delta
-        positions[target] = numpy.array((x_pos, 0., 0.))
+        positions[target] = np.array((x_pos, 0., 0.))
 
         # Create the environment
         env = milad.play.SmoothGaussianEnvironment(**cutoff_params)
@@ -153,7 +153,7 @@ def test_asymmetric_distribution(moment_invariants, request, save_figures):
     # moment_invariants = moment_invariants[:10]
 
     # The second atom just outside the cutoff zone
-    pos = numpy.array((-3., 0., 0.))
+    pos = np.array((-3., 0., 0.))
 
     # Create the environment
     env = milad.play.SmoothGaussianEnvironment()
@@ -177,13 +177,12 @@ def test_fingerprint(moment_invariants, request, save_figures):
     scale = 4.
     num_invariants = len(moment_invariants)
 
-    positions = scale * numpy.random.rand(num_atoms, 3)
+    positions = scale * np.random.rand(num_atoms, 3)
     calculator = milad.play.FingerprintCalculator(
         invariants=moment_invariants, sigma=1., cutoff=6., cutoff_function='cos', normalise=True
     )
 
     orig_fp = calculator.calculate(positions)
-    zeros = numpy.zeros((len(orig_fp)))
 
     series = [orig_fp]
     for _ in range(num_rotations):
@@ -195,8 +194,7 @@ def test_fingerprint(moment_invariants, request, save_figures):
         fprint = calculator.calculate(rotated)
         series.append(fprint)
 
-        delta = fprint - orig_fp
-        numpy.testing.assert_almost_equal(delta, zeros)
+        assert np.allclose(fprint, orig_fp)
 
     fig, axes = plt.subplots()
     axes.set_title('5 random atoms 6x6x6 cube, $\\sigma=1, r_{cut} = 6.$')

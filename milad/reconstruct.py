@@ -618,7 +618,7 @@ def find_peaks_from_grid(
     num_peaks: int,
     grid_values: np.ndarray,
     query: base_moments.ReconstructionQuery,
-    exclude_radius=0.9,
+    exclude_radius=0.95,
     subtract_signal=True
 ):
     # pylint: disable=too-many-locals

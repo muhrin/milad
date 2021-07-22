@@ -4,7 +4,7 @@ import collections
 import functools
 import operator
 import pathlib
-from typing import Sequence, Union, List, Set, Tuple, Dict, Iterator, Callable
+from typing import Sequence, Union, List, Set, Tuple, Iterator, Callable
 
 import numpy as np
 
@@ -29,40 +29,24 @@ def prod(iterable):
     return functools.reduce(operator.mul, iterable, 1)
 
 
-class MomentInvariant:
+class MomentInvariant(polynomials.HomogenousPolynomial):
     """Class storing moment invariants.
 
     The invariants consist of a sum of terms where each term has a prefactor multiplied by a product
     of moments labelled by three indices e.g. p * c_20^0 * c_20^0
     """
 
-    def __init__(self, weight: int, *term, constant=0):
+    def __init__(self, weight: int, *term, constant=0, conjugate_values=False):
+        factors, arr = zip(*term)
+        super().__init__(weight, factors, arr, constant=constant, conjugate_values=conjugate_values)
         self._weight = weight
-        self._terms = term
         self._max_order = -1
-        self._constant = constant
+        # self._constant = constant
 
-        self._farray = None  # The prefactors array
         self._indarray = None  # The index array
         self._norm_power = 1
-        self._derivatives = None  # A cache for the derivatives
-        self._variables = None
 
-        self._build()
-
-    def __str__(self):
-        sum_parts = []
-        for prefactor, product in self._terms:
-            powers = self._collect_powers(product)
-            product_parts = [str(prefactor)]
-            product_parts.extend(
-                'm{},{},{}^{}'.format(indices[0], indices[1], indices[2], power) for indices, power in powers.items()
-            )
-
-            string = ' '.join(product_parts)
-            sum_parts.append(string)
-
-        return ' + '.join(sum_parts)
+        # self._build()
 
     @property
     def weight(self) -> int:
@@ -70,83 +54,16 @@ class MomentInvariant:
         return self._weight
 
     @property
-    def terms(self) -> Tuple:
-        return self._terms
-
-    @property
     def max_order(self) -> int:
-        if self._max_order == -1 and self._terms:
-            term = self._terms[0]
-            for indices in term[1]:
-                self._max_order = max(self._max_order, np.max(indices))
-        return self._max_order
-
-    @property
-    def variables(self) -> Set[Tuple]:
-        """Get the indexes of all the unique moments used in this invariant e.g. if the invariant
-        was:
-
-            m_200 * m_200 * m_020 m_020 + m_002 m_002 + 2 m_110 m_110 + 2 m_101 m_101 + 2 m_011 m_011
-
-        then this function would return
-
-            {(2, 0, 0), (0, 2, 0), (0, 0, 2), (1, 1, 0), (1, 0, 0), (0, 1, 1)}
-
-        as these are the all the moments (or variables) involved in calculating this invariant
-        """
-        if self._variables is None:
-            variables = set()
-            for _prefactor, product in self._terms:
-                for part in product:
-                    variables.add(part)
-            self._variables = variables
-
-        return self._variables
-
-    @property
-    def prefactors(self) -> np.ndarray:
-        return self._farray
+        return self._terms.max()
 
     @property
     def terms_array(self) -> np.ndarray:
-        return self._indarray
-
-    # def insert(self, prefactor, indices: Sequence[Tuple]):
-    #     """
-    #     :param prefactor: the prefactor for this term in the invariant
-    #     :param indices: the indices of the moments involved in this invariant
-    #     """
-    #     if not indices:
-    #         # If there are no indices supplied then it's just a constant
-    #         self._constant += prefactor
-    #         return
-    #
-    #     if not all(len(entry) == 3 for entry in indices):
-    #         raise ValueError('There have to be three indices per entry, got: {}'.format(indices))
-    #     self._terms.append((prefactor, tuple(indices)))
-
-    def _build(self):
-        if self._terms:
-            factors, arr = zip(*self._terms)
-            self._farray = np.asarray(factors)
-            self._indarray = np.asarray(arr)
-            term = self._terms[0][1]
-            self._norm_power = np.sum(term) / 3. + len(term)
+        return self.terms
 
     def apply(self, raw_moments: base_moments.Moments, normalise=False) -> float:
         """Compute this invariant from the given moments optionally normalising"""
-        if isinstance(raw_moments, np.ndarray):
-            total = self._numpy_apply(raw_moments)
-        else:
-            # If we can get a matrix we can still use the fast (numpy) method
-            try:
-                mtx = raw_moments.to_matrix()
-            except AttributeError:
-                # Ok, use generic method
-                total = self._generic_apply(raw_moments)
-            else:
-                total = self._numpy_apply(mtx)
-
+        total = self.evaluate(raw_moments)
         if normalise:
             return total / raw_moments[0, 0, 0]**self._norm_power
 
@@ -155,95 +72,15 @@ class MomentInvariant:
     def __call__(self, *args, **kwargs):
         return self.apply(*args, **kwargs)
 
-    # def _numpy_apply(self, raw_moments: np.ndarray):
-    #     """Fast method to get the invariant from a numpy array"""
-    #     total = self._constant  # type: float
-    #
-    #     if self._terms:
-    #         indices = self._indarray
-    #         total += np.prod(
-    #             self._farray,
-    #             np.product(raw_moments[indices[:, :, 0], indices[:, :, 1], indices[:, :, 2]],
-    #                           axis=1)
-    #         )
-    #
-    #     return total
+    def evaluate(self, values: Union[np.ndarray, base_moments.Moments]):
+        if not isinstance(values, np.ndarray):
+            # If we can get a matrix we can still use the fast (numpy) method
+            try:
+                values = values.array
+            except AttributeError:
+                pass
 
-    def _numpy_apply(self, raw_moments: np.ndarray):
-        """Fast method to get the invariant from a numpy array"""
-        total = self._constant  # type: float
-
-        if self._terms:
-            if raw_moments.dtype == object:
-                total += polynomials.numpy_evaluate(self.prefactors, self.terms_array, raw_moments)
-            else:
-                total += polynomials.numba_evaluate(self.prefactors, self.terms_array, raw_moments)
-
-        return total
-
-    def _generic_apply(self, moments):
-        """Generic apply for moments that support indexing.
-
-        This is slower version of above but compatible with moments that aren't numpy arrays"""
-        total = self._constant
-        for factor, indices in self._terms:
-            product = 1
-            for index in indices:
-                product *= moments[index]
-            total += factor * product
-        return total
-
-    def derivatives(self) -> Dict[Tuple, 'MomentInvariant']:
-        """Get analytical derivatives for this invariant wrt each of its variables
-
-        Returns a dictionary whose key is the variable (the index tuple) and the value the
-        corresponding MomentInvariant
-        """
-        if not self._derivatives:
-            # Have to calculate first time
-            deriv_terms = {}  # type: Dict[Tuple, InvariantBuilder]
-            for prefactor, product in self._terms:
-                powers = collections.defaultdict(int)
-                for indices in product:
-                    powers[indices] += 1
-
-                # Now carry out the analytical derivative wrt each of our variables
-                for variable in self.variables:
-                    if variable not in powers:
-                        continue
-
-                    derivative = deriv_terms.setdefault(variable, InvariantBuilder(self._weight - 1))
-                    new_product = []
-
-                    # Multiply the prefactor by the current power of the variable
-                    power = powers[variable]
-                    # Calculate the new prefactor
-                    new_prefactor = prefactor * power
-
-                    # And add in the correct multiple of this variable
-                    if power != 1:
-                        new_product.extend((variable,) * (power - 1))
-
-                    for var, power in powers.items():
-                        if var == variable:
-                            # Skip this, we've dealt with it above
-                            continue
-
-                        # The other terms keep their exponent unchanged
-                        new_product.extend((var,) * power)
-
-                    derivative.add_term(new_prefactor, new_product)
-
-            self._derivatives = {variable: builder.build() for variable, builder in deriv_terms.items()}
-
-        return self._derivatives
-
-    @staticmethod
-    def _collect_powers(product: List[Tuple]) -> Dict[Tuple, int]:
-        powers = collections.defaultdict(int)
-        for indices in product:
-            powers[indices] += 1
-        return powers
+        return super().evaluate(values)
 
 
 class InvariantBuilder:
@@ -378,13 +215,13 @@ class MomentInvariants(functions.Function):
             jac = np.zeros((len(self._invariants), len(moments)), dtype=vector.dtype)
 
         for idx, inv in enumerate(self._invariants):
-            vector[idx] = inv.apply(moments, normalise=False)
+            vector[idx] = inv.evaluate(moments)
 
             if get_jacobian:
                 # Evaluate the derivatives
-                for index, dphi in inv.derivatives().items():
+                for index, dphi in inv.get_gradient().items():
                     in_index = moments.linear_index(index)
-                    jac[idx, in_index] = dphi.apply(moments)
+                    jac[idx, in_index] = dphi.evaluate(moments.array)
 
         if self._real:
             vector = vector.real
@@ -415,7 +252,6 @@ def apply_invariants(invariants: List[MomentInvariant], moms: np.array, normalis
         results[idx] = invariant.apply(moms, normalise=normalise)
 
     return results
-
 
 
 def read_invariants(filename: str = GEOMETRIC_INVARIANTS, read_max: int = None) -> \

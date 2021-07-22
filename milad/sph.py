@@ -128,7 +128,7 @@ def create_array(indices: IndexTraits, dtype=complex):
     """Create an empty array that is sized according to the passed indices"""
     array = np.empty((indices.N, indices.L, 2 * indices.L + 1), dtype=dtype)
     # Create the mask and unmask the valid elements
-    mask = np.ones(array.shape, dtype=np.int)
+    mask = np.ones(array.shape, dtype=int)
     for idx in indices.iter_nlm():
         mask[idx] = 0
     return numpy.ma.array(array, mask=mask)

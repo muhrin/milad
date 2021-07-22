@@ -192,7 +192,7 @@ class ZernikeMoments(base_moments.Moments):
         self._moments.fill(np.nan)
 
         # Create an index array that allows us to map from a multi-index like [5, 3, -1] to a linear index
-        idx_array = ma.masked_array(np.empty(moments.shape, dtype=np.int), mask=moments.mask)
+        idx_array = ma.masked_array(np.empty(moments.shape, dtype=int), mask=moments.mask)
         idx_array[~moments.mask] = np.arange(moments.count())
         self._idx_array = idx_array
 

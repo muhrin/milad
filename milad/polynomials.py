@@ -42,6 +42,13 @@ class HomogenousPolynomial(Polynomial):
         """
         prefactors = np.array(prefactors)
         terms = np.array(terms)
+
+        if terms.size == 0 and len(terms.shape) == 1:
+            # Make terms the right shape if it is empty
+            terms = np.empty((0, 0, 0))
+
+        if len(terms.shape) != 3:
+            raise ValueError(f'terms must be rank three array, got {len(terms.shape)}')
         if len(prefactors) != len(terms):
             raise ValueError(
                 f'prefactors and terms must have same length, got prefactors={len(prefactors)}, terms={len(terms)}'
@@ -56,6 +63,7 @@ class HomogenousPolynomial(Polynomial):
         self._constant = constant
         self._conjugate = conjugate_values
         self._derivatives_cache = {}
+        self._variables = None
 
     def __mul__(self, value: numbers.Number):
         if isinstance(value, numbers.Number):
@@ -123,11 +131,14 @@ class HomogenousPolynomial(Polynomial):
     @property
     def variables(self) -> Set[Tuple]:
         """Return a set of all the the indices used by these invariants"""
-        indices = set()
-        for product in self._terms:
-            for idx in product:
-                indices.add(tuple(idx))
-        return indices
+        if self._variables is None:
+            indices = set()
+            for product in self._terms:
+                for idx in product:
+                    indices.add(tuple(idx))
+            self._variables = indices
+
+        return self._variables
 
     def conjugate(self):
         """Return the complex conjugate of this polynomial"""
@@ -143,7 +154,7 @@ class HomogenousPolynomial(Polynomial):
         if self._conjugate:
             values = values.conjugate()
 
-        if isinstance(values, np.ndarray):
+        if isinstance(values, np.ndarray) and values.dtype != object:
             return self._numpy_evaluate(values)
 
         return self._generic_evaluate(values)
@@ -152,7 +163,7 @@ class HomogenousPolynomial(Polynomial):
         """Fast method to get the invariant from a numpy array"""
         total = self._constant  # type: float
 
-        if self._terms is not None:
+        if self._terms.size > 0:
             if values.dtype == object or len(values.shape) > 3:
                 total += numpy_evaluate(self.prefactors, self._terms, values)
             else:
@@ -183,7 +194,7 @@ class HomogenousPolynomial(Polynomial):
 
         prefactors = []
         terms = []
-        constant = 0.
+        constant = 0
 
         for prefactor, product in zip(self._prefactors, self._terms):
             # Gather the terms in this product
@@ -215,7 +226,7 @@ class HomogenousPolynomial(Polynomial):
                     prefactors.append(new_prefactor)
                     terms.append(new_product)
 
-        new_degree = self.degree - 1 if prefactors else 0.
+        new_degree = self.degree - 1 if prefactors else 0
         deriv = HomogenousPolynomial(new_degree, prefactors, terms, constant, conjugate_values=self._conjugate)
 
         self._derivatives_cache[variable] = deriv
@@ -251,10 +262,7 @@ class HomogenousPolynomial(Polynomial):
 
 def numpy_evaluate(prefactors, indices: np.array, values: np.ndarray):
     """Fast method to get the polynomial from a numpy array"""
-    total = 0.
-    total += np.dot(prefactors, np.prod(values[indices[:, :, 0], indices[:, :, 1], indices[:, :, 2]], axis=1))
-
-    return total
+    return np.dot(prefactors, np.prod(values[indices[:, :, 0], indices[:, :, 1], indices[:, :, 2]], axis=1))
 
 
 @numba.jit(parallel=False, nopython=True)

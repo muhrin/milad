@@ -29,7 +29,7 @@ setup(
     python_requires='>=3.6',
     install_requires=[
         'dscribe', 'matplotlib', 'miniball', 'numba', 'numpy', 'rmsd', 'torch', 'scipy', 'sympy', 'scikit-learn',
-        'scikit-image'
+        'scikit-image', 'typing-extensions'
     ],
     extras_require={
         'dev': [

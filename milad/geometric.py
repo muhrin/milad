@@ -47,8 +47,8 @@ class GeometricMoments(base_moments.Moments):
         # Just trying this for now, let's see if it's possible to not force self._moments to be a numpy array
         max_order = moments.shape[0] - 1
         # Mask everything and then unmask the ones we want
-        mask = np.ones(moments.shape, dtype=np.int)
-        idx_array = np.empty(moments.shape, dtype=np.int)
+        mask = np.ones(moments.shape, dtype=int)
+        idx_array = np.empty(moments.shape, dtype=int)
         for i, indices in enumerate(iter_indices(max_order)):
             mask[indices] = 0
             idx_array[indices] = i

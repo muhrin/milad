@@ -63,12 +63,12 @@ def test_invariant_derivative(moment_invariants):
     # Symbols for moments
     m = sympy.IndexedBase('m')  # pylint: disable=invalid-name
     phi = invariant.apply(m)  # Analytic expression for moments
-    derivatives = invariant.derivatives()
+    derivatives = invariant.get_gradient()
 
     for indices, entry in derivatives.items():
         dm = m[indices]  # pylint: disable=invalid-name
         dphi_dm_analytic = phi.diff(dm)
-        dphi_dm_calculated = entry.apply(m)
+        dphi_dm_calculated = entry(m)
 
         assert dphi_dm_calculated == dphi_dm_analytic
 
@@ -111,7 +111,7 @@ def test_invariants_derivatives_correctness(complex_invariants):
 
             # Get derivative from the Jacobian
             from_jac = jac[i, j]
-            if not isinstance(from_jac, int):
+            if not isinstance(from_jac, (int, np.integer)):
                 from_jac = from_jac.expand()
 
             # Compare

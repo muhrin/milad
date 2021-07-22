@@ -49,6 +49,5 @@ def test_descriptor_smoothness(descriptor):
             assert fingerprint_max == 0.
 
         assert fingerprint_max >= last_max
-        print(x, fingerprint_max)
 
         last_max = fingerprint_max
