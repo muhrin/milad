@@ -358,7 +358,6 @@ class ZernikeMoments(base_moments.Moments):
             if m != 0:
                 # Now do the symmetric -m part
                 z_conj = (-1)**m * z.conjugate()
-
                 calculated_values += z_conj * self._moments[n, l, -m]
 
         if zero_outside_domain:
@@ -949,7 +948,7 @@ def index_traits(n, l) -> sph.IndexTraits:
     return sph.IndexTraits(n, l, l_le_n=True, n_minus_l_even=True)
 
 
-def zernike_poly(n: int, l: int, m: int, pt):
+def zernike_poly(n: int, l: int, m: int, pt, condon_shortley=True):
     """Evaluate the 3D Zernike polynomial at the given spherical coordinates"""
     rho = pt[0]
     theta = pt[1]
@@ -961,6 +960,10 @@ def zernike_poly(n: int, l: int, m: int, pt):
     #   phi = polar (colatitudinal) coord
     # while we use the opposite convention
     angular = special.sph_harm(m, l, phi, theta)
+    if not condon_shortley:
+        # scipy sph_harm incorporates teh Condon-Shortley phase so if we don't want it we have to
+        # cancel it out here
+        angular /= (-1)**m
 
     return radial * angular
 
@@ -983,3 +986,6 @@ def r_nl(n: int, l: int, rho) -> numbers.Number:
     #          special.hyp2f1(-k, (n + l + D) / 2., l + D / 2., rho**2)
 
     return normalisation * total
+    #
+    # k = int((n - l) / 2)
+    # return rho ** l * sum(q_kl_nu(k, l, nu) * rho ** (2 * nu) for nu in inclusive(k))

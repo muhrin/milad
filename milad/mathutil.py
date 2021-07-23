@@ -114,9 +114,16 @@ def cart2sph(vec) -> np.array:
     y = vec[1]
     z = vec[2]
 
-    hxy = np.hypot(x, y)
-    r = np.hypot(hxy, z)
-
-    theta = np.arctan2(hxy, z)
+    r = np.sqrt(x**2 + y**2 + z**2)
+    theta = np.arccos(z / r)
     phi = np.arctan2(y, x)
-    return np.array([r, theta, phi])
+
+    # hxy = np.hypot(x, y)
+    # r = np.hypot(hxy, z)
+    #
+    # theta = np.arctan2(hxy, z)
+    # phi = np.arctan2(y, x)
+
+    # Wrap phi to the range [0, 2pi]
+    phi2 = np.where(phi < 0, 2 * np.pi + phi, phi)
+    return np.array([r, theta, phi2])
