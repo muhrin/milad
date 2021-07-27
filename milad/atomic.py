@@ -224,7 +224,7 @@ class AtomsCollectionBuilder(functions.Function):
 
 
 class FeatureMapper(functions.Function):
-    """Map a collection of atoms onto a generic feature type such as Delta functions or Gaussians"""
+    """Map a collection of atoms onto a generic feature type such as delta functions or Gaussians"""
     input_type = AtomsCollection
     output_type = functions.Features
     supports_jacobian = True
@@ -492,7 +492,10 @@ class MapNumbers(functions.Function):
             # Now adjust the numbers
             for idx, num in enumerate(out_atoms.numbers):
                 if self._mapped_range[0] <= num <= self._mapped_range[1]:
-                    rescaled = (num - self._mapped_range[0]) / self._range_size * len(self._numbers)
+                    if self._range_size == 0.:
+                        rescaled = self._mapped_range[0]
+                    else:
+                        rescaled = (num - self._mapped_range[0]) / self._range_size * len(self._numbers)
                     out_atoms.numbers[idx] = self._numbers[int(rescaled)]
                 else:
                     _LOGGER.warning(
@@ -558,11 +561,22 @@ def random_atom_collection_in_sphere(num: int, radius=1., centre=True, numbers=1
 class SeparationForce(functions.Function):
     """A separation force between atoms that come within the cutoff.  This can be used as a penalty in a loss function
     to """
+    supports_jacobian = True
+    output_type = float
 
-    def __init__(self, force_constant: float, cutoff: float):
+    def __init__(self, epsilon: float = 1, sigma=1.0, cutoff=1., power: int = 12):
         super().__init__()
-        self._force_constant = force_constant
+        self._epsilon = epsilon
+        self._sigma = sigma
         self._cutoff = cutoff
+        self._power = power
+
+        if cutoff is None:
+            self._ecut = 0
+            self._fcut = 0
+        else:
+            self._ecut = 4. * self._epsilon * (self._sigma / self._cutoff)**self._power * (self._power - 1)
+            self._fcut = -4. * self._epsilon * self._sigma**self._power / self._cutoff**(self._power + 1)
 
     def evaluate(self, atoms: AtomsCollection, *, get_jacobian=False):  # pylint: disable=arguments-differ
         distances = pdist(atoms.positions)
@@ -576,7 +590,7 @@ class SeparationForce(functions.Function):
             # https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.pdist.html#scipy.spatial.distance.pdist
             idx = lambda i, j: n * i + j - ((i + 2) * (i + 1)) // 2
             for i in range(n):
-                for j in range(i, n):
+                for j in range(i + 1, n):
                     dr = positions[j] - positions[i]  # pylint: disable=invalid-name
                     dist = distances[idx(i, j)]
                     force = self.force(dist) * dr / dist
@@ -588,34 +602,33 @@ class SeparationForce(functions.Function):
 
         return total_energy
 
+    @property
+    def cutoff(self) -> float:
+        """The distance at which this force and energy goes to zero"""
+        return self._cutoff
+
     def energy(  # pylint: disable=invalid-name
         self, r: float
     ) -> float:
         """
-        Energy is
-            k (r^2 / 2 - r r0) + r0
-        where k is force constant and r0 is cutoff
-
         :param r: separation between atoms
         :return: the corresponding energy
         """
-        if r > self._cutoff:
+        if self._cutoff is not None and r > self.cutoff:
             return 0.
 
-        return self._force_constant * r * (0.5 * r - self._cutoff) + self._cutoff
+        energy = 4 * self._epsilon * (self._sigma / r)**self._power - self._fcut * r + self._ecut
+        return energy
 
     def force(  # pylint: disable=invalid-name
         self, r: float
     ):
         """
-        Force is
-            -k (r - r0)
-        where k is force constant and r0 is cutoff
-
         :param r: separation between atoms
         :return: the corresponding force magnitude
         """
-        if r > self._cutoff:
+        if self._cutoff is not None and r > self.cutoff:
             return 0.
 
-        return -self._force_constant * (r - self._cutoff)
+        force = 4 * self._epsilon * self._power * self._sigma**self._power / r**(self._power + 1) + self._fcut
+        return force

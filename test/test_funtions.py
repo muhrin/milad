@@ -6,10 +6,11 @@ import sympy
 from sympy import Symbol, IndexedBase
 
 from milad import functions
+from milad import testing
 
 
 def test_cosine_cutoff():
-    # pylint: disable=invalid-name
+    # pylint: disable=invalid-name, too-many-locals
 
     rcut = 1.5  # Larger than the random range so everything is within the cutoff sphere
 
@@ -63,4 +64,35 @@ def test_cosine_cutoff():
     np.testing.assert_approx_equal(
         gaussian_jac[gaussian.WEIGHT, gaussian.WEIGHT],
         sympy.diff(cut_expr, w).subs(gaussian_subs).evalf()
+    )
+
+    testing.test_function(cos_cut, features, check_jacobian=False)
+
+
+def test_identity():
+    # pylint: disable=invalid-name
+    x = np.random.rand(10)
+    testing.test_function(functions.Identity(), x, expected_output=x)
+
+
+def test_residuals():
+    # pylint: disable=invalid-name
+    x = np.random.rand(10)
+    testing.test_function(functions.Residuals(x), x, np.zeros(10))
+
+
+def test_mse():
+    # pylint: disable=invalid-name
+    x = np.random.rand(10)
+    testing.test_function(functions.MeanSquaredError(x), x, np.zeros(10))
+
+
+def test_map():
+    # pylint: disable=invalid-name
+    x1 = np.random.rand(10)
+    x2 = np.random.rand(10)
+    testing.test_function(
+        functions.Map(functions.MeanSquaredError(x1), functions.MeanSquaredError(x2), weights=np.random.rand(2)),
+        np.random.rand(10),
+        check_jacobian=True
     )

@@ -398,6 +398,10 @@ class NeuralNetwork:
         """Reinitialise the model.  This will throw away anything learned so far"""
         self._create_network(training_data)
 
+    @property
+    def device(self):
+        return self._device
+
     def fit(
         self,
         training_set: Union[Sequence[ase.Atoms], dat.FingerprintSet],
@@ -489,6 +493,7 @@ class NeuralNetwork:
         return self.loss_function.get_loss(predictions, fitting_data)
 
     def make_prediction(self, fitting_data: FittingData, get_forces=False, create_graph=False) -> Predictions:
+        # pylint: disable=too-many-locals,too-many-nested-blocks
         # Join all fingerprints as this is much faster going through the network
         local_energies = self._network(fitting_data.fingerprints)
 
@@ -531,7 +536,7 @@ class NeuralNetwork:
                     )
                     # Calculate the force on each atom
                     for i in range(natoms):
-                        total_force = torch.zeros(3)
+                        total_force = torch.zeros(3, device=self.device)
                         for j in range(natoms):
                             if not torch.all(system.derivatives[j, i, :, :] == 0):
                                 total_force += -torch.matmul(system.derivatives[j, i, :, :], denergy_dphi[j])

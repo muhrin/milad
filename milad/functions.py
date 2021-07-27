@@ -65,6 +65,12 @@ class PlainState(State):
     def vector(self) -> np.array:
         return self._array
 
+    @vector.setter
+    def vector(self, value: np.array):
+        if not value.shape == self._array.shape:
+            raise ValueError(f"Shape mismatch, expected '{self._array.shape}', got '{value.shape}'")
+        self._array = value
+
     @property
     def array(self) -> np.array:
         """Get the array corresponding to this state"""
@@ -107,9 +113,9 @@ class Feature(State):
 
     @vector.setter
     def vector(self, value: np.array):
-        if not value.size == self._vector.size:
-            raise ValueError("Size mismatch, expected '{}', got '{}'".format(self._vector.size, value.size))
-        self._vector[:] = value[:]
+        if not value.shape == self._vector.shape:
+            raise ValueError(f"Shape mismatch, expected '{self._vector.shape}', got '{value.shape}'")
+        self._vector = value
 
     def __add__(self, other: 'Feature') -> 'Features':
         if not isinstance(other, Feature):
@@ -142,9 +148,20 @@ class Features(State):
     def array(self):
         return self._vector
 
-    @array.setter
-    def array(self, arr):
-        self._vector[:] = arr
+    @vector.setter
+    def vector(self, vec):
+        # Reassign all the array
+        if self._vector.shape != vec.shape:
+            raise ValueError(
+                f'The passed vector ({vec.shape}) has a different shape from the features '
+                f'vector ({self._vector.shape})'
+            )
+        self._vector = vec
+
+        idx = 0
+        for entry in self._features:
+            entry.vector = self._vector[idx:idx + len(entry)]
+            idx += entry.length
 
     def feature_range(self, feature: Feature) -> Optional[range]:
         """Given a feature in this set of features, get the corresponding slice of indices in the feature vector"""
@@ -384,6 +401,7 @@ class FromVectorBuilder(Function):
 
 class Identity(Function):
     """Function that just returns what it is passed"""
+    supports_jacobian = True
 
     def evaluate(self, state: StateLike, *, get_jacobian=False):
         """Evaluate the function with the passed input"""
@@ -567,7 +585,9 @@ class CosineCutoff(Function):
 
         w' = w (cos(\pi * dr / r_\text{cut}) + 1.) / 2
     """
-    supports_jacobian = False
+    input_type = (Features,)
+    output_type = (Features,)
+    supports_jacobian = True
 
     def __init__(self, cutoff: float):
         super().__init__()
@@ -658,6 +678,61 @@ class SphericalToCart(Function):
             pass
 
         return cart
+
+
+class MeanSquaredError(Function):
+    supports_jacobian = True
+    output_type = float, complex
+
+    def __init__(self, target: StateLike):
+        super().__init__()
+        self._target = get_bare(target)
+
+    def evaluate(
+        # pylint: disable=arguments-differ
+        self,
+        values: np.ndarray,
+        *,
+        get_jacobian=False
+    ):
+        # pylint: disable=invalid-name
+        diff = get_bare(values) - self._target
+        n = len(diff)
+        mse = np.sum(diff**2) / n
+
+        if get_jacobian:
+            return mse, (2 * diff / n).reshape(1, n)
+
+        return mse
+
+
+class Map(Function):
+    """Function that passes the same input to multiple functions and returns an ordered array of their outputs"""
+    supports_jacobian = True
+    output_type = np.ndarray
+
+    def __init__(self, *fn, weights=None):
+        super().__init__()
+        self._fns = fn
+        if weights is None:
+            self._weights = np.ones(len(self._fns))
+        else:
+            if not len(weights) == len(self._fns):
+                raise ValueError(
+                    f'The number of weights ({len(weights)}) must match the number of functions ({len(fn)})'
+                )
+            self._weights = weights
+
+    def evaluate(self, state, *, get_jacobian=False):
+        if get_jacobian:
+            vals, jacs = zip(*tuple(fn(state, jacobian=True) for fn in self._fns))
+            output = self._weights * np.array(vals)
+            jac = (self._weights * np.concatenate(jacs).T).T
+
+            return output, jac
+
+        vals = np.array(tuple(fn(state) for fn in self._fns))
+        return self._weights * vals
 
 
 # endregion

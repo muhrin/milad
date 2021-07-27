@@ -91,7 +91,7 @@ def test_fitting_data(descriptor, training_data):
 def test_neural_network_basics(descriptor, training_data):
     nn = neuralnetwork.NeuralNetwork()
     fingerprint_set = dat.create_fingerprint_set(descriptor, training_data, get_derivatives=True)
-    fitting_data = neuralnetwork.FittingData.from_fingerprint_set(fingerprint_set, requires_grad=True)
+    fitting_data = neuralnetwork.FittingData.from_fingerprint_set(fingerprint_set, requires_grad=True, device=nn.device)
 
     nn.init(fitting_data)
 
@@ -128,7 +128,7 @@ def test_predictions(descriptor, training_data):
 
 def test_nn_lennard_jones(descriptor, lj_training_data):
     """Check if we can successfully fit to the LJ potential"""
-    fingerprint_set = dat.create_fingerprint_set(descriptor, lj_training_data, get_derivatives=True)
-
     nn = neuralnetwork.NeuralNetwork(hiddenlayers=(10, 10))
-    training, loss_fn = nn.fit(fingerprint_set, max_epochs=500, batchsize=1000, learning_rate=1e-3)
+
+    fingerprint_set = dat.create_fingerprint_set(descriptor, lj_training_data, get_derivatives=True)
+    _training, _loss_fn = nn.fit(fingerprint_set, max_epochs=50, batchsize=1000, learning_rate=1e-3)
