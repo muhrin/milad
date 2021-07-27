@@ -16,6 +16,7 @@ __all__ = 'MomentInvariantsDescriptor', 'descriptor', 'Fingerprinter', 'fingerpr
 
 class MomentInvariantsDescriptor(Descriptor):
     """Class that is responsible for producing fingerprints form atomic environments"""
+    supports_jacobian = True
     scaler = None
 
     def __init__(
@@ -102,6 +103,10 @@ class MomentInvariantsDescriptor(Descriptor):
             return None
 
         return self._species_mapper.numbers
+
+    @property
+    def species_mapper(self) -> Optional[atomic.MapNumbers]:
+        return self._species_mapper
 
     def get_moments(self, atoms: atomic.AtomsCollection, preprocess=True) -> base_moments.Moments:
         if preprocess:
