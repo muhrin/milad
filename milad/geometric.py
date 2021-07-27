@@ -79,6 +79,16 @@ class GeometricMoments(base_moments.Moments):
     def vector(self) -> np.array:
         return self._moments.compressed()
 
+    @vector.setter
+    def vector(self, value: np.ndarray):
+        if value.dtype == self._moments.dtype:
+            self._moments[~self._moments.mask] = value
+        else:
+            # Convert the dtype first and then set values
+            new_moments = self._moments.astype(value.dtype)
+            new_moments[~new_moments.mask] = value
+            self._moments = new_moments
+
     @property
     def moments(self) -> np.array:
         return self._moments
@@ -138,6 +148,8 @@ def linear_index(max_order: int, index: base_moments.Index) -> int:
     for i, indices in enumerate(iter_indices(max_order)):
         if indices == index:
             return i
+
+    raise RuntimeError('Should never reach here')
 
 
 def iter_indices(max_order: int) -> Iterator[base_moments.Index]:
