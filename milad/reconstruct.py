@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
-import argparse
 import functools
 import collections
 import logging
-import random
 from typing import List
 
 import numpy as np
@@ -18,8 +16,6 @@ from . import exceptions
 from . import fingerprinting
 from . import mathutil
 from . import optimisers
-
-__all__ = ('Decoder',)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -59,81 +55,6 @@ def _(grid, num_clusters: int) -> np.ndarray:
         )
 
     return kmeans.cluster_centers_
-
-
-class FoundPeaks:
-
-    def __init__(self, initial: base_moments.Moments):
-        self._initial = initial
-        self._moments = []
-        self._atom_positions = []
-
-    @property
-    def positions(self) -> List[np.ndarray]:
-        return self._atom_positions
-
-    @property
-    def moments(self) -> List[base_moments.Moments]:
-        return self._moments
-
-    def append(self, pos: np.ndarray, moments: base_moments.Moments):
-        self._atom_positions.append(pos)
-        self._moments.append(moments)
-
-    def remaining_value(self, pos: np.ndarray) -> float:
-        initial = self._initial.value_at(pos)
-        for atom_moments in self._moments:
-            initial -= atom_moments.value_at(pos)
-        return initial
-
-    def find_next_maximum(self, start_pt: np.ndarray):
-        res = optimize.minimize(self.remaining_value, start_pt)
-        return res.x
-
-
-def find_peaks_from_maxima(
-    num_peaks: int,
-    moments: base_moments.Moments,
-    descriptor: fingerprinting.MomentInvariantsDescriptor,
-    query: base_moments.ReconstructionQuery = None,
-    grid_size=31,
-):
-    # pylint: disable=too-many-locals
-    scale = 1.0
-    if descriptor.scaler is not None:
-        scale = 1. / descriptor.cutoff
-
-    query = query or moments.create_reconstruction_query(moments.get_grid(grid_size), moments.max_order)
-    peaks = FoundPeaks(moments)
-    current_grid = moments.reconstruct(query, zero_outside_domain=True)
-    outside = get_buffer_indices(query, current_grid)
-    current_grid[outside] = 0.
-
-    for _ in range(num_peaks):
-        # Find the index of the maximum value in the current grid
-        max_idx = current_grid.argmax()
-
-        # Get that position in the grid
-        guess = query.points[max_idx]
-        # Now find the local maximum
-        moments_pos = peaks.find_next_maximum(guess)
-
-        # Build an atoms collection with a single atom at that position
-        single_atom = atomic.AtomsCollection(1, positions=[moments_pos / scale], numbers=[1.])
-
-        # Get the moments so we can subtract this from the grid
-        single_moments = descriptor.get_moments(single_atom, preprocess=False)
-        peaks.append(moments_pos, single_moments)
-
-        # Subtract off the grid
-        # Get the grid for just that atom on its own
-        atom_grid = single_moments.reconstruct(query, zero_outside_domain=True)
-        # Subtract off the single atom grid
-        current_grid -= atom_grid
-
-        current_grid[outside] = 0.
-
-    return peaks.positions / scale
 
 
 def get_surrounding_gridpoints(
@@ -258,89 +179,6 @@ DecoderResult = collections.namedtuple(
 )
 
 
-class Decoder:
-    """This class decodes a structure from a set of moment invariants"""
-
-    def __init__(
-        self,
-        descriptor: fingerprinting.MomentInvariantsDescriptor,
-        query: base_moments.ReconstructionQuery,
-    ):
-        self._descriptor = descriptor
-        self._query = query
-
-        self._optimiser = optimisers.StructureOptimiser()
-        self._moments_optimiser = optimisers.MomentsOptimiser()
-        self._structure_optimiser = optimisers.StructureOptimiser()
-
-    def decode(self, fingerprint: np.ndarray, num_atoms: int, verbose=False, get_trajectory=False) -> DecoderResult:
-        decode_result = argparse.Namespace()
-
-        # Generate an initial configuration using a structure with randomly placed atoms
-        initial_atoms = self.create_random_atoms(num_atoms)
-
-        # Reconstruct the moments
-        result = self._moments_optimiser.optimise(
-            self._descriptor.invariants, target=fingerprint, initial=self._descriptor.get_moments(initial_atoms)
-        )
-
-        decode_result.moments_reconstruction = result
-
-        if verbose:
-            print(f'm: {result.rmsd}, ', end='')
-
-        initial_atoms = self.create_initial_atoms(result.value, num_atoms)
-
-        # Now let's get optimise the atomic configuration to be consistent with the reconstructed moments
-        result = self._structure_optimiser.optimise(
-            self._descriptor,
-            initial=initial_atoms,
-            target=result.value,  # Target the found moments
-            get_trajectory=get_trajectory,
-        )
-
-        decode_result.initial_reconstruction = result
-
-        if verbose:
-            print(f'sm: {result.rmsd}, ', end='')
-
-        # Finally, optimise the found structure wrt to the fingerprint
-        result = self._structure_optimiser.optimise(
-            self._descriptor,
-            initial=result.value,
-            target=fingerprint,  # Target the fingerprint
-            get_trajectory=get_trajectory,
-        )
-
-        if verbose:
-            print(f'sf: {result.rmsd}, ', end='')
-
-        decode_result.atoms_reconstruction = result
-        decode_result.success = result.success
-        decode_result.message = result.message
-        decode_result.value = result.value
-        decode_result.rmsd = result.rmsd
-
-        return DecoderResult(**decode_result.__dict__)
-
-    def create_random_atoms(self, num: int) -> atomic.AtomsCollection:
-        """Create a random atoms configuration with the number of atoms passed"""
-        return atomic.random_atom_collection_in_sphere(
-            num,
-            radius=self._descriptor.cutoff,
-            numbers=random.choices(self._descriptor.species, k=num),
-            centre=True,
-        )
-
-    def create_initial_atoms(self, moments: base_moments.Moments, num: int) -> atomic.AtomsCollection:
-        # atoms = find_atoms(num, moments, self._descriptor, self._query)
-        # atoms.numbers[:] = random.choices(self._descriptor.species, k=num)
-        # return atoms
-
-        peaks = find_peaks(self._descriptor, moments, num, query=self._query)
-        return atomic.AtomsCollection(num, peaks, random.choices(self._descriptor.species, k=num))
-
-
 def merge_atoms(system: atomic.AtomsCollection, dist_threshold=0.2):
     # Proceed to merging of atoms
     dists = distance.cdist(system.positions, system.positions)
@@ -451,17 +289,22 @@ def find_iteratively(
     num_atoms: int,
     initial: atomic.AtomsCollection,
     find_species=False,
-    verbose=False,
     min_rmsd=1e-7,
     max_iters=6,
-    grid_query=None
+    grid_query=None,
+    structure_optimiser=None,
+    minsep=0.9,
+    verbose=False,
 ):
-    # pylint: disable=too-many-locals
+    # pylint: disable=too-many-locals, too-many-branches
     # Initialisation
     moments_optimiser = optimisers.MomentsOptimiser()
-    structure_optimiser = optimisers.StructureOptimiser()
-    atoms = initial
+    if structure_optimiser is None:
+        structure_optimiser = optimisers.StructureOptimiser()
+        if minsep:
+            structure_optimiser.separation_force = atomic.SeparationForce(epsilon=1e-8, cutoff=minsep, power=6)
 
+    atoms = initial
     mask = None
     if not find_species:
         # Fix the species numbers
@@ -476,41 +319,45 @@ def find_iteratively(
             # Create the reconstruction query the first time
             grid_query = moments.create_reconstruction_query(moments.get_grid(31), moments.max_order)
 
+        if verbose:
+            print(f'{i}: Finding moments from fingerprint...', end='')
         result = moments_optimiser.optimise(
             invariants_fn=descriptor.invariants,
             target=fingerprint,
             initial=moments,
-            verbose=False,
-            # cost_tol=1e-5,
+            verbose=(verbose == 'high'),
         )
         moments = result.value
+        if verbose:
+            print(f'rmsd {result.rmsd}')
 
         if verbose:
-            print(f'{i} moms->fingerprint: {result.rmsd}')
-
-        result = find_atoms_from_moments(descriptor, moments, num_atoms, mask=mask, grid_query=grid_query)
+            print(f'{i}: Finding atoms from moments...', end='')
+        result = find_atoms_from_moments(
+            descriptor,
+            moments,
+            num_atoms,
+            minsep=minsep,
+            mask=mask,
+            grid_query=grid_query,
+            structure_optimiser=structure_optimiser,
+            verbose=(verbose == 'high')
+        )
+        atoms = result.value
+        if verbose:
+            print(f'rmsd {result.rmsd}')
 
         if verbose:
-            print(f'{i} atoms->moms: {result.rmsd}')
-
+            print(f'{i}: Finding atoms from fingerprint...', end='')
         result = structure_optimiser.optimise(
             descriptor,
             target=fingerprint,
-            initial=result.value,
+            initial=atoms,
             mask=mask,
-            verbose=False,
+            verbose=(verbose == 'high'),
         )
-
-        # result = structure_optimiser.optimise(
-        #     descriptor,
-        #     target=fingerprint,
-        #     initial=atoms,
-        #     mask=mask,
-        #     verbose=False,
-        # )
-
         if verbose:
-            print(f'{i} atoms->fingerprint: {result.rmsd}')
+            print(f'rmsd {result.rmsd}')
 
         if find_species:
             # Take the current result, fix the species and allow positions to vary
@@ -519,16 +366,17 @@ def find_iteratively(
             pos_mask = atoms.get_mask()
             pos_mask.numbers = atoms.numbers
 
+            if verbose:
+                print(f'{i}: Optimising atomic positions wrt fingerprint...', end='')
             result = structure_optimiser.optimise(
                 descriptor,
                 target=fingerprint,
                 initial=atoms,
                 mask=pos_mask,
-                verbose=False,
+                verbose=(verbose == 'high'),
             )
-
             if verbose:
-                print(f'{i} atom pos->fingerprint: {result.rmsd}')
+                print(f'rmsd {result.rmsd}')
 
         if result.rmsd < min_rmsd:
             break
@@ -550,13 +398,20 @@ def find_atoms_from_moments(
     numbers=1.,
     mask=None,
     grid_query=None,
+    structure_optimiser=None,
+    minsep=0.9,
     verbose=False,
 ):
     # Find the peaks and create the corresponding collection of atoms
-    peaks = find_peaks(descriptor, moments, num_atoms, query=grid_query, subtract_signal=True)
+    if verbose:
+        print('Finding peaks...', end='')
+    peaks = find_peaks(descriptor, moments, num_atoms, query=grid_query, subtract_signal=True, exclude_radius=minsep)
     atoms = atomic.AtomsCollection(num_atoms, peaks, numbers=numbers)
+    if verbose:
+        print(f'found {atoms.num_atoms}')
 
-    result = optimisers.StructureOptimiser().optimise(
+    optimiser = structure_optimiser or optimisers.StructureOptimiser()
+    result = optimiser.optimise(
         descriptor,
         target=moments,
         initial=atoms,

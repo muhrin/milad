@@ -28,6 +28,15 @@ class StructureOptimiser:
 
     def __init__(self):
         self._least_squares_optimiser = least_squares.LeastSquaresOptimiser()
+        self._separation_force = None
+
+    @property
+    def separation_force(self) -> atomic.SeparationForce:
+        return self._separation_force
+
+    @separation_force.setter
+    def separation_force(self, force):
+        self._separation_force = force
 
     def optimise(
         # pylint: disable=too-many-locals
@@ -81,7 +90,6 @@ class StructureOptimiser:
                 preprocessor = descriptor.preprocess
 
             bounds = bounds or descriptor.get_bounds(initial.num_atoms)
-
         else:
             calc = descriptor
             preprocess = False
@@ -94,7 +102,13 @@ class StructureOptimiser:
             if mask is not None:
                 mask = preprocessor(mask)
             if bounds is not None:
+                # Preprocess the bounds and then check if the species number range is restricted by a map
                 bounds = tuple(map(preprocessor, bounds))
+                if descriptor.species_mapper is not None:
+                    # Set the bounds to the range of the mapped range
+                    mapped_range = descriptor.species_mapper.mapped_range
+                    bounds[0].numbers = mapped_range[0]
+                    bounds[1].numbers = mapped_range[1]
 
         # Deal with saving of trajectory
         save_traj_fn = None
@@ -104,10 +118,11 @@ class StructureOptimiser:
         else:
             outcome.traj = None
 
-        result = self._least_squares_optimiser.optimise_target(
+        calc = self._prepare_optimisation(calc, target)
+        result = self._least_squares_optimiser.optimise(
             func=calc,
             initial=initial,
-            target=target,
+            # target=target,
             mask=mask,
             jacobian=jacobian,
             bounds=bounds,
@@ -122,10 +137,23 @@ class StructureOptimiser:
         outcome.__dict__.update(result._asdict())
 
         if preprocess:
-            # 'Un-preprocess' the output (map atomic species into integers)
+            # 'Un-preprocess' the output (e.g. map atomic species into integers)
             outcome.value = preprocessor.inverse(result.value)
 
         return StructureOptimisationResult(**outcome.__dict__)
+
+    def _prepare_optimisation(self, calc: functions.Function, target):
+        # We want to get as close to the target as possible
+        new_calc = functions.Chain(calc, functions.Residuals(target))
+
+        if self._separation_force:
+            # Minimise the sum of the separation force and the MSE to the target
+            new_calc = functions.Chain(
+                functions.Map(new_calc, self._separation_force),
+                functions.HStack(),
+            )
+
+        return new_calc
 
     @staticmethod
     def _save_trajectory(trajectory: List, preprocessor, state: atomic.AtomsCollection, _value: np.ndarray, jacobian):

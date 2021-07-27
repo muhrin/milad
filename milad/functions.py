@@ -269,6 +269,36 @@ class WeightedGaussian(Feature):
         self.vector[self.WEIGHT] = value
 
 
+class ListState(State):
+
+    def __init__(self, *entries):
+        self._list = list(*entries)
+
+    def append(self, state: StateLike):
+        if not isinstance(state, StateLike):
+            raise TypeError(f"Expected state like object, got '{type(state)}'")
+
+        self._list.append(state)
+
+    def __len__(self):
+        return self._list.__len__()
+
+    def __iter__(self):
+        return self._list.__iter__()
+
+    @property
+    def vector(self) -> np.array:
+        return np.hstack(tuple(map(get_bare, self._list)))
+
+    @vector.setter
+    def vector(self, new_val: np.ndarray):
+        i = 0
+        for entry in self._list:
+            length = len(entry)
+            set_bare(entry, new_val[i:i + length])
+            i += length
+
+
 # region Functions
 
 
@@ -543,17 +573,11 @@ class Residuals(Function):
     """Given some measurements (m) calculate the residuals from some data (d) as f = d - m """
     supports_jacobian = True
 
-    def __init__(self, data: np.array):
+    def __init__(self, data: StateLike):
         super().__init__()
         self._data = get_bare(data)
 
-    def output_length(self, in_state: State) -> int:  # pylint: disable=unused-argument
-        return len(self._data)
-
-    def empty_jacobian(self, in_state: State) -> np.array:
-        return np.empty((self.output_length(in_state), len(in_state)), dtype=complex)
-
-    def evaluate(self, state: State, *, get_jacobian=False) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+    def evaluate(self, state: StateLike, *, get_jacobian=False) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
         out_vector = get_bare(state) - self._data
         if get_jacobian:
             return out_vector, np.identity(len(state), dtype=out_vector.dtype)
@@ -681,6 +705,7 @@ class SphericalToCart(Function):
 
 
 class MeanSquaredError(Function):
+    """Calcualte the MSE relative to some target value(s)"""
     supports_jacobian = True
     output_type = float, complex
 
@@ -691,7 +716,7 @@ class MeanSquaredError(Function):
     def evaluate(
         # pylint: disable=arguments-differ
         self,
-        values: np.ndarray,
+        values: StateLike,
         *,
         get_jacobian=False
     ):
@@ -709,30 +734,32 @@ class MeanSquaredError(Function):
 class Map(Function):
     """Function that passes the same input to multiple functions and returns an ordered array of their outputs"""
     supports_jacobian = True
-    output_type = np.ndarray
+    output_type = ListState
 
-    def __init__(self, *fn, weights=None):
+    def __init__(self, *fn):
         super().__init__()
         self._fns = fn
-        if weights is None:
-            self._weights = np.ones(len(self._fns))
-        else:
-            if not len(weights) == len(self._fns):
-                raise ValueError(
-                    f'The number of weights ({len(weights)}) must match the number of functions ({len(fn)})'
-                )
-            self._weights = weights
 
     def evaluate(self, state, *, get_jacobian=False):
         if get_jacobian:
-            vals, jacs = zip(*tuple(fn(state, jacobian=True) for fn in self._fns))
-            output = self._weights * np.array(vals)
-            jac = (self._weights * np.concatenate(jacs).T).T
+            output, jacs = zip(*tuple(fn(state, jacobian=True) for fn in self._fns))
+            jac = np.concatenate(jacs)
 
-            return output, jac
+            return ListState(output), jac
 
-        vals = np.array(tuple(fn(state) for fn in self._fns))
-        return self._weights * vals
+        return ListState(tuple(fn(state) for fn in self._fns))
+
+
+class HStack(Function):
+    supports_jacobian = True
+    output_type = np.ndarray
+
+    def evaluate(self, state, *, get_jacobian=False):
+        outputs = np.hstack(tuple(map(get_bare, state)))
+        if get_jacobian:
+            return outputs, np.eye(len(outputs))
+
+        return outputs
 
 
 # endregion
@@ -746,6 +773,13 @@ def get_bare(state: Union[np.ndarray, State]) -> Union[np.array, numbers.Number]
         return state.vector
 
     return state
+
+
+def set_bare(state: Union[np.ndarray, State], new_val: np.ndarray):
+    if isinstance(state, np.ndarray):
+        state[:] = new_val
+    else:
+        state.vector = new_val
 
 
 def copy_to(

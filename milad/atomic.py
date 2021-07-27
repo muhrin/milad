@@ -33,13 +33,6 @@ class AtomsCollection(functions.PlainState):
         return 4
 
     @staticmethod
-    def contains_num_atoms(state: functions.StateLike) -> int:
-        length = len(state)
-        if (length % AtomsCollection.num_atomic_properties()) != 0:
-            raise ValueError('AtomsCollection state vectors must be a multiple of 4')
-        return int(length / AtomsCollection.num_atomic_properties())
-
-    @staticmethod
     def total_length(num_atoms: int) -> int:
         return AtomsCollection.num_atomic_properties() * num_atoms
 
@@ -598,8 +591,10 @@ class SeparationForce(functions.Function):
                     jacobian[0, atoms.linear_pos_idx(i)] += force
                     jacobian[0, atoms.linear_pos_idx(j)] -= force
 
+            # return 0., np.zeros(jacobian.shape)
             return total_energy, jacobian
 
+        # return 0.
         return total_energy
 
     @property

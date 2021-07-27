@@ -92,7 +92,14 @@ def test_map():
     x1 = np.random.rand(10)
     x2 = np.random.rand(10)
     testing.test_function(
-        functions.Map(functions.MeanSquaredError(x1), functions.MeanSquaredError(x2), weights=np.random.rand(2)),
+        functions.Map(functions.MeanSquaredError(x1), functions.MeanSquaredError(x2)),
         np.random.rand(10),
         check_jacobian=True
     )
+
+
+def test_hstack():
+    entries = functions.ListState(
+        (np.random.rand(5).astype(object), np.random.rand(2).astype(object), np.random.rand(4).astype(object))
+    )
+    testing.test_function(functions.HStack(), entries, entries.vector, check_jacobian=True)

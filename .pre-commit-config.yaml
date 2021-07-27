@@ -28,7 +28,7 @@ repos:
             '--disable=too-many-arguments',
             '--disable=too-many-instance-attributes',
             '--ignored-modules=scipy.special',
-            '--generated-members=numpy.*,torch.*',
+            '--generated-members=numpy.*,torch.*,rdkit.*',
         ]
         exclude: *exclude_files
 
