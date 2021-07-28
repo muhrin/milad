@@ -330,8 +330,8 @@ def find_iteratively(
     moments_optimiser = optimisers.MomentsOptimiser()
     if structure_optimiser is None:
         structure_optimiser = optimisers.StructureOptimiser()
-        if minsep:
-            structure_optimiser.separation_force = atomic.SeparationForce(epsilon=1e-2, cutoff=minsep, power=1)
+        # if minsep:
+        #     structure_optimiser.separation_force = atomic.SeparationForce(epsilon=1e-2, cutoff=0.3, power=1)
 
     atoms = initial
     mask = None
@@ -370,7 +370,7 @@ def find_iteratively(
             minsep=minsep,
             mask=mask,
             grid_query=grid_query,
-            structure_optimiser=structure_optimiser,
+            # structure_optimiser=structure_optimiser,
             verbose=(verbose == 'high')
         )
         atoms = result.value
@@ -429,7 +429,7 @@ def find_atoms_from_moments(
     mask=None,
     grid_query=None,
     structure_optimiser=None,
-    minsep=0.6,
+    minsep=0.51,
     verbose=False,
 ):
     # Find the peaks and create the corresponding collection of atoms
@@ -440,8 +440,10 @@ def find_atoms_from_moments(
     if verbose:
         print(f'found {atoms.num_atoms}')
 
-    optimiser = structure_optimiser or optimisers.StructureOptimiser()
-    result = optimiser.optimise(
+    if structure_optimiser is None:
+        structure_optimiser = optimisers.StructureOptimiser()
+        structure_optimiser.separation_force = atomic.SeparationForce(epsilon=1e-2, cutoff=minsep, power=1)
+    result = structure_optimiser.optimise(
         descriptor,
         target=moments,
         initial=atoms,

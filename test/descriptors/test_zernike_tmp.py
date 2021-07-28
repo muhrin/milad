@@ -13,6 +13,11 @@ from milad import utils
 
 # pylint: disable=invalid-name
 
+# Multiply by this strange factor that comes about because of minor differnces between the way that we perform
+# the calculations
+MILAD_TO_AMP = 52.63789013914202
+MILAD_TO_AMP_RADIAL = 1. / np.sqrt(3.)
+
 
 def test_amp_zernike_comparison():
     pytest.importorskip('amp')
@@ -43,7 +48,7 @@ def test_amp_zernike_comparison():
 
     phi = milad_descriptor(atoms)
 
-    assert np.allclose(np.array(amp_descriptor.fingerprints['0'][0][1]), phi)
+    assert np.allclose(np.array(amp_descriptor.fingerprints['0'][0][1]), phi * MILAD_TO_AMP)
 
 
 def test_radial_function():
@@ -63,4 +68,4 @@ def test_radial_function():
         for l in utils.inclusive(n):
             amp_radial = amp.descriptor.zernike.calculate_R(n, l, rho, factorial)
             our_radial = zernike.r_nl(n, l, rho)
-            assert np.isclose(our_radial, amp_radial)
+            assert np.isclose(our_radial, MILAD_TO_AMP_RADIAL * amp_radial)

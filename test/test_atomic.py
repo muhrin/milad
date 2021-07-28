@@ -91,3 +91,8 @@ def test_separation_force_optimiser():
     assert res.success
     distances = spatial.distance.pdist(res.value.positions)
     assert np.all(distances > cutoff)
+
+
+def test_scale_positions():
+    atoms = atomic.random_atom_collection_in_sphere(10, radius=5., centre=True)
+    testing.test_function(atomic.ScalePositions(0.5), atoms, check_jacobian=True)

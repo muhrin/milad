@@ -60,7 +60,7 @@ def from_deltas_direct(
     it amounts to a simple rotation as the invariants are still the same.  We have this here, mainly so that
     we can easily compare with AMP code.
     """
-    norm = 1.0  # NORMALISTAION
+    norm = NORMALISTAION
     zernike_moms = ZernikeMoments(n_max=nmax, l_max=lmax)
 
     if len(positions) > 0:
@@ -71,7 +71,7 @@ def from_deltas_direct(
                     continue
 
                 for m in inclusive(-l, l):
-                    vals = norm * zernike_poly(n, l, m, spherical).conjugate()
+                    vals = norm * zernike_poly(n, l, m, spherical, condon_shortley=False).conjugate()
                     zernike_moms.array[n, l, m] = np.sum(weights * vals)
     else:
         zernike_moms.array.fill(0.)
@@ -951,8 +951,12 @@ def index_traits(n, l) -> sph.IndexTraits:
 def zernike_poly(n: int, l: int, m: int, pt, condon_shortley=True):
     """Evaluate the 3D Zernike polynomial at the given spherical coordinates"""
     rho = pt[0]
-    theta = pt[1]
-    phi = pt[2]
+    theta = pt[1]  # need to be [0, pi]
+    # I'm not sure why but there seems to be a pi/2 phase difference when using sph_harm, so just include it here
+    phi = pt[2] + np.pi / 2
+
+    theta = np.where(theta < 0, np.pi + theta, theta)
+    phi = np.where(phi < 0, np.pi + phi, phi)
 
     radial = r_nl(n, l, rho)
     # Note that scipy uses the opposite of the physics convention, in scipy
@@ -961,7 +965,7 @@ def zernike_poly(n: int, l: int, m: int, pt, condon_shortley=True):
     # while we use the opposite convention
     angular = special.sph_harm(m, l, phi, theta)
     if not condon_shortley:
-        # scipy sph_harm incorporates teh Condon-Shortley phase so if we don't want it we have to
+        # scipy sph_harm incorporates the Condon-Shortley phase so if we don't want it we have to
         # cancel it out here
         angular /= (-1)**m
 
@@ -972,20 +976,20 @@ def r_nl(n: int, l: int, rho) -> numbers.Number:
     """Evaluate a Zernike radial polynomial at the given value of rho"""
     if not even(n - l):
         return 0.
-
-    D = 3.
-    k = (n - l) / 2.
-
-    normalisation = np.sqrt(2 * n + D)
-    total = np.sum([((-1)**s) * binomial_coeff(k, s) * binomial_coeff(n - s - 1. + D / 2., k) * rho**(n - 2 * s)
-                    for s in inclusive(int(k))],
-                   axis=0)
-
-    # Alternative method
-    # total2 = (-1)**k * binomial_coeff((n + l + D) / 2 - 1, k) * rho**l * \
-    #          special.hyp2f1(-k, (n + l + D) / 2., l + D / 2., rho**2)
-
-    return normalisation * total
     #
-    # k = int((n - l) / 2)
-    # return rho ** l * sum(q_kl_nu(k, l, nu) * rho ** (2 * nu) for nu in inclusive(k))
+    # D = 3.
+    # k = (n - l) / 2.
+    #
+    # normalisation = np.sqrt(2 * n + D)
+    # total = np.sum([((-1)**s) * binomial_coeff(k, s) * binomial_coeff(n - s - 1. + D / 2., k) * rho**(n - 2 * s)
+    #                 for s in inclusive(int(k))],
+    #                axis=0)
+    #
+    # # Alternative method
+    # # total2 = (-1)**k * binomial_coeff((n + l + D) / 2 - 1, k) * rho**l * \
+    # #          special.hyp2f1(-k, (n + l + D) / 2., l + D / 2., rho**2)
+    #
+    # return normalisation * total
+    # #
+    k = int((n - l) / 2)
+    return rho**l * sum(q_kl_nu(k, l, nu) * rho**(2 * nu) for nu in inclusive(k))
