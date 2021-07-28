@@ -159,7 +159,6 @@ class HomogenousPolynomial(Polynomial):
             values = values.conjugate()
 
         if isinstance(values, np.ndarray):
-            # return self._evaluate_method(values)
             return self._numpy_evaluate(values)
 
         return self._generic_evaluate(values)

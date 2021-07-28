@@ -142,7 +142,7 @@ class StructureOptimiser:
 
         return StructureOptimisationResult(**outcome.__dict__)
 
-    def _prepare_optimisation(self, calc: functions.Function, target):
+    def _prepare_optimisation(self, calc: functions.Function, target) -> functions.Function:
         # We want to get as close to the target as possible
         new_calc = functions.Chain(calc, functions.Residuals(target))
 

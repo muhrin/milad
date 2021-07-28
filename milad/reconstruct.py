@@ -286,23 +286,52 @@ def get_best_rms(
 def find_iteratively(
     descriptor: fingerprinting.MomentInvariantsDescriptor,
     fingerprint: np.ndarray,
-    num_atoms: int,
     initial: atomic.AtomsCollection,
     find_species=False,
     min_rmsd=1e-7,
     max_iters=6,
     grid_query=None,
     structure_optimiser=None,
-    minsep=0.9,
+    minsep=0.51,
     verbose=False,
-):
+) -> optimisers.StructureOptimisationResult:
+    """
+    Find a set of atoms from a fingerprint using an iterative approach.
+
+    This algorithm proceeds in iterations as follows:
+        1. Gradient descent to find the moments from the invariants (using `initial` atoms as the starting point)
+        2. From the found moments:
+            i) Identify the peaks in the grid sampled from the reconstructed moments
+            ii) Create a collection of atoms and gradient descent to find the minimum of the atomic degrees of freedom
+                wrt the moments
+        3. Take the found atoms collection and perform gradient descent of the atomic degrees of freedom wrt to the
+           original fingerprint.
+
+    This is then repeated until either the RMSD between the fingerprint of the found atoms collection and the target
+    drops below the passed threshold or the max number of iterations is reached.
+
+    :param descriptor: the descriptor to use
+    :param fingerprint: the target fingerprint
+    :param initial: the initial atoms collection to start from
+    :param find_species: if True, will look gradient descent atomic species as well as atomic coordinates
+    :param min_rmsd: the fingerprint stopping threshold
+    :param max_iters: the maximum number of iterations
+    :param grid_query: an optional grid query, this is used when supersampling the found moments and if this function
+        is being called many times using the same descriptor it is much faster to create the query externally and pass
+        it in each time
+    :param structure_optimiser: an optional structure optimiser to use
+    :param minsep: the minimum separation between atoms
+    :param verbose: if True, will print information about progress
+    :return: the result from the last structure optimisation
+    """
     # pylint: disable=too-many-locals, too-many-branches
     # Initialisation
+    num_atoms = initial.num_atoms
     moments_optimiser = optimisers.MomentsOptimiser()
     if structure_optimiser is None:
         structure_optimiser = optimisers.StructureOptimiser()
         if minsep:
-            structure_optimiser.separation_force = atomic.SeparationForce(epsilon=1e-8, cutoff=minsep, power=6)
+            structure_optimiser.separation_force = atomic.SeparationForce(epsilon=1e-2, cutoff=minsep, power=1)
 
     atoms = initial
     mask = None
@@ -337,6 +366,7 @@ def find_iteratively(
             descriptor,
             moments,
             num_atoms,
+            numbers=atoms.numbers,
             minsep=minsep,
             mask=mask,
             grid_query=grid_query,
@@ -399,7 +429,7 @@ def find_atoms_from_moments(
     mask=None,
     grid_query=None,
     structure_optimiser=None,
-    minsep=0.9,
+    minsep=0.6,
     verbose=False,
 ):
     # Find the peaks and create the corresponding collection of atoms
@@ -458,7 +488,7 @@ def find_peaks(
     *,
     query: base_moments.ReconstructionQuery = None,
     grid_size=31,
-    exclude_radius=0.9,
+    exclude_radius=0.51,
     subtract_signal=True
 ):
     query = query or moments.create_reconstruction_query(moments.get_grid(grid_size), moments.max_order)
@@ -473,7 +503,7 @@ def find_peaks_from_grid(
     num_peaks: int,
     grid_values: np.ndarray,
     query: base_moments.ReconstructionQuery,
-    exclude_radius=0.95,
+    exclude_radius=0.51,
     subtract_signal=True
 ):
     # pylint: disable=too-many-locals

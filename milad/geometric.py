@@ -49,7 +49,7 @@ class GeometricMoments(base_moments.Moments):
         # Mask everything and then unmask the ones we want
         mask = np.ones(moments.shape, dtype=int)
         idx_array = np.empty(moments.shape, dtype=int)
-        for i, indices in enumerate(iter_indices(max_order)):
+        for i, indices in enumerate(get_indices(max_order)):
             mask[indices] = 0
             idx_array[indices] = i
 
@@ -159,6 +159,11 @@ def iter_indices(max_order: int) -> Iterator[base_moments.Index]:
                 yield GeometricIndex(i, j, k)
 
 
+@functools.lru_cache(maxsize=None)
+def get_indices(max_order: int):
+    return tuple(iter_indices(max_order))
+
+
 class GeometricMomentsCalculator(base_moments.MomentsCalculator):
     """Function that calculates geometric moments up to some maximum order"""
 
@@ -206,7 +211,7 @@ def _(delta: functions.WeightedDelta, max_order: int, get_jacobian: bool, dtype)
     moments = delta.weight * utils.outer_product(moms[:, 0], moms[:, 1], moms[:, 2])
 
     if get_jacobian:
-        indices = tuple(iter_indices(max_order))
+        indices = get_indices(max_order)
         jacobian = np.zeros((len(indices), delta.LENGTH), dtype=dtype)
 
         for i, (p, q, r) in enumerate(indices):
