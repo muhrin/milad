@@ -4,7 +4,7 @@ import pytest
 from scipy.spatial.transform import Rotation
 
 import milad
-from milad import invertible_invariants
+from milad.invariants import invertible_invariants
 from milad import zernike
 from milad import generate
 
@@ -20,7 +20,7 @@ def inv_invariants():
     return invertible_invariants.InvariantsGenerator.generate_all(indices)
 
 
-def check_inverted_invariants(invariants: milad.MomentInvariants, target: np.array, inverted: np.ndarray):
+def check_inverted_invariants(invariants: milad.invariants.MomentInvariants, target: np.array, inverted: np.ndarray):
     diff = target - inverted
     not_zero = np.argwhere(~np.isclose(diff, 0.)).ravel()
     assert not np.any(not_zero), f'First non-zero: {invariants[not_zero[0]]}'

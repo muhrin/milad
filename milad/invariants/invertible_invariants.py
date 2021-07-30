@@ -19,11 +19,11 @@ import sympy
 from sympy.physics.quantum import cg
 from sympy.physics import wigner
 
-from . import invariants
-from . import utils
-from . import mathutil
-from . import polynomials
-from . import sph
+from milad import mathutil
+from milad import polynomials
+from milad import sph
+from milad import utils
+from . import moment_invariants
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -52,12 +52,12 @@ def q_matrix(l: int, direct_indexing=True) -> np.ndarray:
     return Q_ / SQRT_TWO
 
 
-class InvertibleInvariants(invariants.MomentInvariants):
+class InvertibleInvariants(moment_invariants.MomentInvariants):
     """A set of invertible invariants"""
 
     def __init__(
-        self, degree_1: invariants.MomentInvariants, degree_2: np.ma.masked_array,
-        degree_3: invariants.MomentInvariants, index_traits: sph.IndexTraits
+        self, degree_1: moment_invariants.MomentInvariants, degree_2: np.ma.masked_array,
+        degree_3: moment_invariants.MomentInvariants, index_traits: sph.IndexTraits
     ):
         super().__init__(*degree_1, *degree_2.compressed(), *degree_3, are_real=False)
         self._degree_1 = degree_1
@@ -310,7 +310,7 @@ class InvertibleInvariants(invariants.MomentInvariants):
         return vectors, used_invariants
 
 
-def degree_3_with_unknown(n: int, l: int, inv: invariants.MomentInvariant):
+def degree_3_with_unknown(n: int, l: int, inv: moment_invariants.MomentInvariant):
     return inv.weight == 3 and np.all(inv.terms_array[:, 2, 0:2] == [n, l]) and np.all(inv.terms_array[:, 0:2, 1] < l)
 
 
@@ -337,10 +337,10 @@ class InvariantsGenerator:
         return sum(cls.num_degree_2(index_traits, l) for l in utils.inclusive(1, l_max, 1))
 
     @staticmethod
-    def inv_degree_2(n1: int, n2: int, l: int) -> invariants.MomentInvariant:
+    def inv_degree_2(n1: int, n2: int, l: int) -> moment_invariants.MomentInvariant:
         """Generate a degree-2 invariant
         """
-        builder = invariants.InvariantBuilder(2)
+        builder = moment_invariants.InvariantBuilder(2)
         # This comes from the Clebsch-Gordan coefficient: <l,l,m,-m|0,0> = (-1)^(l-m)/sqrt(2l + 1)
         recip_prefactor = (2 * l + 1)**0.5
 
@@ -357,7 +357,7 @@ class InvariantsGenerator:
         assert l3 <= n3, f'{l3} > {n3}'
         assert cls.delta(l1, l2, l3)
 
-        builder = invariants.InvariantBuilder(3)
+        builder = moment_invariants.InvariantBuilder(3)
 
         recip_prefactor = (2 * l1 + 1)**0.5
         for m1 in utils.inclusive(-l1, l1):
@@ -372,11 +372,11 @@ class InvariantsGenerator:
         return builder.build()
 
     @staticmethod
-    def generate_degree_1(index_traits: sph.IndexTraits) -> invariants.MomentInvariants:
+    def generate_degree_1(index_traits: sph.IndexTraits) -> moment_invariants.MomentInvariants:
         """Generate first degree invariants up to the maximum n"""
-        invs = invariants.MomentInvariants()
+        invs = moment_invariants.MomentInvariants()
         for n in index_traits.iter_n(0):
-            builder = invariants.InvariantBuilder(1)
+            builder = moment_invariants.InvariantBuilder(1)
             builder.add_term(1, [(n, 0, 0)])
             invs.append(builder.build())
 
@@ -399,13 +399,13 @@ class InvariantsGenerator:
         return np.ma.masked_array(invs_array, invs_array == None)  # pylint: disable=singleton-comparison
 
     @classmethod
-    def generate_degree_3(cls, index_traits: sph.IndexTraits) -> invariants.MomentInvariants:
+    def generate_degree_3(cls, index_traits: sph.IndexTraits) -> moment_invariants.MomentInvariants:
         """Generate third degree invariants up to maximum n, and optionally max l"""
         # pylint: disable=too-many-locals
         lmax = index_traits.l[1]
         done = set()
 
-        invs = invariants.MomentInvariants()
+        invs = moment_invariants.MomentInvariants()
 
         # We need one 3rd degree invariant at l1=l2=l3 that includes three radial terms in order to resolve
         # the sign ambiguity on the unitary matrix from Cholesky decomposition
