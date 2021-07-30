@@ -6,9 +6,6 @@ import ase
 import matplotlib.pyplot as plt
 import numpy as np
 
-from milad import descriptors
-from milad.play import asetools
-
 __all__ = 'SystemInfo', 'FingerprintSet', 'create_fingerprint_set'
 
 SystemInfo = collections.namedtuple('SystemInfo', 'atoms fingerprints derivatives')
@@ -164,10 +161,12 @@ class FingerprintSet:
 
 
 def create_fingerprint_set(
-    descriptor: descriptors.Descriptor, systems: Sequence[ase.Atoms], get_derivatives=False
+    descriptor: 'milad.Descriptor', systems: Sequence[ase.Atoms], get_derivatives=False
 ) -> FingerprintSet:
     """Given a descriptor and a sequence of ase.Atoms objects this will create a fignerprint set"""
     # pylint: disable=too-many-locals
+    from milad.play import asetools
+
     # WARNING: The calculation of derivatives only takes into account positional degrees of freedom (not species) and
     # makes assumptions about the shape of the derivatives tensor
     fp_length = descriptor.fingerprint_len
