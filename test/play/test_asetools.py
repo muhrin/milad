@@ -13,13 +13,13 @@ from milad.play import asetools
 # pylint: disable=invalid-name
 
 
-def test_multiple_species(moment_invariants, request, save_figures):
+def test_multiple_species(geometric_invariants, request, save_figures):
     molecule = ase.build.molecule('CH3CH2OH')
     species = ['C', 'H', 'O']
     symbols = molecule.symbols
     num_atoms = len(symbols)
 
-    fp = asetools.MiladFingerprint(species, moment_invariants, sigmas={'C': 1., 'H': 0.5, 'O': 0.7})
+    fp = asetools.MiladFingerprint(species, geometric_invariants, sigmas={'C': 1., 'H': 0.5, 'O': 0.7})
 
     fingerprints = fp.create(molecule)
 
@@ -38,12 +38,12 @@ def test_multiple_species(moment_invariants, request, save_figures):
         fig.savefig('{}.pdf'.format(request.node.name))
 
 
-def test_multiple_species_split(moment_invariants, request, save_figures):
+def test_multiple_species_split(geometric_invariants, request, save_figures):
     molecule = ase.build.molecule('CH3CH2OH')
     species = ['C', 'H', 'O']
 
     fp = asetools.MiladFingerprint(
-        species, moment_invariants, sigmas={
+        species, geometric_invariants, sigmas={
             'C': 0.4,
             'H': 0.3,
             'O': 0.5

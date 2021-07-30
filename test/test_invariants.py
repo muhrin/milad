@@ -12,7 +12,7 @@ from milad import generate
 from milad import geometric
 
 
-def test_invariant_single_mass(moment_invariants, request, save_figures):
+def test_invariant_single_mass(geometric_invariants, request, save_figures):
     num_invariants = 20
     num_masses = 20
 
@@ -23,7 +23,8 @@ def test_invariant_single_mass(moment_invariants, request, save_figures):
     for i in range(num_masses):
         mass = 0. + (0.1 * i)
 
-        invariants = milad.invariants.calc_moment_invariants(moment_invariants[:num_invariants], origin, 0.4, mass)
+        moments = geometric.from_gaussians(geometric_invariants.max_order, origin, sigmas=0.4, weights=mass)
+        invariants = geometric_invariants[:num_invariants](moments)
 
         milad.plot.plot_invariants(invariants, axes, label='mass={}'.format(mass))
 
@@ -32,7 +33,7 @@ def test_invariant_single_mass(moment_invariants, request, save_figures):
         fig.savefig('{}.pdf'.format(request.node.name))
 
 
-def test_invariant_two_weights(moment_invariants, request, save_figures):
+def test_invariant_two_weights(geometric_invariants, request, save_figures):
     num_invariants = 64
     num_weights = 11
 
@@ -43,9 +44,8 @@ def test_invariant_two_weights(moment_invariants, request, save_figures):
     for i in range(num_weights):
         mass = 0. + (0.1 * i)
 
-        invariants = milad.invariants.calc_moment_invariants(
-            moment_invariants[:num_invariants], positions, 0.4, (1., mass), normalise=True
-        )
+        moments = geometric.from_gaussians(geometric_invariants.max_order, positions, sigmas=0.4, weights=(1., mass))
+        invariants = geometric_invariants[:num_invariants](moments)
 
         milad.plot.plot_invariants(invariants, axes, label=f'$w={mass:.1f}$')
 
@@ -56,9 +56,9 @@ def test_invariant_two_weights(moment_invariants, request, save_figures):
         fig.savefig('{}.pdf'.format(request.node.name))
 
 
-def test_invariant_derivative(moment_invariants):
+def test_invariant_derivative(geometric_invariants):
     # Take a random invariant and make sure that derivatives are getting calculated accurately
-    invariant = random.choice(moment_invariants)
+    invariant = random.choice(geometric_invariants)
 
     # Symbols for moments
     m = sympy.IndexedBase('m')  # pylint: disable=invalid-name
@@ -73,23 +73,22 @@ def test_invariant_derivative(moment_invariants):
         assert dphi_dm_calculated == dphi_dm_analytic
 
 
-def test_invariants_function(moment_invariants):
+def test_invariants_function(geometric_invariants):
     num_points = 10
     max_order = 10
 
-    invariants_fn = moment_invariants  # milad.invariants.MomentInvariants(*moment_invariants)
     moments_fn = geometric.GeometricMomentsCalculator(max_order)
 
     pts = generate.random_points_in_sphere(num_points)
     env = functions.Features(*map(functions.WeightedDelta, pts))
     moments = moments_fn(env)
-    phi = invariants_fn(moments)
+    phi = geometric_invariants(moments)
 
     # The 1st moment is always the total mass
     assert phi[0] == num_points
 
     # Now try the same thing using chain
-    combined_fn = functions.Chain(moments_fn, invariants_fn)
+    combined_fn = functions.Chain(moments_fn, geometric_invariants)
     phi2, _jacobian = combined_fn(env, jacobian=True)
 
     assert np.all(phi == phi2)

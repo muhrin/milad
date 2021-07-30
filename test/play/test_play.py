@@ -17,7 +17,7 @@ def generate_vectors_on_sphere(num):
     return vecs
 
 
-def test_env_simple_no_cutoff_fn(moment_invariants, request, save_figures):
+def test_env_simple_no_cutoff_fn(geometric_invariants, request, save_figures):
     # Settings
     np.random.seed(5)
     num_atoms = 6
@@ -35,7 +35,7 @@ def test_env_simple_no_cutoff_fn(moment_invariants, request, save_figures):
         env.add_gaussian(pos, sigma=sigma, weight=volume)
 
     # The original
-    series = [env.calc_moment_invariants(moment_invariants, normalise=normalise)]
+    series = [env.calc_moment_invariants(geometric_invariants, normalise=normalise)]
 
     for _ in range(num_rotations):
         # Generated rotated positions
@@ -47,7 +47,7 @@ def test_env_simple_no_cutoff_fn(moment_invariants, request, save_figures):
         rotated_env.add_gaussians(rotated, sigma=sigma, mass=volume)
 
         # Calculate the invariants
-        series.append(rotated_env.calc_moment_invariants(moment_invariants, normalise=normalise))
+        series.append(rotated_env.calc_moment_invariants(geometric_invariants, normalise=normalise))
 
     fig, axes = plt.subplots()
     milad.plot.plot_multiple_invariants(series, axes)
@@ -56,7 +56,7 @@ def test_env_simple_no_cutoff_fn(moment_invariants, request, save_figures):
         fig.savefig('{}.pdf'.format(request.node.name))
 
 
-def test_env_simple_cos_cutoff_fn(moment_invariants, request, save_figures):
+def test_env_simple_cos_cutoff_fn(geometric_invariants, request, save_figures):
     num_atoms = 6
     sigma = 1.0
     num_rotations = 10
@@ -72,7 +72,7 @@ def test_env_simple_cos_cutoff_fn(moment_invariants, request, save_figures):
         env.add_gaussian(pos, sigma=sigma)
 
     # The original
-    series = [env.calc_moment_invariants(moment_invariants, normalise=True)]
+    series = [env.calc_moment_invariants(geometric_invariants, normalise=True)]
 
     for _ in range(num_rotations):
         # Generated rotated positions
@@ -84,7 +84,7 @@ def test_env_simple_cos_cutoff_fn(moment_invariants, request, save_figures):
         _results = rotated_env.add_gaussians(rotated, sigma)
 
         # Calculate the invariants
-        series.append(rotated_env.calc_moment_invariants(moment_invariants, normalise=True))
+        series.append(rotated_env.calc_moment_invariants(geometric_invariants, normalise=True))
 
     fig, axes = plt.subplots()
     milad.plot.plot_multiple_invariants(series, axes)
@@ -93,7 +93,7 @@ def test_env_simple_cos_cutoff_fn(moment_invariants, request, save_figures):
         fig.savefig('{}.pdf'.format(request.node.name))
 
 
-def test_atom_entering(moment_invariants, request, save_figures):
+def test_atom_entering(geometric_invariants, request, save_figures):
     """Test how the invariants change as an atom enters the cutoff"""
     num_atoms = 6
     cutoff = 6.
@@ -131,7 +131,7 @@ def test_atom_entering(moment_invariants, request, save_figures):
             assert result is False
 
         # Calculate the invariants
-        series.append(env.calc_moment_invariants(moment_invariants, normalise=normalise))
+        series.append(env.calc_moment_invariants(geometric_invariants, normalise=normalise))
 
     diffs = [series[idx] - series[0] for idx in range(1, num_steps)]
     labels = [f'x={start_x - i * delta:.2f}' for i in range(1, num_steps)]
@@ -146,7 +146,7 @@ def test_atom_entering(moment_invariants, request, save_figures):
         fig.savefig('{}.pdf'.format(request.node.name))
 
 
-def test_asymmetric_distribution(moment_invariants, request, save_figures):
+def test_asymmetric_distribution(geometric_invariants, request, save_figures):
     """Test how the invariants change as an atom enters the cutoff"""
     sigma = 1.0
     normalise = True
@@ -162,7 +162,7 @@ def test_asymmetric_distribution(moment_invariants, request, save_figures):
     series = []
 
     # Calculate the invariants
-    series.append(env.calc_moment_invariants(moment_invariants, normalise=normalise))
+    series.append(env.calc_moment_invariants(geometric_invariants, normalise=normalise))
 
     fig, axes = plt.subplots()
     milad.plot.plot_multiple_invariants(series, axes)
@@ -171,15 +171,15 @@ def test_asymmetric_distribution(moment_invariants, request, save_figures):
         fig.savefig('{}.pdf'.format(request.node.name))
 
 
-def test_fingerprint(moment_invariants, request, save_figures):
+def test_fingerprint(geometric_invariants, request, save_figures):
     num_atoms = 5
     num_rotations = 10
     scale = 4.
-    num_invariants = len(moment_invariants)
+    num_invariants = len(geometric_invariants)
 
     positions = scale * np.random.rand(num_atoms, 3)
     calculator = milad.play.FingerprintCalculator(
-        invariants=moment_invariants, sigma=1., cutoff=6., cutoff_function='cos', normalise=True
+        invariants=geometric_invariants, sigma=1., cutoff=6., cutoff_function='cos', normalise=True
     )
 
     orig_fp = calculator.calculate(positions)

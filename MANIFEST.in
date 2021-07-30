@@ -7,4 +7,4 @@ include README.rst
 # Force test subdirectories
 recursive-include test *.py
 
-include milad/res/*
+include milad/invariants/res/*

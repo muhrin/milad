@@ -6,9 +6,8 @@ import numpy as np
 from . import atomic
 from . import base_moments
 from .descriptors.interfaces import Descriptor
-from . import invariants
 from . import functions
-from . import invariants_
+from . import invariants
 from . import zernike
 
 __all__ = 'MomentInvariantsDescriptor', 'descriptor', 'Fingerprinter', 'fingerprinter'
@@ -23,7 +22,7 @@ class MomentInvariantsDescriptor(Descriptor):
         self,
         feature_mapper: atomic.FeatureMapper,
         moments_calculator: base_moments.MomentsCalculator,
-        invs: invariants_.Invariants,
+        invs: invariants.Invariants,
         cutoff: float = None,
         scale: bool = True,
         species_mapper: atomic.MapNumbers = None,
@@ -68,7 +67,7 @@ class MomentInvariantsDescriptor(Descriptor):
         self._calculator = functions.Chain(self._preprocess, self._process)
 
     @property
-    def invariants(self) -> invariants_.Invariants:
+    def invariants(self) -> invariants.Invariants:
         return self._invariants
 
     @property
@@ -191,7 +190,7 @@ def descriptor(
     cutoff: float = None,
     scale=True,
     moments_calculator: base_moments.MomentsCalculator = None,
-    invs: invariants_.Invariants = None,
+    invs: invariants.Invariants = None,
     apply_cutoff=True,
     smooth_cutoff=False,
 ) -> MomentInvariantsDescriptor:

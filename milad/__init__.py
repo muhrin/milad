@@ -3,13 +3,12 @@ from . import analytic
 from . import atomic
 from . import dat
 from . import descriptors
-from . import invariants
 from . import exceptions
 from . import functions
 from . import generate
 # from . import generative
 from . import geometric
-from . import invariants_
+from . import invariants
 from . import mathutil
 from . import models
 from . import optimisers

@@ -8,13 +8,13 @@ from typing import Sequence, Union, List, Set, Tuple, Iterator, Callable
 
 import numpy as np
 
-from . import base_moments
-from . import functions
-from . import geometric
-from . import polynomials
+from milad import base_moments
+from milad import functions
+from milad import geometric
+from milad import polynomials
 
 __all__ = ('MomentInvariant', 'read_invariants', 'RES_DIR', 'COMPLEX_INVARIANTS', 'GEOMETRIC_INVARIANTS', \
-           'MomentInvariants')
+           'MomentInvariants', 'read', 'InvariantBuilder')
 
 # The resources directory
 RES_DIR = pathlib.Path(__file__).parent / 'res'

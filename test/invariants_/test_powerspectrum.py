@@ -3,7 +3,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 from milad import generate
-from milad.invariants_ import powerspectrum
+from milad.invariants import powerspectrum
 from milad import zernike
 
 # pylint: disable=invalid-name

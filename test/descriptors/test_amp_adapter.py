@@ -10,7 +10,7 @@ from milad import descriptors
 from milad import generate
 from milad import functions
 from milad import fingerprinting
-from milad import invariants_
+from milad import invariants
 from milad import utils
 from milad import zernike
 
@@ -45,7 +45,7 @@ def test_compare_zernike_with_amp():
         fingerprinting.descriptor(
             features=dict(type=functions.WeightedDelta, kwargs=dict(weight=specie_weight)),
             moments_calculator=zernike.ZernikeMomentsCalculator(7, use_direct=True),
-            invs=invariants_.PowerSpectrum(mix_radials=False, radials_first=True),
+            invs=invariants.PowerSpectrum(mix_radials=False, radials_first=True),
             cutoff=rcut,
             apply_cutoff=True,
             smooth_cutoff=True
@@ -77,7 +77,7 @@ def test_amp_zernike_comparison():
 
     milad_descriptor = functions.Chain(
         atomic.FeatureMapper(), functions.CosineCutoff(rcut), zernike.ZernikeMomentsCalculator(nmax, use_direct=True),
-        invariants_.PowerSpectrum(mix_radials=False, radials_first=True)
+        invariants.PowerSpectrum(mix_radials=False, radials_first=True)
     )
 
     amp_descriptor = amp.descriptor.zernike.Zernike(
