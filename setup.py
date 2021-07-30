@@ -47,7 +47,7 @@ setup(
         ['torch==1.9.0.dev20210604', 'functorch @ git+https://github.com/zou3519/functorch.git#egg=functorch']
     },
     dependency_links=['https://download.pytorch.org/whl/nightly/cu102/torch_nightly.html'],
-    packages=['milad', 'milad.descriptors', 'milad.models', 'milad.optimisers', 'milad.play'],
+    packages=['milad', 'milad.descriptors', 'milad.models', 'milad.optimisers', 'milad.play', 'milad.invariants'],
     include_package_data=True,
     test_suite='test',
     entry_points={
