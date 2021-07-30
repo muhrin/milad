@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import random
+
 import numpy as np
 import pytest
 from scipy import spatial
@@ -96,3 +98,8 @@ def test_separation_force_optimiser():
 def test_scale_positions():
     atoms = atomic.random_atom_collection_in_sphere(10, radius=5., centre=True)
     testing.test_function(atomic.ScalePositions(0.5), atoms, check_jacobian=True)
+
+
+def test_feature_mapper():
+    atoms = atomic.random_atom_collection_in_sphere(10, numbers=tuple(random.randint(0, 100) for _ in range(10)))
+    testing.test_function(atomic.FeatureMapper(map_species_to='WEIGHT'), atoms, check_jacobian=True)

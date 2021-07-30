@@ -243,32 +243,46 @@ class FeatureMapper(functions.Function):
         desc = [self._feature_type.__name__]
         if self._feature_kwargs:
             desc.append(f'({self._feature_type})')
-        desc.append(f' (species=>{self._map_species_to})')
-        return ''.join(desc)
+        desc.append(f'(species -> {self._map_species_to})')
+        mapping = ''.join(desc)
+        return f'FeatureMapper({mapping})'
 
     @property
     def inverse(self):
         return self._inverse
 
     @property
-    def map_species_to(self) -> Optional[str]:
+    def map_species_to(self) -> Optional[int]:
         return self._map_species_to
 
     @staticmethod
     def _get_species_map_idx(feature_type: Type[functions.Feature], map_to: Union[int, str]) -> Optional[int]:
-        if isinstance(map_to, int):
-            return map_to
-        if isinstance(map_to, str):
-            return getattr(feature_type, map_to)
         if map_to is None:
             return None
 
-        raise TypeError(map_to)
+        map_idx = None
+        if isinstance(map_to, int):
+            map_idx = map_to
+        elif isinstance(map_to, str):
+            map_idx = getattr(feature_type, map_to)
+        else:
+            raise TypeError(map_to)
+
+        if not isinstance(map_idx, int):
+            raise TypeError(f"Expected '{map_to}' to correspond to an integer index, but got '{map_idx}'")
+
+        return map_idx
 
     def output_length(self, in_state: AtomsCollection) -> int:
         return in_state.num_atoms * self._feature_type.LENGTH
 
-    def evaluate(self, atoms: AtomsCollection, *, get_jacobian=False) -> functions.Features:  # pylint: disable=arguments-differ
+    def evaluate(
+        # pylint: disable=arguments-differ
+        self,
+        atoms: AtomsCollection,
+        *,
+        get_jacobian=False
+    ) -> functions.Features:
         features = functions.Features()
         jac = np.zeros((self.output_length(atoms), len(atoms))) if get_jacobian else None
 
@@ -289,7 +303,8 @@ class FeatureMapper(functions.Function):
                     jac[idx + i, pos_idx + i] = 1.  # pylint: disable=unsupported-assignment-operation
 
                 if self._map_species_to:
-                    jac[idx + self._map_species_to, atoms.linear_number_idx(atom_idx)] = 1.  # pylint: disable=unsupported-assignment-operation
+                    # pylint: disable=unsupported-assignment-operation
+                    jac[idx + self._map_species_to, atoms.linear_number_idx(atom_idx)] = 1.
 
             features.add(feature)
             idx += len(feature)
@@ -323,7 +338,7 @@ class FeatureMapper(functions.Function):
             for idx, feature in enumerate(features.features):
                 atoms_collection.positions[idx] = feature.pos
                 if self._mapper.map_species_to:
-                    atoms_collection.numbers[idx] = getattr(feature, self._mapper.map_species_to)
+                    atoms_collection.numbers[idx] = feature.vector[self._mapper.map_species_to]
 
             return atoms_collection
 

@@ -30,10 +30,21 @@ else:
             self._descriptor = descriptor
             self.dblabel = dblabel
             self.parent = None
-            self.parameters = Parameters({
-                'importname': 'milad.descriptors.amp_adapter.AmpDescriptor',
-                'mode': 'atom-centered'
-            })
+            self.parameters = Parameters({'cutoff': descriptor.cutoff, 'mode': 'atom-centered'})
+
+        @property
+        def cutoff(self) -> float:
+            return self._descriptor.cutoff
+
+        def load_amp(self, filename: str, label='') -> amp.Amp:
+            """Given a checkpoint filename this will load the Amp class and pass it this descriptor.
+
+            This means that the caller needs to be sure that this descriptor is the one used for when training the
+            loaded model, otherwise there will be inconsistencies.
+            """
+            if not label:
+                label = filename.replace('.amp', '')
+            return amp.Amp.load(filename, Descriptor=lambda *_args, **kwargs: self, label=label)
 
         def tostring(self) -> str:
             """Returns an evaluatable representation of the calculator that can

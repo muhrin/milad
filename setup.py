@@ -51,6 +51,6 @@ setup(
     include_package_data=True,
     test_suite='test',
     entry_points={
-        'milad.plugins.types': ['milad_types = milad.provides:get_mince_types'],
+        'mincepy.plugins.types': ['milad_types = milad.provides:get_mince_types'],
     }
 )

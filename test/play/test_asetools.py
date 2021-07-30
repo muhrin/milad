@@ -13,7 +13,7 @@ from milad.play import asetools
 # pylint: disable=invalid-name
 
 
-def test_multiple_species(moment_invariants, request):
+def test_multiple_species(moment_invariants, request, save_figures):
     molecule = ase.build.molecule('CH3CH2OH')
     species = ['C', 'H', 'O']
     symbols = molecule.symbols
@@ -34,10 +34,11 @@ def test_multiple_species(moment_invariants, request):
     milad.plot.plot_multiple_invariants(fingerprints, axes, labels=labels)
     axes.set_title('C$_2$H$_6$O')
     fig.legend()
-    fig.savefig('{}.pdf'.format(request.node.name))
+    if save_figures:
+        fig.savefig('{}.pdf'.format(request.node.name))
 
 
-def test_multiple_species_split(moment_invariants, request):
+def test_multiple_species_split(moment_invariants, request, save_figures):
     molecule = ase.build.molecule('CH3CH2OH')
     species = ['C', 'H', 'O']
 
@@ -56,7 +57,8 @@ def test_multiple_species_split(moment_invariants, request):
     axes.set_title(str(molecule))
     milad.plot.plot_multiple_invariants(fingerprint, axes, labels=species)
     fig.legend()
-    fig.savefig('{}.pdf'.format(request.node.name))
+    if save_figures:
+        fig.savefig('{}.pdf'.format(request.node.name))
 
 
 def test_generate_environments_molecule():
@@ -67,7 +69,7 @@ def test_generate_environments_molecule():
 
 
 def test_generate_environments_solid():
-    # pylint: disable=too-many-nested-blocks
+    # pylint: disable=too-many-nested-blocks, too-many-locals
     lattice_param = 2.5
     cutoff = 4.
 

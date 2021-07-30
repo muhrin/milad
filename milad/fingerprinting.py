@@ -225,7 +225,7 @@ def descriptor(
     invs = invs or invariants.read(invariants.COMPLEX_INVARIANTS)
     moments_calculator = moments_calculator or zernike.ZernikeMomentsCalculator(invs.max_order)
 
-    features = features or dict(type=functions.WeightedDelta, map_species_to=species_map.get('to', None))
+    features = features or dict(type=functions.WeightedDelta, map_species_to=species_map.get('to', 'WEIGHT'))
     return MomentInvariantsDescriptor(
         feature_mapper=atomic.FeatureMapper(**features),
         moments_calculator=moments_calculator,
