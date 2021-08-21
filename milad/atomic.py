@@ -580,11 +580,11 @@ class SeparationForce(functions.Function):
         self._power = power
 
         if cutoff is None:
-            self._ecut = 0
-            self._fcut = 0
+            self._c1 = 0
+            self._c2 = 0
         else:
-            self._ecut = 4. * self._epsilon * (self._sigma / self._cutoff)**self._power * (self._power - 1)
-            self._fcut = -4. * self._epsilon * self._sigma**self._power / self._cutoff**(self._power + 1)
+            self._c1 = self._power * self._sigma**self._power / cutoff**(self._power + 1)
+            self._c2 = -(self._sigma / cutoff)**self._power - self._c1 * cutoff
 
     def evaluate(self, atoms: AtomsCollection, *, get_jacobian=False):  # pylint: disable=arguments-differ
         distances = pdist(atoms.positions)
@@ -627,7 +627,7 @@ class SeparationForce(functions.Function):
         if self._cutoff is not None and r > self.cutoff:
             return 0.
 
-        energy = 4 * self._epsilon * (self._sigma / r)**self._power - self._fcut * r + self._ecut
+        energy = 4 * self._epsilon * ((self._sigma / r)**self._power + self._c1 * r + self._c2)
         return energy
 
     def force(  # pylint: disable=invalid-name
@@ -640,5 +640,5 @@ class SeparationForce(functions.Function):
         if self._cutoff is not None and r > self.cutoff:
             return 0.
 
-        force = 4 * self._epsilon * self._power * self._sigma**self._power / r**(self._power + 1) + self._fcut
+        force = 4 * self._epsilon * (self._power * self._sigma**self._power / r**(self._power + 1) - self._c1)
         return force

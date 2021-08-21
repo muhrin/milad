@@ -73,9 +73,9 @@ class MomentsOptimiser:
                     mask=mask,
                     jacobian=jacobian,
                     bounds=bounds,
-                    max_func_evals=128,
-                    cost_tol=100 * cost_tol,
-                    grad_tol=100 * grad_tol,
+                    max_func_evals=512,
+                    cost_tol=cost_tol,
+                    grad_tol=grad_tol,
                     verbose=verbose
                 )
 
@@ -86,7 +86,7 @@ class MomentsOptimiser:
                 if best_result is None or result.rmsd < best_result.rmsd:
                     best_result = result
 
-                if best_result.rmsd <= 100 * target_rmsd:
+                if best_result.rmsd <= target_rmsd:
                     if verbose:
                         print('Keeping')
                     break

@@ -455,6 +455,10 @@ class InvariantsGenerator:
         return invs
 
 
+def generate_all(index_traits: sph.IndexTraits) -> InvertibleInvariants:
+    return InvariantsGenerator.generate_all(index_traits)
+
+
 def degree_3_is_zero(pair1: Tuple, pair2: Tuple, pair3: Tuple) -> bool:
     """Check if a set a degree-3 invariant is identically zero"""
     if mathutil.odd(pair1[1]) and pair1 == pair2 == pair3:

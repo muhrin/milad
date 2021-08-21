@@ -67,7 +67,8 @@ def test_separation_force():
 
 def test_separation_force_symbolic():
     # pylint: disable=invalid-name
-    force = atomic.SeparationForce(cutoff=1.)
+    rcut = 1.5
+    force = atomic.SeparationForce(cutoff=rcut)
     # Manually set the cutoff to None because otherwise the symbolic derivative check can't decide if
     # it is or isn't within the cutoff
     force._cutoff = None  # pylint: disable=protected-access
@@ -75,7 +76,13 @@ def test_separation_force_symbolic():
     r = sympy.Symbol('r', real=True)
     energy = force.energy(r)
     derivative = sympy.diff(energy, r)
-    assert force.force(r) == -derivative
+    assert testing.sympy_equal(force.force(r), -derivative)
+
+    energy_at_rcut = force.energy(rcut)
+    assert energy_at_rcut == 0.
+
+    force_at_rcut = force.force(rcut)
+    assert force_at_rcut == 0.
 
 
 def test_separation_force_optimiser():
@@ -84,15 +91,12 @@ def test_separation_force_optimiser():
     force = atomic.SeparationForce(epsilon=0.1, sigma=0.5, cutoff=cutoff)
     atoms = atomic.random_atom_collection_in_sphere(10, radius=0.3)
 
-    res = optimisers.LeastSquaresOptimiser().optimise(
-        force,
-        initial=atoms,
-        # bounds=(-1., 1.),
-    )
+    res = optimisers.LeastSquaresOptimiser().optimise(force, initial=atoms, verbose=True)
 
     assert res.success
     distances = spatial.distance.pdist(res.value.positions)
-    assert np.all(distances > cutoff)
+    # Need to leave a bit of a tolerance on the cutoff as the condition need not be _exactly_ satisfied
+    assert np.all(distances > (cutoff - 1e-1))
 
 
 def test_scale_positions():

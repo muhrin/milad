@@ -330,8 +330,8 @@ def find_iteratively(
     moments_optimiser = optimisers.MomentsOptimiser()
     if structure_optimiser is None:
         structure_optimiser = optimisers.StructureOptimiser()
-        # if minsep:
-        #     structure_optimiser.separation_force = atomic.SeparationForce(epsilon=1e-2, cutoff=0.3, power=1)
+        if minsep:
+            structure_optimiser.separation_force = atomic.SeparationForce(epsilon=1e-1, cutoff=minsep, power=2)
 
     atoms = initial
     mask = None
@@ -370,7 +370,7 @@ def find_iteratively(
             minsep=minsep,
             mask=mask,
             grid_query=grid_query,
-            # structure_optimiser=structure_optimiser,
+            structure_optimiser=structure_optimiser,
             verbose=(verbose == 'high')
         )
         atoms = result.value

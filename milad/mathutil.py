@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
+import itertools
 from typing import Tuple
 
 import numpy as np
+from numpy import linalg
 
 # pylint: disable=invalid-name
 
@@ -127,3 +129,22 @@ def cart2sph(vec) -> np.array:
     # Wrap phi to the range [0, 2pi]
     phi2 = np.where(phi < 0, 2 * np.pi + phi, phi)
     return np.array([r, theta, phi2])
+
+
+def krank(array: np.ndarray) -> int:
+    """Compute the k-rank (sometimes called spark) of a matrix
+
+    See: https://en.wikipedia.org/wiki/Spark_(mathematics)
+    """
+    # This is the maximum possible k-rank
+    rank = linalg.matrix_rank(array)
+    ncols = array.shape[1]
+    cols = tuple(range(ncols))
+
+    for k in range(2, rank):
+        for comb in itertools.combinations(cols, k):
+            r = linalg.matrix_rank(array[:, comb])
+            if r < k:
+                return k
+
+    return rank

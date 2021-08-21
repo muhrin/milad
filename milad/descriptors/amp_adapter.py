@@ -139,7 +139,7 @@ else:
                     neighbour_symbol = system.symbols[neighbour_idx]
 
                     for coord in range(3):
-                        # Force on this atom because of neighbour
+                        # Force on this atom because of neighbour within this environment
                         deriv_idx = (my_idx, my_symbol, my_idx, my_symbol, coord)
                         derivatives[deriv_idx] += -derivs_[coord]
 
