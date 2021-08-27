@@ -7,7 +7,7 @@ from scipy.spatial import transform
 from . import mathutil
 
 
-def random_points_in_sphere(num: int, radius=1., centre=False) -> np.array:
+def random_points_in_sphere(num: int, radius=1., centre=False, minsep=None) -> np.array:
     """Generate num points within a sphere of the given radius"""
     points = np.empty((num, 3))
     r_sq = radius * radius
@@ -17,6 +17,9 @@ def random_points_in_sphere(num: int, radius=1., centre=False) -> np.array:
         while np.dot(vec, vec) >= r_sq:
             vec = 2 * radius * (np.random.rand(3) - 0.5)
         points[idx] = vec
+
+    if minsep is not None:
+        pass
 
     if centre:
         points -= centeroid(points)

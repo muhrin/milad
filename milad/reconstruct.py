@@ -292,7 +292,7 @@ def find_iteratively(
     max_iters=6,
     grid_query=None,
     structure_optimiser=None,
-    minsep=0.51,
+    minsep=0.55,
     verbose=False,
 ) -> optimisers.StructureOptimisationResult:
     """

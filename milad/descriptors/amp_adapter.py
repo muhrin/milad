@@ -12,7 +12,6 @@ else:
     from amp import utilities
     import ase
     from ase.calculators.calculator import Parameters
-    import numpy as np
 
     from milad.play import asetools
     from . import interfaces
@@ -104,8 +103,7 @@ else:
 
         def _calc_fingerprint_derivatives(self, system: ase.Atoms, _hashval):
             # pylint: disable=too-many-locals
-            fp_length = self._descriptor.fingerprint_len
-            derivatives = collections.defaultdict(lambda: np.zeros(fp_length))
+            derivatives = collections.defaultdict(float)
 
             for my_idx, env in asetools.extract_environments(
                 system,
@@ -123,7 +121,7 @@ else:
                 # The yielded environment has this array that allows us to map back on to the index in the
                 # original structure
                 orig_indices = env.get_array('orig_indices', copy=False)
-                derivs = collections.defaultdict(lambda: np.zeros((3, fp_length)))
+                derivs = collections.defaultdict(float)
 
                 for i in range(natoms):
                     neighbour_idx = orig_indices[i]
@@ -139,11 +137,13 @@ else:
                     neighbour_symbol = system.symbols[neighbour_idx]
 
                     for coord in range(3):
-                        # Force on this atom because of neighbour within this environment
+                        # Derivative of this fingerprint wrt coordinates of central atom
+                        # calculated as the negative of the derivative wrt to the positions of the neighbours i.e.
+                        # -d/dr_ij.  We sum up over all neighbours.
                         deriv_idx = (my_idx, my_symbol, my_idx, my_symbol, coord)
                         derivatives[deriv_idx] += -derivs_[coord]
 
-                        # Forces on neighbours because of this atom
+                        # Derivative of this fingerprint wrt coordinates of neighbouring atom
                         deriv_idx = (neighbour_idx, neighbour_symbol, my_idx, my_symbol, coord)
                         derivatives[deriv_idx] = derivs_[coord]
 

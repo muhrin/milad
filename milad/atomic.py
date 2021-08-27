@@ -555,8 +555,8 @@ class ApplyCutoff(functions.Function):
         return out_atoms
 
 
-def random_atom_collection_in_sphere(num: int, radius=1., centre=True, numbers=1.) -> AtomsCollection:
-    pts = generate.random_points_in_sphere(num, radius=radius, centre=centre)
+def random_atom_collection_in_sphere(num: int, radius=1., centre=True, numbers=1., minsep=None) -> AtomsCollection:
+    pts = generate.random_points_in_sphere(num, radius=radius, centre=centre, minsep=minsep)
     atoms = AtomsCollection(num, positions=pts)
     if isinstance(numbers, tuple):
         atoms.numbers[:] = random.choices(numbers, k=num)

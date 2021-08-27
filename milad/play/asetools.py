@@ -317,7 +317,7 @@ def prepare_molecule(*molecules: ase.Atoms, offset=0.) -> float:
     max_radius_sq = 0.
     offset_vector = offset * np.array([1., 0., 0.])
     for molecule in molecules:
-        centre, _radius = miniball.get_bounding_ball(molecule.positions)
+        centre, _radius = miniball.get_bounding_ball(molecule.positions)  # pylint: disable=unpacking-non-sequence
         centroid = centre + offset_vector
         # Set the new positions
         molecule.set_positions(molecule.positions - centroid)
