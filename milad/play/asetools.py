@@ -4,6 +4,7 @@ from typing import Union, Any, Callable
 import ase.neighborlist
 import miniball
 import numpy as np
+import numpy.linalg
 
 import milad
 from milad import atomic
@@ -311,19 +312,29 @@ def milad2ase(atoms: atomic.AtomsCollection) -> ase.Atoms:
     return ase.Atoms(positions=atoms.positions, numbers=atoms.numbers)
 
 
-def prepare_molecule(*molecules: ase.Atoms, offset=0.) -> float:
+def centre_molecule(molecule: ase.Atoms) -> float:
+    molecule.positions[:] = molecule.positions / len(molecule)
+    norms = np.linalg.norm(molecule.positions, axis=0)
+    return norms.max()
+
+
+def prepare_molecule(*molecules: ase.Atoms) -> float:
     """This will bring the centroid of each molecule to be coincident with the origin and return
     the maximum radius found from any of the molecules"""
     max_radius_sq = 0.
-    offset_vector = offset * np.array([1., 0., 0.])
     for molecule in molecules:
-        centre, _radius = miniball.get_bounding_ball(molecule.positions)  # pylint: disable=unpacking-non-sequence
-        centroid = centre + offset_vector
-        # Set the new positions
-        molecule.set_positions(molecule.positions - centroid)
-        new_positions = molecule.positions
-        # Get the maximum radius squared
-        max_dist_sq = max(np.dot(pos, pos) for pos in new_positions)
+        try:
+            centre, _radius = miniball.get_bounding_ball(molecule.positions)  # pylint: disable=unpacking-non-sequence
+        except numpy.linalg.LinAlgError:
+            max_dist_sq = centre_molecule(molecule)
+        else:
+            centroid = centre
+            # Set the new positions
+            molecule.set_positions(molecule.positions - centroid)
+            new_positions = molecule.positions
+            # Get the maximum radius squared
+            max_dist_sq = max(np.dot(pos, pos) for pos in new_positions)
+
         max_radius_sq = max(max_radius_sq, max_dist_sq)
 
     return max_radius_sq**0.5

@@ -48,7 +48,6 @@ __all__ = (
               'polynomials',
               'descriptors',
               'dat',
-              'invariants_'
               'zernike',
           ) \
           + zernike.__all__ + fingerprinting.__all__ + atomic.__all__ + invariants.__all__ + \
