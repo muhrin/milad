@@ -21,39 +21,43 @@ def test_invariant_single_mass(geometric_invariants, request, save_figures):
     fig, axes = plt.subplots()
 
     for i in range(num_masses):
-        mass = 0. + (0.1 * i)
+        mass = 0.0 + (0.1 * i)
 
-        moments = geometric.from_gaussians(geometric_invariants.max_order, origin, sigmas=0.4, weights=mass)
+        moments = geometric.from_gaussians(
+            geometric_invariants.max_order, origin, sigmas=0.4, weights=mass
+        )
         invariants = geometric_invariants[:num_invariants](moments)
 
-        milad.plot.plot_invariants(invariants, axes, label='mass={}'.format(mass))
+        milad.plot.plot_invariants(invariants, axes, label="mass={}".format(mass))
 
     fig.legend()
     if save_figures:
-        fig.savefig('{}.pdf'.format(request.node.name))
+        fig.savefig("{}.pdf".format(request.node.name))
 
 
 def test_invariant_two_weights(geometric_invariants, request, save_figures):
     num_invariants = 64
     num_weights = 11
 
-    positions = np.array(((-2., 0., 0.), (2., 0., 0.)))
+    positions = np.array(((-2.0, 0.0, 0.0), (2.0, 0.0, 0.0)))
 
     fig, axes = plt.subplots()
 
     for i in range(num_weights):
-        mass = 0. + (0.1 * i)
+        mass = 0.0 + (0.1 * i)
 
-        moments = geometric.from_gaussians(geometric_invariants.max_order, positions, sigmas=0.4, weights=(1., mass))
+        moments = geometric.from_gaussians(
+            geometric_invariants.max_order, positions, sigmas=0.4, weights=(1.0, mass)
+        )
         invariants = geometric_invariants[:num_invariants](moments)
 
-        milad.plot.plot_invariants(invariants, axes, label=f'$w={mass:.1f}$')
+        milad.plot.plot_invariants(invariants, axes, label=f"$w={mass:.1f}$")
 
-    axes.set_yscale('log')
-    axes.set_title('Varying mass')
+    axes.set_yscale("log")
+    axes.set_title("Varying mass")
     fig.legend()
     if save_figures:
-        fig.savefig('{}.pdf'.format(request.node.name))
+        fig.savefig("{}.pdf".format(request.node.name))
 
 
 def test_invariant_derivative(geometric_invariants):
@@ -61,7 +65,7 @@ def test_invariant_derivative(geometric_invariants):
     invariant = random.choice(geometric_invariants)
 
     # Symbols for moments
-    m = sympy.IndexedBase('m')  # pylint: disable=invalid-name
+    m = sympy.IndexedBase("m")  # pylint: disable=invalid-name
     phi = invariant.apply(m)  # Analytic expression for moments
     derivatives = invariant.get_gradient()
 
@@ -97,9 +101,11 @@ def test_invariants_function(geometric_invariants):
 def test_invariants_derivatives_correctness(complex_invariants):
     complex_invariants = complex_invariants[:10]
     # The moments
-    m = sympy.IndexedBase('m', complex=True)  # pylint: disable=invalid-name
+    m = sympy.IndexedBase("m", complex=True)  # pylint: disable=invalid-name
     # Fill with symbols
-    zernike_moms = milad.ZernikeMoments.from_indexed(m, complex_invariants.max_order, dtype=object)
+    zernike_moms = milad.ZernikeMoments.from_indexed(
+        m, complex_invariants.max_order, dtype=object
+    )
 
     phi, jac = complex_invariants(zernike_moms, jacobian=True)
 
@@ -118,7 +124,7 @@ def test_invariants_derivatives_correctness(complex_invariants):
             if not diff == from_jac:
                 # If they differ, check that it's by a meaningful amount
                 coeffs = np.array(tuple(difference.as_coefficients_dict().values()))
-                np.testing.assert_array_almost_equal(coeffs, 0., decimal=10)
+                np.testing.assert_array_almost_equal(coeffs, 0.0, decimal=10)
 
 
 def test_against_chiral_tetrahedra(complex_invariants, chiral_tetrahedra):

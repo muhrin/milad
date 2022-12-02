@@ -20,7 +20,7 @@ def _create_params_dict(species: list, value: Union[Any, dict]) -> dict:
 def extract_environments(
     system: ase.Atoms,
     atom_centered=True,
-    cutoff=5.,
+    cutoff=5.0,
     yield_indices=False,
     include_central_atom=True,
 ):
@@ -57,7 +57,9 @@ def extract_environments(
         # Visit all neighbours
         for j, neighbour_pos in enumerate(positions):
             neighbour_symbol = symbols[j]
-            vecs = dist_calculator.get_vecs_between(central_pos, neighbour_pos, cutoff=cutoff, self_interation=i != j)
+            vecs = dist_calculator.get_vecs_between(
+                central_pos, neighbour_pos, cutoff=cutoff, self_interation=i != j
+            )
 
             # Get all vectors to that neighbour (could be more than one if periodic)
             for vec in vecs:
@@ -69,7 +71,7 @@ def extract_environments(
                 orig_indices.append(j)
 
         atoms = ase.Atoms(positions=env_positions, symbols=env_symbols)
-        atoms.set_array('orig_indices', np.array(orig_indices, dtype=int))
+        atoms.set_array("orig_indices", np.array(orig_indices, dtype=int))
 
         # Finally yield the environment
         if yield_indices:
@@ -79,7 +81,9 @@ def extract_environments(
 
 
 def ase2milad(atoms: ase.Atoms) -> atomic.AtomsCollection:
-    return atomic.AtomsCollection(len(atoms), positions=atoms.positions, numbers=atoms.numbers)
+    return atomic.AtomsCollection(
+        len(atoms), positions=atoms.positions, numbers=atoms.numbers
+    )
 
 
 def milad2ase(atoms: atomic.AtomsCollection) -> ase.Atoms:
@@ -95,10 +99,12 @@ def centre_molecule(molecule: ase.Atoms) -> float:
 def prepare_molecule(*molecules: ase.Atoms) -> float:
     """This will bring the centroid of each molecule to be coincident with the origin and return
     the maximum radius found from any of the molecules"""
-    max_radius_sq = 0.
+    max_radius_sq = 0.0
     for molecule in molecules:
         try:
-            centre, _radius = miniball.get_bounding_ball(molecule.positions)  # pylint: disable=unpacking-non-sequence
+            centre, _radius = miniball.get_bounding_ball(
+                molecule.positions
+            )  # pylint: disable=unpacking-non-sequence
         except numpy.linalg.LinAlgError:
             max_dist_sq = centre_molecule(molecule)
         else:

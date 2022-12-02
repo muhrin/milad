@@ -10,11 +10,12 @@ from . import functions
 from . import invariants
 from . import zernike
 
-__all__ = 'MomentInvariantsDescriptor', 'descriptor', 'Fingerprinter', 'fingerprinter'
+__all__ = "MomentInvariantsDescriptor", "descriptor", "Fingerprinter", "fingerprinter"
 
 
 class MomentInvariantsDescriptor(Descriptor):
     """Class that is responsible for producing fingerprints form atomic environments"""
+
     supports_jacobian = True
     scaler = None
 
@@ -27,7 +28,7 @@ class MomentInvariantsDescriptor(Descriptor):
         scale: bool = True,
         species_mapper: atomic.MapNumbers = None,
         apply_cutoff=True,
-        smooth_cutoff=False
+        smooth_cutoff=False,
     ):
         super().__init__()
 
@@ -49,7 +50,7 @@ class MomentInvariantsDescriptor(Descriptor):
 
             if scale:
                 # Rescale positions to be in the range |r| < 1, the typical domain of orthogonality
-                self.scaler = atomic.ScalePositions(1. / cutoff)
+                self.scaler = atomic.ScalePositions(1.0 / cutoff)
                 process.append(self.scaler)
 
         process.append(feature_mapper)
@@ -107,7 +108,9 @@ class MomentInvariantsDescriptor(Descriptor):
     def species_mapper(self) -> Optional[atomic.MapNumbers]:
         return self._species_mapper
 
-    def get_moments(self, atoms: atomic.AtomsCollection, preprocess=True) -> base_moments.Moments:
+    def get_moments(
+        self, atoms: atomic.AtomsCollection, preprocess=True
+    ) -> base_moments.Moments:
         if preprocess:
             atoms = self.preprocess(atoms)
         return self.process[:-1](atoms)
@@ -119,7 +122,9 @@ class MomentInvariantsDescriptor(Descriptor):
 
         return result.real
 
-    def fingerprint_and_derivatives(self, atoms: atomic.AtomsCollection) -> Tuple[np.ndarray, np.ndarray]:
+    def fingerprint_and_derivatives(
+        self, atoms: atomic.AtomsCollection
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         This method computes the fingerprint for the pass atoms collection and the corresponding position
         derivatives.
@@ -136,7 +141,7 @@ class MomentInvariantsDescriptor(Descriptor):
         len_fingerprint = len(fingerprint)
 
         # Now extract the portion of the Jacobian that relates just to atomic positions and reshape
-        derivatives = jacobian[:, :3 * num_atoms].real
+        derivatives = jacobian[:, : 3 * num_atoms].real
         # Reshape to be (len_fingerprint, num_atoms, 3) so xyz are stored in separate dimension
         derivatives = derivatives.reshape((len_fingerprint, num_atoms, 3))
         # Now sum xyz
@@ -147,11 +152,15 @@ class MomentInvariantsDescriptor(Descriptor):
     def atom_centred(self, atoms: atomic.AtomsCollection, idx: int, get_jacobian=False):
         new_centre = atoms.positions[idx]
         new_atoms = atomic.AtomsCollection(
-            atoms.num_atoms, positions=atoms.positions - new_centre, numbers=atoms.numbers
+            atoms.num_atoms,
+            positions=atoms.positions - new_centre,
+            numbers=atoms.numbers,
         )
         return self.evaluate(new_atoms, get_jacobian=get_jacobian)
 
-    def get_bounds(self, num_atoms: int = 1) -> Tuple[atomic.AtomsCollection, atomic.AtomsCollection]:
+    def get_bounds(
+        self, num_atoms: int = 1
+    ) -> Tuple[atomic.AtomsCollection, atomic.AtomsCollection]:
         """Get a tuple containing a min and max AtomCollections that correspond to the minimum and maximum positions
         and (optionally) species range depending on the settings of this fingerprint.  This can be useful for setting
         optimiser bounds.
@@ -214,17 +223,23 @@ def descriptor(
     """
     # Set up the preprocessing
     species = species or {}
-    species_map = species.get('map', {})
+    species_map = species.get("map", {})
     if species_map:
-        species_mapper = atomic.MapNumbers(species=species_map['numbers'], map_to=species_map['range'])
+        species_mapper = atomic.MapNumbers(
+            species=species_map["numbers"], map_to=species_map["range"]
+        )
     else:
         species_mapper = None
 
     # Default to Zernike moments if not supplied
     invs = invs or invariants.read(invariants.COMPLEX_INVARIANTS)
-    moments_calculator = moments_calculator or zernike.ZernikeMomentsCalculator(invs.max_order)
+    moments_calculator = moments_calculator or zernike.ZernikeMomentsCalculator(
+        invs.max_order
+    )
 
-    features = features or dict(type=functions.WeightedDelta, map_species_to=species_map.get('to', 'WEIGHT'))
+    features = features or dict(
+        type=functions.WeightedDelta, map_species_to=species_map.get("to", "WEIGHT")
+    )
     return MomentInvariantsDescriptor(
         feature_mapper=atomic.FeatureMapper(**features),
         moments_calculator=moments_calculator,

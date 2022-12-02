@@ -10,10 +10,9 @@ else:
     from milad import atomic
     from . import interfaces
 
-    __all__ = ('DScribeDescriptor',)
+    __all__ = ("DScribeDescriptor",)
 
     class DScribeDescriptor(interfaces.Descriptor):
-
         def __init__(self, dscribe_descriptor: dscribe.descriptors.Descriptor):
             super().__init__()
             self._dscribe = dscribe_descriptor
@@ -25,9 +24,9 @@ else:
         @property
         def cutoff(self) -> float:
             try:
-                return getattr(self._dscribe, '_rcut')
+                return getattr(self._dscribe, "_rcut")
             except AttributeError:
-                return float('inf')
+                return float("inf")
 
         def evaluate(self, atoms: atomic.AtomsCollection, *, get_jacobian=False):
             ase_atoms = asetools.milad2ase(atoms)
@@ -37,10 +36,12 @@ else:
                 try:
                     res = self._dscribe.derivatives(ase_atoms, positions=[0])
                 except AttributeError:
-                    raise RuntimeError('Calculation of derivatives not supported')
+                    raise RuntimeError("Calculation of derivatives not supported")
                 else:
                     jac = np.zeros((self.fingerprint_len, natoms * 4))
-                    jac[:, :3 * natoms] = res[0].reshape(natoms * 3, self.fingerprint_len).T
+                    jac[:, : 3 * natoms] = (
+                        res[0].reshape(natoms * 3, self.fingerprint_len).T
+                    )
                     return res[1][0], jac
 
             return self._dscribe.create(ase_atoms, positions=[0])[0]

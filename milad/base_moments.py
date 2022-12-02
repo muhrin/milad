@@ -9,7 +9,7 @@ import numpy as np
 
 from . import functions
 
-__all__ = 'Moments', 'Index', 'ReconstructionQuery', 'MomentsProto'
+__all__ = "Moments", "Index", "ReconstructionQuery", "MomentsProto"
 
 Index = Tuple[int, int, int]  # A three dimensional moment index
 
@@ -22,7 +22,6 @@ class MomentsProto(Protocol):
 
 
 class ReconstructionQuery:
-
     def __init__(self, max_order: int, points: np.ndarray):
         self._max_order = max_order
         self._points = points
@@ -42,7 +41,7 @@ class Moments(functions.State, metaclass=abc.ABCMeta):
     # pylint: disable=invalid-name
 
     @classmethod
-    def from_indexed(cls, indexed, max_order: int, dtype=float) -> 'Moments':
+    def from_indexed(cls, indexed, max_order: int, dtype=float) -> "Moments":
         moments = cls(max_order, dtype=dtype)
         for idx in moments.iter_indices():
             moments[idx] = indexed.__getitem__(idx)
@@ -64,7 +63,7 @@ class Moments(functions.State, metaclass=abc.ABCMeta):
     def to_matrix(self) -> np.array:  # pylint: disable=no-self-use
         """Return the moments in a matrix.  Not all moment classes support this as they may have
         special indexing schemes in which case an AttributeError will be raised"""
-        raise AttributeError('Does not support conversion to matrix')
+        raise AttributeError("Does not support conversion to matrix")
 
     @property
     @abc.abstractmethod
@@ -93,13 +92,13 @@ class Moments(functions.State, metaclass=abc.ABCMeta):
         """
 
     @abc.abstractmethod
-    def get_mask(self) -> 'Moments':
+    def get_mask(self) -> "Moments":
         """Get an empty set of moments all set to None that can be used as a mask to fix values e.g. for optimisation"""
 
     def grid_values(self, num_samples: int, zero_outside_domain=True):
         """Get a grid and corresponding values of the moments reconstructed at the gridpoints"""
         # Create a coordinate grid
-        spacing = np.linspace(-1., 1., num_samples)
+        spacing = np.linspace(-1.0, 1.0, num_samples)
         grid = np.array(np.meshgrid(spacing, spacing, spacing))
         grid_points = grid.reshape(3, -1).T
 
@@ -111,7 +110,7 @@ class Moments(functions.State, metaclass=abc.ABCMeta):
             # Now calculate the grid values at those points, the rest are 0
             grid_vals = np.zeros(grid_points.shape[0])
             values = self.value_at(grid_points[valid_idxs][:, 0, :])
-            np.put(grid_vals, valid_idxs, values, mode='raise')
+            np.put(grid_vals, valid_idxs, values, mode="raise")
         else:
             # Do all points, even those outside the domain
             grid_vals = self.value_at(grid_points)
@@ -123,14 +122,14 @@ class Moments(functions.State, metaclass=abc.ABCMeta):
         self,
         query: ReconstructionQuery,
         order=None,  # pylint: disable=unused-argument
-        zero_outside_domain=True  # pylint: disable=unused-argument
+        zero_outside_domain=True,  # pylint: disable=unused-argument
     ):
         return self.value_at(query.points)
 
     @classmethod
     def get_grid(cls, num_samples: int, restrict_to_domain=True) -> np.ndarray:
         # Create a coordinate grid
-        spacing = np.linspace(-1., 1., num_samples)
+        spacing = np.linspace(-1.0, 1.0, num_samples)
         grid = np.array(np.meshgrid(spacing, spacing, spacing))
         grid_points = grid.reshape(3, -1).T
 
@@ -150,12 +149,13 @@ class Moments(functions.State, metaclass=abc.ABCMeta):
         return cls.create_reconstruction_query(grid, order)
 
     @classmethod
-    def create_reconstruction_query(cls, points: np.ndarray, order: int) -> ReconstructionQuery:
+    def create_reconstruction_query(
+        cls, points: np.ndarray, order: int
+    ) -> ReconstructionQuery:
         return ReconstructionQuery(order, points)
 
 
 class MomentsCalculator(functions.Function, metaclass=abc.ABCMeta):
-
     @abc.abstractmethod
     def create_random(self, max_order: int = None):
         """Create a random set of moments (optionally) up to a certain order."""

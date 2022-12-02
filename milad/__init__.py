@@ -4,9 +4,9 @@ from . import atomic
 from . import dat
 from . import descriptors
 from . import exceptions
+from . import fingerprinting
 from . import functions
 from . import generate
-# from . import generative
 from . import geometric
 from . import invariants
 from . import mathutil
@@ -28,27 +28,31 @@ from .reconstruct import *
 from .zernike import *
 
 __all__ = (
-              'analytic',
-              'atomic',
-              'invariants',
-              'functions',
-              'geometric',
-              'mathutil'
-              'utils',
-              'play',
-              'plot',
-              'reconstruct',
-              'exceptions',
-              'models',
-              'optimisers',
-              'generate',
-              'asetools',
-              'sph',
-              # 'generative',
-              'polynomials',
-              'descriptors',
-              'dat',
-              'zernike',
-          ) \
-          + zernike.__all__ + fingerprinting.__all__ + atomic.__all__ + invariants.__all__ + \
-          geometric.__all__
+    (
+        "analytic",
+        "atomic",
+        "invariants",
+        "functions",
+        "geometric",
+        "mathutil" "utils",
+        "play",
+        "plot",
+        "reconstruct",
+        "exceptions",
+        "models",
+        "optimisers",
+        "generate",
+        "asetools",
+        "sph",
+        # 'generative',
+        "polynomials",
+        "descriptors",
+        "dat",
+        "zernike",
+    )
+    + zernike.__all__
+    + fingerprinting.__all__
+    + atomic.__all__
+    + invariants.__all__
+    + geometric.__all__
+)

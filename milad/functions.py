@@ -12,7 +12,7 @@ from . import mathutil
 
 _LOGGER = logging.getLogger(__name__)
 
-SQRT_TWO_PI = (2 * np.pi)**0.5
+SQRT_TWO_PI = (2 * np.pi) ** 0.5
 
 
 class State(metaclass=abc.ABCMeta):
@@ -45,7 +45,9 @@ class State(metaclass=abc.ABCMeta):
         """Get the length of this state vector"""
         return len(self.vector)
 
-    def get_builder(self, mask=None) -> Optional['Function']:  # pylint: disable=no-self-use, disable=unused-argument
+    def get_builder(
+        self, mask=None
+    ) -> Optional["Function"]:  # pylint: disable=no-self-use, disable=unused-argument
         """Optionally returns a builder that will convert a one dimensional array to an object of this type.
         Useful for optimisation or other algorithms that can't/don't want to deal with the internal structure of this
         object"""
@@ -56,7 +58,7 @@ StateLike = Union[np.ndarray, State]
 
 
 class PlainState(State):
-    __slots__ = ('_array',)
+    __slots__ = ("_array",)
 
     def __init__(self, length, dtype=None):
         self._array = np.zeros(length, dtype=dtype)
@@ -68,7 +70,9 @@ class PlainState(State):
     @vector.setter
     def vector(self, value: np.array):
         if not value.shape == self._array.shape:
-            raise ValueError(f"Shape mismatch, expected '{self._array.shape}', got '{value.shape}'")
+            raise ValueError(
+                f"Shape mismatch, expected '{self._array.shape}', got '{value.shape}'"
+            )
         self._array = value
 
     @property
@@ -91,7 +95,9 @@ class Feature(State):
     def __init__(self, dtype=float):
         super().__init__()
         if self.LENGTH is None:
-            raise RuntimeError('Feature length not set, please set the LENGTH class attribute')
+            raise RuntimeError(
+                "Feature length not set, please set the LENGTH class attribute"
+            )
         self._vector = np.zeros(self.LENGTH, dtype=dtype)
 
     @property
@@ -114,12 +120,18 @@ class Feature(State):
     @vector.setter
     def vector(self, value: np.array):
         if not value.shape == self._vector.shape:
-            raise ValueError(f"Shape mismatch, expected '{self._vector.shape}', got '{value.shape}'")
+            raise ValueError(
+                f"Shape mismatch, expected '{self._vector.shape}', got '{value.shape}'"
+            )
         self._vector = value
 
-    def __add__(self, other: 'Feature') -> 'Features':
+    def __add__(self, other: "Feature") -> "Features":
         if not isinstance(other, Feature):
-            raise TypeError("Don't know how to add '{}' to a feature".format(other.__class__.__name__))
+            raise TypeError(
+                "Don't know how to add '{}' to a feature".format(
+                    other.__class__.__name__
+                )
+            )
         return Features(self, other)
 
 
@@ -153,14 +165,14 @@ class Features(State):
         # Reassign all the array
         if self._vector.shape != vec.shape:
             raise ValueError(
-                f'The passed vector ({vec.shape}) has a different shape from the features '
-                f'vector ({self._vector.shape})'
+                f"The passed vector ({vec.shape}) has a different shape from the features "
+                f"vector ({self._vector.shape})"
             )
         self._vector = vec
 
         idx = 0
         for entry in self._features:
-            entry.vector = self._vector[idx:idx + len(entry)]
+            entry.vector = self._vector[idx : idx + len(entry)]
             idx += entry.length
 
     def feature_range(self, feature: Feature) -> Optional[range]:
@@ -180,12 +192,16 @@ class Features(State):
         # Reassign all the arrays
         idx = 0
         for entry in self._features:
-            entry.array = self._vector[idx:idx + len(entry)]
+            entry.array = self._vector[idx : idx + len(entry)]
             idx += entry.length
 
-    def __add__(self, other: Union[Feature, 'Features']) -> 'Features':
+    def __add__(self, other: Union[Feature, "Features"]) -> "Features":
         if not isinstance(other, (Feature, Features)):
-            raise TypeError("Don't know how to add a '{}' to an environment".format(other.__class__.__name__))
+            raise TypeError(
+                "Don't know how to add a '{}' to an environment".format(
+                    other.__class__.__name__
+                )
+            )
         return Features(*self.features, other)
 
 
@@ -193,6 +209,7 @@ class WeightedDelta(Feature):
     """A Dirac delta function with a position and a weight (the total integral) stored as
     [x, y, z, weight]
     """
+
     # Indexing helpers
     X = 0
     Y = 1
@@ -206,7 +223,7 @@ class WeightedDelta(Feature):
         self.weight = weight
 
     def __repr__(self) -> str:
-        return f'Delta(pos={self.pos}, weight={self.weight})'
+        return f"Delta(pos={self.pos}, weight={self.weight})"
 
     @property
     def pos(self) -> np.array:
@@ -227,6 +244,7 @@ class WeightedDelta(Feature):
 
 class WeightedGaussian(Feature):
     """A 3 dimensional gaussian stored as [x, y, z, sigma, weight]"""
+
     # Indexing helpers
     X = 0
     Y = 1
@@ -235,14 +253,14 @@ class WeightedGaussian(Feature):
     WEIGHT = 4
     LENGTH = 5
 
-    def __init__(self, pos: np.array, sigma: float = 1., weight: float = 1.):
+    def __init__(self, pos: np.array, sigma: float = 1.0, weight: float = 1.0):
         super().__init__(dtype=pos.dtype)
         self.pos = pos
         self.sigma = sigma
         self.weight = weight
 
     def __repr__(self) -> str:
-        return f'Gaussian(pos={self.pos}, sigma={self.sigma}, weight={self.weight})'
+        return f"Gaussian(pos={self.pos}, sigma={self.sigma}, weight={self.weight})"
 
     @property
     def pos(self) -> np.array:
@@ -270,7 +288,6 @@ class WeightedGaussian(Feature):
 
 
 class ListState(State):
-
     def __init__(self, *entries):
         self._list = list(*entries)
 
@@ -295,7 +312,7 @@ class ListState(State):
         i = 0
         for entry in self._list:
             length = len(entry)
-            set_bare(entry, new_val[i:i + length])
+            set_bare(entry, new_val[i : i + length])
             i += length
 
 
@@ -311,7 +328,7 @@ class Function(metaclass=abc.ABCMeta):
         self._callbacks = set()
 
     @property
-    def inverse(self) -> Optional['Function']:
+    def inverse(self) -> Optional["Function"]:
         """A function may optionally provide an inverse in which case it would be returned by this property"""
         return None
 
@@ -334,29 +351,33 @@ class Function(metaclass=abc.ABCMeta):
             input_vec = get_bare(state)
             if np.isnan(input_vec).any():
                 raise ValueError(
-                    f'{name} evaluate was passed an {state.__class__.__name__} input with a NaN value: {input_vec}'
+                    f"{name} evaluate was passed an {state.__class__.__name__} input with a NaN value: {input_vec}"
                 )
         except TypeError:
             pass  # The types stored in the array don't support isnan ufunc
 
         result = self.evaluate(state, get_jacobian=jacobian)
         if result is None:
-            raise RuntimeError(f'{name} produced None output')
+            raise RuntimeError(f"{name} produced None output")
 
         if jacobian:
             if not isinstance(result, tuple):
-                raise RuntimeError(f"{name}.evaluate didn't return Jacobian despite being asked to")
+                raise RuntimeError(
+                    f"{name}.evaluate didn't return Jacobian despite being asked to"
+                )
             val, jac = result[0], result[1]
 
             if not jac.dtype == object and np.isnan(jac).any():
-                raise ValueError(f'{name}.evaluate produced a Jacobian with a NaN entry')
+                raise ValueError(
+                    f"{name}.evaluate produced a Jacobian with a NaN entry"
+                )
         else:
             val = result
             jac = None
 
         try:
             if np.isnan(get_bare(val)).any():
-                raise ValueError(f'{name}.evaluate produced a result with a NaN entry')
+                raise ValueError(f"{name}.evaluate produced a result with a NaN entry")
         except TypeError:
             pass  # The types stored in the array don't support isnan ufunc
 
@@ -378,17 +399,19 @@ class Function(metaclass=abc.ABCMeta):
 
     @classmethod
     def _check_input_type(cls, value: Any, allowed_types: Union[Type, Iterable[Type]]):
-        cls._check_type(value, allowed_types, 'Unsupported input type')
+        cls._check_type(value, allowed_types, "Unsupported input type")
 
     @classmethod
     def _check_output_type(cls, value: Any, allowed_types: Union[Type, Iterable[Type]]):
-        cls._check_type(value, allowed_types, 'Unsupported output type')
+        cls._check_type(value, allowed_types, "Unsupported output type")
 
     @classmethod
-    def _check_type(cls, value: Any, allowed_types: Union[Type, Iterable[Type]], msg: str):
+    def _check_type(
+        cls, value: Any, allowed_types: Union[Type, Iterable[Type]], msg: str
+    ):
         if not isinstance(value, allowed_types):
             raise TypeError(
-                f'{cls.__name__}: {msg}, '
+                f"{cls.__name__}: {msg}, "
                 f"expected '{allowed_types}', "
                 f"got '{value.__class__.__name__}'"
             )
@@ -398,7 +421,6 @@ class FromVectorBuilder(Function):
     """A default builder that can be used for state types that have a from_vector class method"""
 
     class Inverse(Function):
-
         def evaluate(self, state, *, get_jacobian=False):
             out = state.vector
             if get_jacobian:
@@ -416,7 +438,7 @@ class FromVectorBuilder(Function):
         self,
         state_vec: np.ndarray,
         *,
-        get_jacobian=False
+        get_jacobian=False,
     ):
         out = self._state_type.from_vector(state_vec, **self._kwargs)
         if get_jacobian:
@@ -425,12 +447,13 @@ class FromVectorBuilder(Function):
         return out
 
     @property
-    def inverse(self) -> Optional['Function']:
+    def inverse(self) -> Optional["Function"]:
         return FromVectorBuilder.Inverse()
 
 
 class Identity(Function):
     """Function that just returns what it is passed"""
+
     supports_jacobian = True
 
     def evaluate(self, state: StateLike, *, get_jacobian=False):
@@ -441,7 +464,7 @@ class Identity(Function):
         return state
 
     @property
-    def inverse(self) -> Optional['Function']:
+    def inverse(self) -> Optional["Function"]:
         return self
 
 
@@ -452,7 +475,7 @@ class Chain(Function):
         super().__init__()
         for func in functions:
             if not isinstance(func, Function):
-                raise TypeError(f'Expected Function, got {func.__class__.__name__}')
+                raise TypeError(f"Expected Function, got {func.__class__.__name__}")
         self._functions: List[Function] = list(functions)
 
     def __len__(self):
@@ -465,9 +488,9 @@ class Chain(Function):
         return self._functions[item]
 
     def __repr__(self):
-        return f'Chain({self._functions})'
+        return f"Chain({self._functions})"
 
-    def copy(self) -> 'Chain':
+    def copy(self) -> "Chain":
         """Create a shallow copy"""
         return Chain(self._functions)
 
@@ -503,7 +526,7 @@ class Chain(Function):
         return all(entry.supports_jacobian for entry in self._functions)
 
     @property
-    def inverse(self) -> Optional['Function']:
+    def inverse(self) -> Optional["Function"]:
         inverse_chain = Chain()
         for func in reversed(self._functions):
             inverse = func.inverse
@@ -516,7 +539,7 @@ class Chain(Function):
 
     def append(self, function: Function):
         if not isinstance(function, Function):
-            raise TypeError(f'Expected Function, got {function.__class__.__name__}')
+            raise TypeError(f"Expected Function, got {function.__class__.__name__}")
         self._functions.append(function)
 
     def evaluate(self, state: StateLike, *, get_jacobian=False):
@@ -566,18 +589,21 @@ def matmul(mat1, mat2):
         # Use einsum here as matrix multiply fro masked arrays doesn't work yet, see:
         # https://github.com/numpy/numpy/issues/14992
         # https://stackoverflow.com/questions/63218951/masked-matrix-multiplication
-        return np.einsum('ij,jk', mat1, mat2)
+        return np.einsum("ij,jk", mat1, mat2)
 
 
 class Residuals(Function):
-    """Given some measurements (m) calculate the residuals from some data (d) as f = d - m """
+    """Given some measurements (m) calculate the residuals from some data (d) as f = d - m"""
+
     supports_jacobian = True
 
     def __init__(self, data: StateLike):
         super().__init__()
         self._data = get_bare(data)
 
-    def evaluate(self, state: StateLike, *, get_jacobian=False) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+    def evaluate(
+        self, state: StateLike, *, get_jacobian=False
+    ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
         out_vector = get_bare(state) - self._data
         if get_jacobian:
             return out_vector, np.identity(len(state), dtype=out_vector.dtype)
@@ -586,8 +612,11 @@ class Residuals(Function):
 
 
 class Native(Function):
-
-    def __init__(self, func: Callable[[StateLike], StateLike], jac: Callable[[StateLike], np.ndarray]):
+    def __init__(
+        self,
+        func: Callable[[StateLike], StateLike],
+        jac: Callable[[StateLike], np.ndarray],
+    ):
         super().__init__()
         self._fn = func
         self._jac = jac
@@ -596,7 +625,9 @@ class Native(Function):
     def support_jacobian(self):
         return self._jac is not None
 
-    def evaluate(self, state: State, *, get_jacobian=False) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+    def evaluate(
+        self, state: State, *, get_jacobian=False
+    ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
         if get_jacobian:
             return self._fn(state), self._jac(state)
 
@@ -605,9 +636,11 @@ class Native(Function):
 
 class CosineCutoff(Function):
     # pylint: disable=anomalous-backslash-in-string
-    """A function that takes a set of Features and scales their weights by applying a cosine cutoff in the form
+    r"""
+    A function that takes a set of Features and scales their weights by applying a cosine cutoff in the form
 
-        w' = w (cos(\pi * dr / r_\text{cut}) + 1.) / 2
+    .. math::
+        w^\prime = w (cos(\pi * dr / r_\text{cut}) + 1.) / 2
     """
     input_type = (Features,)
     output_type = (Features,)
@@ -617,14 +650,16 @@ class CosineCutoff(Function):
         super().__init__()
         self._cutoff = cutoff
 
-    def evaluate(self, in_features: Features, *, get_jacobian=False):  # pylint: disable=arguments-differ
+    def evaluate(
+        self, in_features: Features, *, get_jacobian=False
+    ):  # pylint: disable=arguments-differ
         out_features = Features()
         r_cut_sq = self._cutoff**2
 
         jacobians = []
         for in_feature in in_features.features:
             out_feature = None
-            if hasattr(in_feature, 'weight') and hasattr(in_feature, 'pos'):
+            if hasattr(in_feature, "weight") and hasattr(in_feature, "pos"):
                 r_sq = np.dot(in_feature.pos, in_feature.pos)
 
                 # Hack that makes it possible to test this function analytically
@@ -638,7 +673,7 @@ class CosineCutoff(Function):
                     if get_jacobian:
                         # Calculate this portion of the Jacobian
                         jac_block = np.eye(len(in_feature))
-                        dr_dxyz = out_feature.pos / dr if dr > 0. else np.zeros(3)
+                        dr_dxyz = out_feature.pos / dr if dr > 0.0 else np.zeros(3)
                         dwout_dr = in_feature.weight * self.deriv(dr)
 
                         jac_block[in_feature.WEIGHT, 0:3] = dwout_dr * dr_dxyz
@@ -665,14 +700,14 @@ class CosineCutoff(Function):
     def fn(
         # pylint: disable=invalid-name
         self,
-        dr
+        dr,
     ) -> float:
-        return 0.5 * (np.cos(np.pi * dr / self._cutoff) + 1.)
+        return 0.5 * (np.cos(np.pi * dr / self._cutoff) + 1.0)
 
     def deriv(
         # pylint: disable=invalid-name
         self,
-        dr
+        dr,
     ) -> float:
         return -0.5 * np.pi / self._cutoff * np.sin(np.pi * dr / self._cutoff)
 
@@ -681,20 +716,20 @@ class CosineCutoff(Function):
         # pylint: disable=invalid-name
         dr,
         weight,
-        rcut
+        rcut,
     ):
         import sympy as sp
+
         return weight * (sp.cos(sp.pi * dr / rcut) + 1) / 2
 
 
 class SphericalToCart(Function):
-
     def evaluate(
         # pylint: disable=arguments-differ
         self,
         spherical: np.ndarray,
         *,
-        get_jacobian=False
+        get_jacobian=False,
     ):
         cart = mathutil.sph2cart(spherical)
 
@@ -706,6 +741,7 @@ class SphericalToCart(Function):
 
 class MeanSquaredError(Function):
     """Calcualte the MSE relative to some target value(s)"""
+
     supports_jacobian = True
     output_type = float, complex
 
@@ -718,7 +754,7 @@ class MeanSquaredError(Function):
         self,
         values: StateLike,
         *,
-        get_jacobian=False
+        get_jacobian=False,
     ):
         # pylint: disable=invalid-name
         diff = get_bare(values) - self._target
@@ -733,6 +769,7 @@ class MeanSquaredError(Function):
 
 class Map(Function):
     """Function that passes the same input to multiple functions and returns an ordered array of their outputs"""
+
     supports_jacobian = True
     output_type = ListState
 
@@ -796,7 +833,7 @@ def copy_to(
 def nan_check(array: np.ndarray, msg=None):
     """Check that an array does not contain NaN values.  If it does this will raise a ValueError"""
     if not array.dtype == object and np.isnan(array).any():
-        exc_msg = 'Found NaN value'
+        exc_msg = "Found NaN value"
         if msg is not None:
-            exc_msg += f', {msg}'
+            exc_msg += f", {msg}"
         raise ValueError(msg)

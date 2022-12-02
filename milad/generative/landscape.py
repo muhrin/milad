@@ -5,16 +5,19 @@ import numpy as np
 
 from milad import functions, zernike, invariants
 
-__all__ = 'Landscape', 'GenerativeLoss', 'Gaussian', 'RepulsiveForce'
+__all__ = "Landscape", "GenerativeLoss", "Gaussian", "RepulsiveForce"
 
-ROOT_TWO_PI = (2 * math.pi)**0.5
+ROOT_TWO_PI = (2 * math.pi) ** 0.5
 
 
 class Gaussian(functions.Function):
     """An N-dimensional, isotropic, Gaussian function"""
+
     supports_jacobian = False
 
-    def __init__(self, loc: np.ndarray, weight: float = 1., sigma: float = 1., debug=False):
+    def __init__(
+        self, loc: np.ndarray, weight: float = 1.0, sigma: float = 1.0, debug=False
+    ):
         """
         :param loc: the location of the Gaussian
         :param weight: the weight
@@ -40,9 +43,13 @@ class Gaussian(functions.Function):
         get_jacobian=False
     ):
         dr = self.dist(pos)  # pylint: disable=invalid-name
-        val = self._weight / (self._sigma * ROOT_TWO_PI) * np.exp(-(1 / 2) * (dr / self._sigma)**2)
+        val = (
+            self._weight
+            / (self._sigma * ROOT_TWO_PI)
+            * np.exp(-(1 / 2) * (dr / self._sigma) ** 2)
+        )
         if self._debug:
-            print('Dist: {}, Energy: {}'.format(dr, val))
+            print("Dist: {}, Energy: {}".format(dr, val))
         return val
 
     def dist(self, pos):
@@ -90,7 +97,7 @@ class RepulsiveForce(functions.Function):
     output_type = float
     supports_jacobian = False
 
-    def __init__(self, background: zernike.ZernikeMoments, strength: float = 1.):
+    def __init__(self, background: zernike.ZernikeMoments, strength: float = 1.0):
         super().__init__()
         self.background = background
         self.strength = strength
@@ -102,14 +109,21 @@ class RepulsiveForce(functions.Function):
         *,
         get_jacobian=False
     ):
-        force = np.abs(self.strength * np.sum(foreground.array * self.background.array.conj()).real)
+        force = np.abs(
+            self.strength * np.sum(foreground.array * self.background.array.conj()).real
+        )
         return force
 
 
 class GenerativeLoss(functions.Function):
     supports_jacobian = False
 
-    def __init__(self, landscape: Landscape, invs: invariants.MomentInvariants, repulsive_force: RepulsiveForce = None):
+    def __init__(
+        self,
+        landscape: Landscape,
+        invs: invariants.MomentInvariants,
+        repulsive_force: RepulsiveForce = None,
+    ):
         super().__init__()
         self.landscape = landscape
         self.repulsive_forces = repulsive_force
@@ -122,7 +136,7 @@ class GenerativeLoss(functions.Function):
         *,
         get_jacobian=False
     ):
-        repulsive = 0.
+        repulsive = 0.0
 
         if self.repulsive_forces is not None:
             # Repulsive part

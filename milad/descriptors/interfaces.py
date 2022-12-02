@@ -4,7 +4,7 @@ import abc
 from milad import atomic
 from milad import functions
 
-__all__ = ('Descriptor',)
+__all__ = ("Descriptor",)
 
 
 class Descriptor(functions.Function):
@@ -21,5 +21,7 @@ class Descriptor(functions.Function):
         """Get the descriptor cutoff radius"""
 
     @abc.abstractmethod
-    def evaluate(self, atoms: atomic.AtomsCollection, *, get_jacobian=False):  # pylint: disable=arguments-differ
+    def evaluate(
+        self, atoms: atomic.AtomsCollection, *, get_jacobian=False
+    ):  # pylint: disable=arguments-differ
         """Custom evaluate for descriptors.  These always take an AtomsCollection"""

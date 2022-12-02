@@ -13,10 +13,11 @@ from milad import functions
 from milad.play import asetools
 from . import least_squares
 
-__all__ = ('StructureOptimiser', 'StructureOptimisationResult')
+__all__ = ("StructureOptimiser", "StructureOptimisationResult")
 
 StructureOptimisationResult = collections.namedtuple(
-    'StructureOptimisationResult', 'success message value rmsd n_func_eval n_jac_eval traj'
+    "StructureOptimisationResult",
+    "success message value rmsd n_func_eval n_jac_eval traj",
 )
 
 
@@ -44,7 +45,7 @@ class StructureOptimiser:
         descriptor: fingerprinting.MomentInvariantsDescriptor,
         target: Union[np.ndarray, base_moments.Moments],
         initial: atomic.AtomsCollection,
-        jacobian='native',
+        jacobian="native",
         mask: atomic.AtomsCollection = None,
         bounds: Tuple[atomic.AtomsCollection, atomic.AtomsCollection] = None,
         x_tol=1e-8,
@@ -84,7 +85,7 @@ class StructureOptimiser:
             elif isinstance(target, np.ndarray):
                 calc = descriptor.process
             else:
-                raise TypeError(f'Unsupported type {target.__class__.__name__}')
+                raise TypeError(f"Unsupported type {target.__class__.__name__}")
 
             if preprocess:
                 preprocessor = descriptor.preprocess
@@ -114,7 +115,11 @@ class StructureOptimiser:
         save_traj_fn = None
         if get_trajectory:
             outcome.traj = []
-            save_traj_fn = functools.partial(self._save_trajectory, outcome.traj, preprocessor if preprocess else None)
+            save_traj_fn = functools.partial(
+                self._save_trajectory,
+                outcome.traj,
+                preprocessor if preprocess else None,
+            )
         else:
             outcome.traj = None
 
@@ -131,7 +136,7 @@ class StructureOptimiser:
             cost_tol=cost_tol,
             grad_tol=grad_tol,
             callback=save_traj_fn,
-            verbose=verbose
+            verbose=verbose,
         )
 
         outcome.__dict__.update(result._asdict())
@@ -142,7 +147,9 @@ class StructureOptimiser:
 
         return StructureOptimisationResult(**outcome.__dict__)
 
-    def _prepare_optimisation(self, calc: functions.Function, target) -> functions.Function:
+    def _prepare_optimisation(
+        self, calc: functions.Function, target
+    ) -> functions.Function:
         # We want to get as close to the target as possible
         new_calc = functions.Chain(calc, functions.Residuals(target))
 
@@ -156,7 +163,13 @@ class StructureOptimiser:
         return new_calc
 
     @staticmethod
-    def _save_trajectory(trajectory: List, preprocessor, state: atomic.AtomsCollection, _value: np.ndarray, jacobian):
+    def _save_trajectory(
+        trajectory: List,
+        preprocessor,
+        state: atomic.AtomsCollection,
+        _value: np.ndarray,
+        jacobian,
+    ):
         if jacobian is not None:
             # Don't bother saving on Jacobian calls
             return

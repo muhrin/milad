@@ -5,7 +5,9 @@ import sympy
 from milad import functions
 
 
-def test_function(function: functions.Function, value, expected_output=None, check_jacobian=None):
+def test_function(
+    function: functions.Function, value, expected_output=None, check_jacobian=None
+):
     if function.input_type:
         assert issubclass(type(value), function.input_type)
     output = function(value)
@@ -28,7 +30,9 @@ def test_function(function: functions.Function, value, expected_output=None, che
         vector_input = functions.get_bare(value)
         reals = np.isreal(vector_input)
         # Create the symbolic inputs to the function
-        input_vec = np.array([sympy.Symbol(f'x{i}', real=real) for i, real in enumerate(reals)])
+        input_vec = np.array(
+            [sympy.Symbol(f"x{i}", real=real) for i, real in enumerate(reals)]
+        )
 
         # Overwrite the input with a symbolic version
         if isinstance(value, np.ndarray):
@@ -56,12 +60,14 @@ def sympy_equal(expr1, expr2):
     difference = expr1 - expr2
     if not expr1 == expr2:
         if isinstance(difference, sympy.Number):
-            return np.isclose(complex(difference), 0.)
+            return np.isclose(complex(difference), 0.0)
 
         # If they differ, check that it's by a meaningful amount.
         # We cast to complex here, even for reals, because this will catch both cases without having to do checks
-        coeffs = np.array(tuple(difference.as_coefficients_dict().values()), dtype=np.complex)
-        return np.allclose(coeffs, 0.)
+        coeffs = np.array(
+            tuple(difference.as_coefficients_dict().values()), dtype=np.complex
+        )
+        return np.allclose(coeffs, 0.0)
 
     return True
 

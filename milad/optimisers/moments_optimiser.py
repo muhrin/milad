@@ -10,7 +10,7 @@ from milad import utils
 from . import least_squares
 from . import root
 
-__all__ = ('MomentsOptimiser',)
+__all__ = ("MomentsOptimiser",)
 
 
 class MomentsOptimiser:
@@ -23,18 +23,18 @@ class MomentsOptimiser:
         self._root_finger = root.RootFinder()
 
     def optimise(  # pylint: disable=too-many-locals
-            self,
-            invariants_fn: invs.MomentInvariants,
-            target: np.ndarray,
-            initial: base_moments.Moments,
-            jacobian='native',
-            bounds=(-np.inf, np.inf),
-            target_rmsd=1e-5,
-            max_func_evals=5000,
-            cost_tol=1e-5,
-            grad_tol=1e-8,
-            max_retries=2,
-            verbose=False,
+        self,
+        invariants_fn: invs.MomentInvariants,
+        target: np.ndarray,
+        initial: base_moments.Moments,
+        jacobian="native",
+        bounds=(-np.inf, np.inf),
+        target_rmsd=1e-5,
+        max_func_evals=5000,
+        cost_tol=1e-5,
+        grad_tol=1e-8,
+        max_retries=2,
+        verbose=False,
     ) -> least_squares.OptimiserResult:
         # Copy the start point
         current_moments = copy.deepcopy(initial)
@@ -61,7 +61,7 @@ class MomentsOptimiser:
             best_result = None
             for attempt in utils.inclusive(max_retries):
                 if verbose:
-                    print(f'Attempt {attempt}')
+                    print(f"Attempt {attempt}")
 
                 # Let's mask off the degrees of freedom we know don't change
                 self._fix_invariant_moments(mask, keep_fixed)
@@ -76,11 +76,11 @@ class MomentsOptimiser:
                     max_func_evals=512,
                     cost_tol=cost_tol,
                     grad_tol=grad_tol,
-                    verbose=verbose
+                    verbose=verbose,
                 )
 
                 if verbose:
-                    print(f'Found l={order} with RMSD: {result.rmsd}')
+                    print(f"Found l={order} with RMSD: {result.rmsd}")
 
                 # Keep track of the best result so far
                 if best_result is None or result.rmsd < best_result.rmsd:
@@ -88,7 +88,7 @@ class MomentsOptimiser:
 
                 if best_result.rmsd <= target_rmsd:
                     if verbose:
-                        print('Keeping')
+                        print("Keeping")
                     break
 
                 # Going to have to try again: generate new moments of this order
@@ -111,11 +111,11 @@ class MomentsOptimiser:
             max_func_evals=max_func_evals,
             cost_tol=cost_tol,
             grad_tol=grad_tol,
-            verbose=verbose
+            verbose=verbose,
         )
 
         if verbose:
-            print(f'Found solution with RMSD: {result.rmsd}')
+            print(f"Found solution with RMSD: {result.rmsd}")
 
         return result
 
@@ -217,7 +217,9 @@ class MomentsOptimiser:
     #     return result
 
     @staticmethod
-    def _find_invariant_moments(invariants_fn: invs.MomentInvariants, invariants: np.ndarray) -> dict:
+    def _find_invariant_moments(
+        invariants_fn: invs.MomentInvariants, invariants: np.ndarray
+    ) -> dict:
         # Let's mask off the degrees of freedom we know don't change
         invariant_moments = {}
         for inv_idx, inv in enumerate(invariants_fn):
@@ -241,9 +243,7 @@ def max_n_degree(max_n: int, invariant: invs.MomentInvariant):
     return invariant.terms_array[:, :, 0].max() <= max_n
 
 
-def n_degree(  # pylint: disable=invalid-name
-    n: int, invariant: invs.MomentInvariant
-):
+def n_degree(n: int, invariant: invs.MomentInvariant):  # pylint: disable=invalid-name
     return np.all(invariant.terms_array[:, :, 0] == n)
 
 
@@ -252,9 +252,7 @@ def max_l_degree(max_l: int, invariant: invs.MomentInvariant):
     return invariant.terms_array[:, :, 1].max() <= max_l
 
 
-def l_degree(  # pylint: disable=invalid-name
-    l: int, invariant: invs.MomentInvariant
-):
+def l_degree(l: int, invariant: invs.MomentInvariant):  # pylint: disable=invalid-name
     # The indexing is n, l, m so l is at index 1
     return np.all(invariant.terms_array[:, :, 1] == l)
 
@@ -262,4 +260,7 @@ def l_degree(  # pylint: disable=invalid-name
 def containing_l_degree(  # pylint: disable=invalid-name
     l: int, invariant: invs.MomentInvariant
 ):
-    return np.any(invariant.terms_array[:, :, 1] == l) and invariant.terms_array[:, :, 1].max() <= l
+    return (
+        np.any(invariant.terms_array[:, :, 1] == l)
+        and invariant.terms_array[:, :, 1].max() <= l
+    )

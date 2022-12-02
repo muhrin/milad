@@ -9,32 +9,40 @@ from milad import utils
 # pylint: disable=invalid-name
 
 
-def composite_complex_moment_form(moments: sympy.Indexed, n: int, l1: int, l2: int, j: int, k: int):
+def composite_complex_moment_form(
+    moments: sympy.Indexed, n: int, l1: int, l2: int, j: int, k: int
+):
     """Get the composite moment form as defined by Lo and Don denoted as:
 
     c_n(l, l')_j^k
     """
     if not l1 >= 0:
-        raise ValueError(f'l must be greater than 0, got {l1}')
+        raise ValueError(f"l must be greater than 0, got {l1}")
     if not l2 >= 0:
-        raise ValueError(f'l2 must be greater than 0, got {l2}')
+        raise ValueError(f"l2 must be greater than 0, got {l2}")
     if not utils.even(j):
-        raise ValueError('j must be even, got {}'.format(j))
+        raise ValueError("j must be even, got {}".format(j))
     if not utils.even(n - l1):
-        raise ValueError(f'n - l must be even got {n} - {l1}')
+        raise ValueError(f"n - l must be even got {n} - {l1}")
     if not utils.even(n - l2):
-        raise ValueError(f'n - l2 must be even got {n} - {l2}')
+        raise ValueError(f"n - l2 must be even got {n} - {l2}")
     eqn = None
 
     for m in utils.inclusive(max(-l1, k - l2), min(l1, k + l2), 1):
-        term = CG(l1, m, l2, k - m, j, k).doit() * moments[n, l1, m] * moments[n, l2, k - m]
+        term = (
+            CG(l1, m, l2, k - m, j, k).doit()
+            * moments[n, l1, m]
+            * moments[n, l2, k - m]
+        )
         eqn = term if eqn is None else eqn + term
 
     assert eqn is not None, (max(-l1, k - l2), min(l1, k + l2))
     return eqn
 
 
-def moment_form_complex_moment(moments: sympy.Indexed, n1: int, l1: int, l2: int, n2: int, j: int):
+def moment_form_complex_moment(
+    moments: sympy.Indexed, n1: int, l1: int, l2: int, n2: int, j: int
+):
     """Get a moment form combined with complex moments i.e.:
 
     c_s(l, l')_j c_{n'}
@@ -42,18 +50,24 @@ def moment_form_complex_moment(moments: sympy.Indexed, n1: int, l1: int, l2: int
     if not j >= 0:
         raise ValueError(f"'j' must be >= 0, got {j}")
     if not utils.even(n2 - j):
-        raise ValueError(f'n2 - j must be even got {n2} - {j}')
+        raise ValueError(f"n2 - j must be even got {n2} - {j}")
 
     eqn = None
 
     for k in utils.inclusive(-j, j, 1):
-        term = (-1)**(j - k) * composite_complex_moment_form(moments, n1, l1, l2, j, k) * moments[n2, j, -k]
+        term = (
+            (-1) ** (j - k)
+            * composite_complex_moment_form(moments, n1, l1, l2, j, k)
+            * moments[n2, j, -k]
+        )
         eqn = term if eqn is None else eqn + term
 
     return 1 / sympy.sqrt(2 * j + 1) * eqn
 
 
-def moment_form_moment_form(moments: sympy.Indexed, n1: int, l1: int, l2: int, n2: int, l3: int, l4: int, j: int):
+def moment_form_moment_form(
+    moments: sympy.Indexed, n1: int, l1: int, l2: int, n2: int, l3: int, l4: int, j: int
+):
     """Get a complex moment form combined with a complex moment form i.e.:
 
     c_n(l, l')_j c_{n'}(l'', l''')_j
@@ -61,9 +75,11 @@ def moment_form_moment_form(moments: sympy.Indexed, n1: int, l1: int, l2: int, n
     eqn = None
 
     for k in utils.inclusive(-j, j, 1):
-        term = (-1) ** (j - k) * \
-               composite_complex_moment_form(moments, n1, l1, l2, j, k) * \
-               composite_complex_moment_form(moments, n2, l3, l4, j, -k)
+        term = (
+            (-1) ** (j - k)
+            * composite_complex_moment_form(moments, n1, l1, l2, j, k)
+            * composite_complex_moment_form(moments, n2, l3, l4, j, -k)
+        )
         eqn = term if eqn is None else eqn + term
 
     return 1 / sympy.sqrt(2 * j + 1) * eqn
@@ -91,7 +107,9 @@ def invariants_single_complex_moment_forms(moments: sympy.Indexed, max_n: int):
     invariants = []
     for n in utils.inclusive(1, max_n, 1):
         for l in utils.inclusive(n, 1, -2):
-            invariant = composite_complex_moment_form(moments, n=n, l1=l, l2=l, j=0, k=0)
+            invariant = composite_complex_moment_form(
+                moments, n=n, l1=l, l2=l, j=0, k=0
+            )
             invariants.append(invariant)
     return invariants
 
@@ -110,7 +128,9 @@ def invariants_moment_form_complex_moment(moments: sympy.Indexed, max_n: int):
                     for l2 in utils.inclusive(l1, max(l1 - j, 1), -2):
                         assert l2 >= l1 - j
                         assert l2 >= 1
-                        invariant = moment_form_complex_moment(moments, n1=n, l1=l1, l2=l2, n2=n2, j=j)
+                        invariant = moment_form_complex_moment(
+                            moments, n1=n, l1=l1, l2=l2, n2=n2, j=j
+                        )
                         invariants.append(invariant)
 
     return invariants
@@ -131,10 +151,17 @@ def invariants_two_moment_forms(moments: sympy.Indexed, max_n: int, verbose=Fals
                         for l3 in utils.inclusive(n_prime, 1, -2):
                             for l4 in utils.inclusive(l3, max(l3 - j, 1), -2):
                                 invariant = moment_form_moment_form(
-                                    moments, n1=n, n2=n_prime, l1=l, l2=l2, l3=l3, l4=l4, j=j
+                                    moments,
+                                    n1=n,
+                                    n2=n_prime,
+                                    l1=l,
+                                    l2=l2,
+                                    l3=l3,
+                                    l4=l4,
+                                    j=j,
                                 )
                                 if verbose:
-                                    print(f'{len(invariants)} {n} {l} {l2} ')
+                                    print(f"{len(invariants)} {n} {l} {l2} ")
                                 invariants.append(invariant)
     return invariants
 
@@ -160,7 +187,7 @@ def get_invariant_header(invariant):
             power += 1
             weight += term.terms[0]
 
-    return f'{str(weight / 2)} {len(coeffs_dict)} {power}'
+    return f"{str(weight / 2)} {len(coeffs_dict)} {power}"
 
 
 def get_string_block(invariant):
@@ -180,10 +207,10 @@ def get_string_block(invariant):
             if isinstance(term, sympy.Pow):
                 symbol, power = term.args
                 indices = symbol.terms
-                parts.extend([f'{indices[0]} {indices[1]} {indices[2]}'] * power)
+                parts.extend([f"{indices[0]} {indices[1]} {indices[2]}"] * power)
             else:
                 indices = term.terms
-                parts.append(f'{indices[0]} {indices[1]} {indices[2]}')
-        lines.append(' '.join(parts))
+                parts.append(f"{indices[0]} {indices[1]} {indices[2]}")
+        lines.append(" ".join(parts))
 
-    return '\n'.join(lines)
+    return "\n".join(lines)

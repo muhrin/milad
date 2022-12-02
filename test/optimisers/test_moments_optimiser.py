@@ -6,7 +6,7 @@ from milad import zernike
 
 def test_moments_optimiser(complex_invariants):
     """Basic tests for the moments optimiser"""
-    pts = generate.random_points_in_sphere(10, 1.)
+    pts = generate.random_points_in_sphere(10, 1.0)
 
     # Create some Zernike moments from delta functions
     moms = zernike.from_deltas(complex_invariants.max_order, pts)

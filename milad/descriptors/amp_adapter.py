@@ -3,8 +3,11 @@
 try:
     import amp  # pylint: disable=unused-import
 except ImportError:
+    amp = None
     __all__ = tuple()
-else:
+
+
+if amp is not None:  # noqa: C901
     import argparse
     import collections
     from typing import Dict, Any
@@ -16,34 +19,38 @@ else:
     from milad.play import asetools
     from . import interfaces
 
-    __all__ = ('AmpDescriptor',)
+    __all__ = ("AmpDescriptor",)
 
     class AmpDescriptor:
         """This adapter allows MILAD descriptors to be used by the amp code:
-         https://amp.readthedocs.io/en/latest/
+        https://amp.readthedocs.io/en/latest/
 
-         Functionality is not complete but the basics do work.
-         """
+        Functionality is not complete but the basics do work.
+        """
 
         def __init__(self, descriptor: interfaces.Descriptor, dblabel=None):
             self._descriptor = descriptor
             self.dblabel = dblabel
             self.parent = None
-            self.parameters = Parameters({'cutoff': descriptor.cutoff, 'mode': 'atom-centered'})
+            self.parameters = Parameters(
+                {"cutoff": descriptor.cutoff, "mode": "atom-centered"}
+            )
 
         @property
         def cutoff(self) -> float:
             return self._descriptor.cutoff
 
-        def load_amp(self, filename: str, label='') -> amp.Amp:
+        def load_amp(self, filename: str, label="") -> amp.Amp:
             """Given a checkpoint filename this will load the Amp class and pass it this descriptor.
 
             This means that the caller needs to be sure that this descriptor is the one used for when training the
             loaded model, otherwise there will be inconsistencies.
             """
             if not label:
-                label = filename.replace('.amp', '')
-            return amp.Amp.load(filename, Descriptor=lambda *_args, **kwargs: self, label=label)
+                label = filename.replace(".amp", "")
+            return amp.Amp.load(
+                filename, Descriptor=lambda *_args, **kwargs: self, label=label
+            )
 
         def tostring(self) -> str:
             """Returns an evaluatable representation of the calculator that can
@@ -56,44 +63,51 @@ else:
             images: Dict[Any, ase.Atoms],
             parallel=None,
             log=None,
-            calculate_derivatives=False
+            calculate_derivatives=False,
         ):
             log = utilities.Logger(file=None) if log is None else log
 
             if self.dblabel is None:
-                if hasattr(self.parent, 'dblabel'):
+                if hasattr(self.parent, "dblabel"):
                     self.dblabel = self.parent.dblabel
                 else:
-                    self.dblabel = 'amp-data'
+                    self.dblabel = "amp-data"
 
-            log('Fingerprinting images...', tic='fp')
-            if not hasattr(self, 'fingerprints'):
+            log("Fingerprinting images...", tic="fp")
+            if not hasattr(self, "fingerprints"):
                 # pylint: disable=attribute-defined-outside-init
                 self.fingerprints = utilities.Data(
-                    filename=f'{self.dblabel}-fingerprints',
-                    calculator=argparse.Namespace(calculate=self._calc_fingerprint)
+                    filename=f"{self.dblabel}-fingerprints",
+                    calculator=argparse.Namespace(calculate=self._calc_fingerprint),
                 )
 
             self.fingerprints.calculate_items(images, parallel=dict(cores=1), log=log)
-            log('...fingerprints calculated.', toc='fp')
+            log("...fingerprints calculated.", toc="fp")
 
             if calculate_derivatives:
-                log('Calculating fingerprint derivatives of images...', tic='derfp')
-                if not hasattr(self, 'fingerprintprimes'):
+                log("Calculating fingerprint derivatives of images...", tic="derfp")
+                if not hasattr(self, "fingerprintprimes"):
                     # pylint: disable=attribute-defined-outside-init
                     self.fingerprintprimes = utilities.Data(
-                        filename=f'{self.dblabel}-fingerprints-primes',
-                        calculator=argparse.Namespace(calculate=self._calc_fingerprint_derivatives)
+                        filename=f"{self.dblabel}-fingerprints-primes",
+                        calculator=argparse.Namespace(
+                            calculate=self._calc_fingerprint_derivatives
+                        ),
                     )  # pylint: disable=attribute-defined-outside-init
 
-                self.fingerprintprimes.calculate_items(images, parallel=dict(cores=1), log=log)
-                log('...fingerprint derivatives calculated.', toc='derfp')
+                self.fingerprintprimes.calculate_items(
+                    images, parallel=dict(cores=1), log=log
+                )
+                log("...fingerprint derivatives calculated.", toc="derfp")
 
         def _calc_fingerprint(self, system: ase.Atoms, _hashval):
             fingerprints = []
 
             for my_idx, env in asetools.extract_environments(
-                system, cutoff=self._descriptor.cutoff, yield_indices=True, include_central_atom=False
+                system,
+                cutoff=self._descriptor.cutoff,
+                yield_indices=True,
+                include_central_atom=False,
             ):
                 my_symbol = system.symbols[my_idx]
                 milad_env = asetools.ase2milad(env)
@@ -120,7 +134,7 @@ else:
 
                 # The yielded environment has this array that allows us to map back on to the index in the
                 # original structure
-                orig_indices = env.get_array('orig_indices', copy=False)
+                orig_indices = env.get_array("orig_indices", copy=False)
                 derivs = collections.defaultdict(float)
 
                 for i in range(natoms):
@@ -129,7 +143,7 @@ else:
                         continue
 
                     # Add to the derivatives as the same neighbour may contribute more than once
-                    local_derivs = jac[:, i * 3:(i + 1) * 3].T
+                    local_derivs = jac[:, i * 3 : (i + 1) * 3].T
                     derivs[neighbour_idx] += local_derivs
 
                 # Now copy over the derivatives to AMP format
@@ -144,7 +158,13 @@ else:
                         derivatives[deriv_idx] += -derivs_[coord]
 
                         # Derivative of this fingerprint wrt coordinates of neighbouring atom
-                        deriv_idx = (neighbour_idx, neighbour_symbol, my_idx, my_symbol, coord)
+                        deriv_idx = (
+                            neighbour_idx,
+                            neighbour_symbol,
+                            my_idx,
+                            my_symbol,
+                            coord,
+                        )
                         derivatives[deriv_idx] = derivs_[coord]
 
             return {key: val.real.tolist() for key, val in derivatives.items()}

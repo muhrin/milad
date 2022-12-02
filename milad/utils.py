@@ -3,7 +3,7 @@ from typing import Iterator
 
 import numpy as np
 
-__all__ = ('calculate_all_pair_distances',)
+__all__ = ("calculate_all_pair_distances",)
 
 
 def calculate_all_pair_distances(vectors, sort_result=True):
@@ -34,7 +34,7 @@ def inclusive(*args) -> Iterator[int]:
     """Like range() but inclusive of upper bound and automatically does iteration of ranges with a
     negative step e.g. 0, -4 will produce a range containing 0, -1, -2, -3, -4"""
     if len(args) not in (1, 2, 3):
-        raise ValueError('Takes one or two args, got: {}'.format(args))
+        raise ValueError("Takes one or two args, got: {}".format(args))
 
     if len(args) == 3:
         # Assume form is start, stop, step
@@ -58,7 +58,7 @@ def inclusive(*args) -> Iterator[int]:
 
 def outer_product(*array) -> np.array:
     if not array:
-        raise ValueError('No arrays supplied')
+        raise ValueError("No arrays supplied")
 
     product = array[0]
     for entry in array[1:]:

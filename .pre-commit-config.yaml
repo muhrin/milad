@@ -1,39 +1,30 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
 repos:
 -   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v2.5.0
+    rev: v4.3.0
     hooks:
-    -   id: double-quote-string-fixer
+    -   id: check-added-large-files
+        args: ['--maxkb=5000']
     -   id: end-of-file-fixer
-    -   id: fix-encoding-pragma
-        exclude: &exclude_files >
-            (?x)^(
-                docs/.*|
-            )$
-    -   id: mixed-line-ending
-    -   id: trailing-whitespace
-
--   repo: https://github.com/PyCQA/pylint
-    rev: pylint-2.5.2
+    -   id: check-case-conflict
+    -   id: detect-private-key
+    -   id: check-docstring-first
+-   repo: https://github.com/psf/black
+    rev: 22.8.0
     hooks:
-    -   id: pylint
-        language: system
-        args: [
-            '--max-line-length=120',
-            '--disable=duplicate-code',
-            '--disable=import-outside-toplevel',
-            '--disable=missing-docstring',
-            '--disable=bad-continuation',
-            '--disable=locally-disabled',
-            '--disable=too-few-public-methods',
-            '--disable=too-many-arguments',
-            '--disable=too-many-instance-attributes',
-            '--ignored-modules=scipy.special',
-            '--generated-members=numpy.*,torch.*,rdkit.*',
-        ]
-        exclude: *exclude_files
-
--   repo: https://github.com/pre-commit/mirrors-yapf
-    rev: v0.30.0
+    -   id: black
+- repo: https://gitlab.com/PyCQA/flake8
+  rev: 3.9.2
+  hooks:
+    - id: flake8
+-   repo: https://github.com/PyCQA/bandit
+    rev: 1.7.4
     hooks:
-    -   id: yapf
-        types: [python]
+    - id: bandit
+      args: [ "-c", ".bandit.yaml" ]
+- repo: https://github.com/commitizen-tools/commitizen
+  rev: v2.35.0
+  hooks:
+    - id: commitizen
+      stages: [commit-msg]

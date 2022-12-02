@@ -7,4 +7,9 @@ from .moment_invariants import *
 from .powerspectrum import *
 from .interfaces import *
 
-__all__ = powerspectrum.__all__ + interfaces.__all__ + moment_invariants.__all__ + ('invertible_invariants',)
+__all__ = (
+    powerspectrum.__all__
+    + interfaces.__all__
+    + moment_invariants.__all__
+    + ("invertible_invariants",)
+)

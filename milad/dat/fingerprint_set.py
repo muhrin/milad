@@ -2,13 +2,14 @@
 import collections
 from typing import List, Sequence, Sized, Optional, Union, Tuple
 
+import milad
 import ase
 import matplotlib.pyplot as plt
 import numpy as np
 
-__all__ = 'SystemInfo', 'FingerprintSet', 'create_fingerprint_set'
+__all__ = "SystemInfo", "FingerprintSet", "create_fingerprint_set"
 
-SystemInfo = collections.namedtuple('SystemInfo', 'atoms fingerprints derivatives')
+SystemInfo = collections.namedtuple("SystemInfo", "atoms fingerprints derivatives")
 
 
 class FingerprintSet:
@@ -61,7 +62,10 @@ class FingerprintSet:
     def get_potential_energies(self, normalise=True) -> tuple:
         """Get the potential energies of all systems in the set"""
         if normalise:
-            return tuple(info.atoms.get_potential_energy() / len(info.atoms) for info in self._system_info)
+            return tuple(
+                info.atoms.get_potential_energy() / len(info.atoms)
+                for info in self._system_info
+            )
 
         return tuple(info.atoms.get_potential_energy() for info in self._system_info)
 
@@ -77,27 +81,39 @@ class FingerprintSet:
         all_forces = []
         for info in self._system_info:
             try:
-                forces = info.atoms.get_array('force')
+                forces = info.atoms.get_array("force")
             except KeyError:
                 forces = info.atoms.get_forces()
             all_forces.append(forces)
 
         return tuple(all_forces)
 
-    def add_system(self, system: ase.Atoms, fingerprints: Sized, derivatives: Optional[Sized] = None):
+    def add_system(
+        self,
+        system: ase.Atoms,
+        fingerprints: Sized,
+        derivatives: Optional[Sized] = None,
+    ):
         """Add a system along with the fingerprints for all its environments"""
         if len(system) == 0:
-            raise ValueError('Cannot add an empty atoms object')
+            raise ValueError("Cannot add an empty atoms object")
 
         if len(system) != len(fingerprints):
             raise ValueError(
-                'There must be as many fingerprints as there are atoms, ' \
-                'got {} atoms and {} environments'.format(len(system), len(fingerprints)))
+                "There must be as many fingerprints as there are atoms, "
+                "got {} atoms and {} environments".format(
+                    len(system), len(fingerprints)
+                )
+            )
         if derivatives is not None and len(derivatives) != len(system):
-            raise ValueError('Number of derivatives must match the number of atoms (environments) in the system')
+            raise ValueError(
+                "Number of derivatives must match the number of atoms (environments) in the system"
+            )
 
         derivatives = np.array(derivatives) if derivatives is not None else None
-        self._system_info.append(SystemInfo(system, np.array(fingerprints), derivatives))
+        self._system_info.append(
+            SystemInfo(system, np.array(fingerprints), derivatives)
+        )
 
     def systemwise_sum(self, values, normalise=True):
         """Given a vector of values, one per environment, this will sum up the values for each atomic system
@@ -109,7 +125,7 @@ class FingerprintSet:
         idx = 0
         for info in self._system_info:
             natoms = len(info.atoms)
-            summed = sum(values[idx:idx + natoms])
+            summed = sum(values[idx : idx + natoms])
             if normalise:
                 summed = summed / natoms
             out.append(summed)
@@ -132,12 +148,14 @@ class FingerprintSet:
 
         energies = self.get_potential_energies(normalise=True)
         axes.hist(energies, 50, log=True)
-        axes.set_xlabel('Energy')
-        axes.set_ylabel('Number')
+        axes.set_xlabel("Energy")
+        axes.set_ylabel("Number")
 
         return fig
 
-    def split(self, split_point: Union[float, int]) -> Tuple['FingerprintSet', 'FingerprintSet']:
+    def split(
+        self, split_point: Union[float, int]
+    ) -> Tuple["FingerprintSet", "FingerprintSet"]:
         """Split this set into two.  This can be used for creating a training and validation set.
 
         The split point can be an integer, in which case it is treated as the index of the split point,
@@ -146,7 +164,11 @@ class FingerprintSet:
         if isinstance(split_point, float):
             split_point = int(round(len(self) * split_point))
         elif not isinstance(split_point, int):
-            raise TypeError('split_point must be integer or float, got {}'.format(split_point.__class__.__name__))
+            raise TypeError(
+                "split_point must be integer or float, got {}".format(
+                    split_point.__class__.__name__
+                )
+            )
 
         # Split into two halves
         one = FingerprintSet(self.fingerprint_len)
@@ -161,7 +183,7 @@ class FingerprintSet:
 
 
 def create_fingerprint_set(
-    descriptor: 'milad.Descriptor', systems: Sequence[ase.Atoms], get_derivatives=False
+    descriptor: "milad.Descriptor", systems: Sequence[ase.Atoms], get_derivatives=False
 ) -> FingerprintSet:
     """Given a descriptor and a sequence of ase.Atoms objects this will create a fignerprint set"""
     # pylint: disable=too-many-locals
@@ -178,7 +200,10 @@ def create_fingerprint_set(
         derivs = np.zeros((natoms, natoms, 3, fp_length)) if get_derivatives else None
 
         for my_idx, env in asetools.extract_environments(
-            system, cutoff=descriptor.cutoff, yield_indices=True, include_central_atom=False
+            system,
+            cutoff=descriptor.cutoff,
+            yield_indices=True,
+            include_central_atom=False,
         ):
             milad_env = asetools.ase2milad(env)
             if get_derivatives:
@@ -186,11 +211,13 @@ def create_fingerprint_set(
 
                 # The yielded environment has this array that allows us to map back on to the index in the original
                 # structure
-                orig_indices = env.get_array('orig_indices', copy=False)
+                orig_indices = env.get_array("orig_indices", copy=False)
                 for i in range(len(env)):
                     neighbour_idx = orig_indices[i]
                     # Add the derivatives as the same neighbour may contribute more than once
-                    derivs[my_idx, neighbour_idx, :, :] += jacobian[:, i * 3:(i + 1) * 3].T  # pylint: disable=unsupported-assignment-operation
+                    derivs[my_idx, neighbour_idx, :, :] += jacobian[
+                        :, i * 3 : (i + 1) * 3
+                    ].T  # pylint: disable=unsupported-assignment-operation
 
                 fps.append(fingerprint)
             else:

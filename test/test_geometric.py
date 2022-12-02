@@ -13,11 +13,11 @@ from milad import utils
 
 
 def test_multidim_norm_moments():
-    sigma = 2.
+    sigma = 2.0
 
     moms = geometric.gaussian_moment[0](np.zeros((3, 1)), sigma)
     expected = np.empty((3, 1))
-    expected.fill(1.)
+    expected.fill(1.0)
     assert pytest.approx((moms - expected).max(), 0)
 
     # Do the odds first
@@ -48,46 +48,48 @@ def test_multidim_norm_moments():
 
 
 def test_moment_tensor3d():
-    pos = np.array((1., 2., 3.))
-    sigma = 2.
-    mass = 1.
+    pos = np.array((1.0, 2.0, 3.0))
+    sigma = 2.0
+    mass = 1.0
     max_order = 4
 
     moments = geometric.from_gaussians(max_order, [pos], sigma, mass)
     assert moments[0, 0, 0] == mass
 
     assert moments[1, 0, 0] == pos[0]
-    assert moments[2, 0, 0] == pos[0]**2 + sigma**2
-    assert moments[3, 0, 0] == pos[0]**3 + 3 * pos[0] * sigma**2
+    assert moments[2, 0, 0] == pos[0] ** 2 + sigma**2
+    assert moments[3, 0, 0] == pos[0] ** 3 + 3 * pos[0] * sigma**2
 
     assert moments[0, 1, 0] == pos[1]
-    assert moments[0, 2, 0] == pos[1]**2 + sigma**2
-    assert moments[0, 3, 0] == pos[1]**3 + 3 * pos[1] * sigma**2
+    assert moments[0, 2, 0] == pos[1] ** 2 + sigma**2
+    assert moments[0, 3, 0] == pos[1] ** 3 + 3 * pos[1] * sigma**2
 
     assert moments[0, 0, 1] == pos[2]
-    assert moments[0, 0, 2] == pos[2]**2 + sigma**2
-    assert moments[0, 0, 3] == pos[2]**3 + 3 * pos[2] * sigma**2
+    assert moments[0, 0, 2] == pos[2] ** 2 + sigma**2
+    assert moments[0, 0, 3] == pos[2] ** 3 + 3 * pos[2] * sigma**2
 
     for p, q, r in moments.iter_indices():
-        assert moments[p, q, r] == moments[p, 0, 0] * moments[0, q, 0] * moments[0, 0, r]
+        assert (
+            moments[p, q, r] == moments[p, 0, 0] * moments[0, q, 0] * moments[0, 0, r]
+        )
 
 
 def test_moments_symmetric():
-    x = 2.
-    positions = np.array(((-x, 0., 0.), (x, 0., 0.)))
-    sigma = 2.
+    x = 2.0
+    positions = np.array(((-x, 0.0, 0.0), (x, 0.0, 0.0)))
+    sigma = 2.0
     mass = 1.5
     max_order = 4
 
     tensor = geometric.from_gaussians(max_order, positions, sigma, mass)
     assert tensor[0, 0, 0] == mass * len(positions)
-    assert tensor[1, 0, 0] == 0.
+    assert tensor[1, 0, 0] == 0.0
     assert tensor[2, 0, 0] == 2 * mass * (x**2 + sigma**2)
 
 
 def test_geom_moments_of_deltas():
     num_points = 4
-    positions = generate.random_points_in_sphere(num_points, radius=.7)
+    positions = generate.random_points_in_sphere(num_points, radius=0.7)
     weights = np.random.rand(num_points)
     max_order = 11
 
@@ -97,7 +99,7 @@ def test_geom_moments_of_deltas():
         for q in utils.inclusive(max_order):
             for r in utils.inclusive(max_order):
                 for pos, weight in zip(positions, weights):
-                    moms[p, q, r] += weight * (pos**(p, q, r)).prod(axis=-1)
+                    moms[p, q, r] += weight * (pos ** (p, q, r)).prod(axis=-1)
 
     calculated = geometric.from_deltas(max_order, positions, weights=weights)
     np.testing.assert_array_almost_equal(moms, calculated.to_matrix())
@@ -114,14 +116,16 @@ def test_delta_moments_derivatives():
     NUM_POINTS = 2
     Delta = functions.WeightedDelta
 
-    x = sympy.IndexedBase('x')
-    w = sympy.IndexedBase('w')
+    x = sympy.IndexedBase("x")
+    w = sympy.IndexedBase("w")
 
     POINTS = analytic.create_array(x, (NUM_POINTS, 3))
     WEIGHTS = analytic.create_array(w, NUM_POINTS)
 
     # Get the moments and derivatives wrt to weights and positions
-    moments, jacobian = geometric.from_deltas(ORDER, POINTS, weights=WEIGHTS, get_jacobian=True)
+    moments, jacobian = geometric.from_deltas(
+        ORDER, POINTS, weights=WEIGHTS, get_jacobian=True
+    )
 
     for i in range(NUM_POINTS):
         delta_idx = i * Delta.LENGTH
@@ -140,7 +144,7 @@ def test_delta_moments_derivatives():
 def test_geometric_moments_calculator_deltas():
     """Test using the geometric moments calculator with delta functions as features"""
     num_points = 4
-    positions = generate.random_points_in_sphere(num_points, radius=.7)
+    positions = generate.random_points_in_sphere(num_points, radius=0.7)
     weights = np.random.rand(num_points)
     max_order = 11
 
@@ -164,7 +168,7 @@ def test_geometric_moments_calculator_deltas():
 def test_geometric_moments_calculator_gaussians():
     """Test using the geometric moments calculator with Gaussian functions as features"""
     num_points = 4
-    positions = generate.random_points_in_sphere(num_points, radius=.7)
+    positions = generate.random_points_in_sphere(num_points, radius=0.7)
     sigmas = np.random.rand(num_points)
     weights = np.random.rand(num_points)
     max_order = 11
@@ -173,7 +177,9 @@ def test_geometric_moments_calculator_gaussians():
     gaussian = functions.WeightedGaussian(positions[0], sigmas[0], weights[0])
     calculator = geometric.GeometricMomentsCalculator(max_order)
     moms = calculator(gaussian)
-    moms2 = geometric.from_gaussians(max_order, positions[0:1], sigmas[0:1], weights[0:1])
+    moms2 = geometric.from_gaussians(
+        max_order, positions[0:1], sigmas[0:1], weights[0:1]
+    )
     assert np.all(moms.moments == moms2.moments)
 
     # Now try all of them
@@ -194,16 +200,18 @@ def test_gaussian_moments_derivatives():
     NUM_POINTS = 2
     Gaussian = functions.WeightedGaussian
 
-    x = sympy.IndexedBase('x')
-    w = sympy.IndexedBase('w')
-    s = sympy.IndexedBase('s')
+    x = sympy.IndexedBase("x")
+    w = sympy.IndexedBase("w")
+    s = sympy.IndexedBase("s")
 
     POINTS = analytic.create_array(x, (NUM_POINTS, 3))
     WEIGHTS = analytic.create_array(w, NUM_POINTS)
     SIGMAS = analytic.create_array(s, NUM_POINTS)
 
     # Get the moments and derivatives wrt to weights and positions
-    moments, jacobian = geometric.from_gaussians(ORDER, POINTS, sigmas=SIGMAS, weights=WEIGHTS, get_jacobian=True)
+    moments, jacobian = geometric.from_gaussians(
+        ORDER, POINTS, sigmas=SIGMAS, weights=WEIGHTS, get_jacobian=True
+    )
 
     for i in range(NUM_POINTS):
         delta_idx = i * Gaussian.LENGTH

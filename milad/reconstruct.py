@@ -19,18 +19,24 @@ from . import optimisers
 
 _LOGGER = logging.getLogger(__name__)
 
-StructureOptimisationResult = collections.namedtuple('StructureOptimisationResult', 'success atoms message rmsd')
+StructureOptimisationResult = collections.namedtuple(
+    "StructureOptimisationResult", "success atoms message rmsd"
+)
 
 
 @functools.singledispatch
 def find_clusters(spec, num_clusters: int, **kwargs) -> np.ndarray:
     """Find clusters based on moments"""
-    raise TypeError(f'Cannot find clusters from {spec.__class__.__name__}')
+    raise TypeError(f"Cannot find clusters from {spec.__class__.__name__}")
 
 
 @find_clusters.register(base_moments.Moments)
-def _(moments: base_moments.Moments, num_clusters: int, query: base_moments.ReconstructionQuery,
-      descriptor: fingerprinting.MomentInvariantsDescriptor) -> np.ndarray:
+def _(
+    moments: base_moments.Moments,
+    num_clusters: int,
+    query: base_moments.ReconstructionQuery,
+    descriptor: fingerprinting.MomentInvariantsDescriptor,
+) -> np.ndarray:
     """Find clusters from moments.  This will take the moments and reconstruct values on a grid
     which will be used for the actual cluster determination"""
     # Calculate the grid values
@@ -43,15 +49,17 @@ def _(moments: base_moments.Moments, num_clusters: int, query: base_moments.Reco
 def _(grid, num_clusters: int) -> np.ndarray:
     """Given a grid consisting of points and weights this function funds clusters using k-means"""
     grid_points, grid_values = grid
-    kmeans = cluster.KMeans(num_clusters, max_iter=1000, algorithm='full', tol=1e-1)
+    kmeans = cluster.KMeans(num_clusters, max_iter=1000, algorithm="full", tol=1e-1)
     kmeans.fit(grid_points, sample_weight=grid_values)
 
     num_labels = len(set(kmeans.labels_))
     if num_labels != num_clusters:
-        raise exceptions.ReconstructionError(f'Could not find {num_clusters} clusters, found {num_labels} labels')
+        raise exceptions.ReconstructionError(
+            f"Could not find {num_clusters} clusters, found {num_labels} labels"
+        )
     if len(kmeans.cluster_centers_) != num_clusters:
         raise exceptions.ReconstructionError(
-            f'Could not find {num_clusters} clusters, found {len(kmeans.cluster_centers_)} centres'
+            f"Could not find {num_clusters} clusters, found {len(kmeans.cluster_centers_)} centres"
         )
 
     return kmeans.cluster_centers_
@@ -61,12 +69,14 @@ def get_surrounding_gridpoints(
     query: base_moments.ReconstructionQuery, atom_pos: np.array, radius: float
 ) -> np.ndarray:
     # First find the points within a cube of the central point
-    mask = (query.points[:, 0] > atom_pos[0] - radius) & \
-           (query.points[:, 0] < atom_pos[0] + radius) & \
-           (query.points[:, 1] > atom_pos[1] - radius) & \
-           (query.points[:, 1] < atom_pos[1] + radius) & \
-           (query.points[:, 2] > atom_pos[2] - radius) & \
-           (query.points[:, 2] < atom_pos[2] + radius)
+    mask = (
+        (query.points[:, 0] > atom_pos[0] - radius)
+        & (query.points[:, 0] < atom_pos[0] + radius)
+        & (query.points[:, 1] > atom_pos[1] - radius)
+        & (query.points[:, 1] < atom_pos[1] + radius)
+        & (query.points[:, 2] > atom_pos[2] - radius)
+        & (query.points[:, 2] < atom_pos[2] + radius)
+    )
 
     indices = np.argwhere(mask)[:, 0]
     rsq = radius * radius
@@ -81,9 +91,11 @@ def get_surrounding_gridpoints(
     return mask
 
 
-def get_buffer_indices(query: base_moments.ReconstructionQuery, grid_values) -> List[int]:
+def get_buffer_indices(
+    query: base_moments.ReconstructionQuery, grid_values
+) -> List[int]:
     # Get all grid values that are currently 0, these should stay zero
-    outside = list(np.argwhere(grid_values == 0.).reshape(-1))
+    outside = list(np.argwhere(grid_values == 0.0).reshape(-1))
 
     # Now, get those that are near the bounds of the sphere i.e. 1.0
     cutoff_sq = 0.85**2
@@ -114,7 +126,9 @@ def find_atoms(
     :param grid_size: the size of reconstruction grid to use.  Only used if no reconstruction query is passed.
     :return:
     """
-    query = query or moments.create_reconstruction_query(moments.get_grid(grid_size), moments.max_order)
+    query = query or moments.create_reconstruction_query(
+        moments.get_grid(grid_size), moments.max_order
+    )
 
     atom_positions = []
     atom_numbers = []
@@ -132,10 +146,12 @@ def find_atoms(
 
         # Get that position in the grid
         atom_positions.append(query.points[max_idx] / descriptor.cutoff)
-        atom_numbers.append(1.)
+        atom_numbers.append(1.0)
 
         # Build an atoms collection with the current set of atoms
-        current_atoms = atomic.AtomsCollection(len(atom_positions), positions=atom_positions, numbers=atom_numbers)
+        current_atoms = atomic.AtomsCollection(
+            len(atom_positions), positions=atom_positions, numbers=atom_numbers
+        )
 
         # Locally optimise the atomic positions
         res = optimiser.optimise(
@@ -160,7 +176,7 @@ def find_atoms(
 
         # Now remove the signal of the atom from the grid
         remove_idxs = np.argwhere(current_grid >= (0.5 * current_grid.max()))
-        current_grid[remove_idxs] = 0.
+        current_grid[remove_idxs] = 0.0
 
         atom_positions = list(res.value.positions)
         atom_numbers = list(res.value.numbers)
@@ -168,21 +184,26 @@ def find_atoms(
     return res.value
 
 
-def create_atoms_collection(clusters: cluster.KMeans, atomic_numbers=1.):
+def create_atoms_collection(clusters: cluster.KMeans, atomic_numbers=1.0):
     """Take a set of clusters and use the centres to construct an atoms collection"""
     num_atoms = len(clusters.cluster_centers_)
-    return atomic.AtomsCollection(num_atoms, positions=clusters.cluster_centers_, numbers=atomic_numbers)
+    return atomic.AtomsCollection(
+        num_atoms, positions=clusters.cluster_centers_, numbers=atomic_numbers
+    )
 
 
 DecoderResult = collections.namedtuple(
-    'DecoderResult', 'success message value rmsd moments_reconstruction initial_reconstruction atoms_reconstruction'
+    "DecoderResult",
+    "success message value rmsd moments_reconstruction initial_reconstruction atoms_reconstruction",
 )
 
 
 def merge_atoms(system: atomic.AtomsCollection, dist_threshold=0.2):
     # Proceed to merging of atoms
     dists = distance.cdist(system.positions, system.positions)
-    np.fill_diagonal(dists, np.inf)  # Get rid of diagonals as this is just the self-interaction
+    np.fill_diagonal(
+        dists, np.inf
+    )  # Get rid of diagonals as this is just the self-interaction
     merge_sets = []
     for (i, j) in np.argwhere(dists < dist_threshold):
         if i > j:
@@ -209,7 +230,7 @@ def merge_atoms(system: atomic.AtomsCollection, dist_threshold=0.2):
     merged_indices = set()
     for merge_set in merge_sets:
         pos = np.zeros(3)
-        number = 0.
+        number = 0.0
         for i in merge_set:
             pos += system.positions[i]
             number += system.numbers[i]
@@ -223,7 +244,9 @@ def merge_atoms(system: atomic.AtomsCollection, dist_threshold=0.2):
         positions.append(system.positions[i])
         numbers.append(system.numbers[i])
 
-    return len(merged_indices), atomic.AtomsCollection(len(positions), positions, numbers)
+    return len(merged_indices), atomic.AtomsCollection(
+        len(positions), positions, numbers
+    )
 
 
 def get_best_rms(
@@ -232,7 +255,7 @@ def get_best_rms(
     max_attempts: int = 1000,
     max_retries=20,
     threshold=1e-7,
-    use_hungarian=True
+    use_hungarian=True,
 ) -> float:
     """
     Get the best RMSs fitting between two molecules.  This will first use an algorithm to make a decent guess at the
@@ -275,7 +298,9 @@ def get_best_rms(
     try:
         best = np.inf
         for _ in range(max_retries):
-            best = min(rdMolAlign.GetBestRMS(probe, reference, maxMatches=max_attempts), best)
+            best = min(
+                rdMolAlign.GetBestRMS(probe, reference, maxMatches=max_attempts), best
+            )
             if best < threshold:
                 break
         return best
@@ -331,7 +356,9 @@ def find_iteratively(
     if structure_optimiser is None:
         structure_optimiser = optimisers.StructureOptimiser()
         if minsep:
-            structure_optimiser.separation_force = atomic.SeparationForce(epsilon=1e-1, cutoff=minsep, power=2)
+            structure_optimiser.separation_force = atomic.SeparationForce(
+                epsilon=1e-1, cutoff=minsep, power=2
+            )
 
     atoms = initial
     mask = None
@@ -346,22 +373,24 @@ def find_iteratively(
 
         if grid_query is None:
             # Create the reconstruction query the first time
-            grid_query = moments.create_reconstruction_query(moments.get_grid(31), moments.max_order)
+            grid_query = moments.create_reconstruction_query(
+                moments.get_grid(31), moments.max_order
+            )
 
         if verbose:
-            print(f'{i}: Finding moments from fingerprint...', end='')
+            print(f"{i}: Finding moments from fingerprint...", end="")
         result = moments_optimiser.optimise(
             invariants_fn=descriptor.invariants,
             target=fingerprint,
             initial=moments,
-            verbose=(verbose == 'high'),
+            verbose=(verbose == "high"),
         )
         moments = result.value
         if verbose:
-            print(f'rmsd {result.rmsd}')
+            print(f"rmsd {result.rmsd}")
 
         if verbose:
-            print(f'{i}: Finding atoms from moments...', end='')
+            print(f"{i}: Finding atoms from moments...", end="")
         result = find_atoms_from_moments(
             descriptor,
             moments,
@@ -371,23 +400,23 @@ def find_iteratively(
             mask=mask,
             grid_query=grid_query,
             structure_optimiser=structure_optimiser,
-            verbose=(verbose == 'high')
+            verbose=(verbose == "high"),
         )
         atoms = result.value
         if verbose:
-            print(f'rmsd {result.rmsd}')
+            print(f"rmsd {result.rmsd}")
 
         if verbose:
-            print(f'{i}: Finding atoms from fingerprint...', end='')
+            print(f"{i}: Finding atoms from fingerprint...", end="")
         result = structure_optimiser.optimise(
             descriptor,
             target=fingerprint,
             initial=atoms,
             mask=mask,
-            verbose=(verbose == 'high'),
+            verbose=(verbose == "high"),
         )
         if verbose:
-            print(f'rmsd {result.rmsd}')
+            print(f"rmsd {result.rmsd}")
 
         if find_species:
             # Take the current result, fix the species and allow positions to vary
@@ -397,16 +426,16 @@ def find_iteratively(
             pos_mask.numbers = atoms.numbers
 
             if verbose:
-                print(f'{i}: Optimising atomic positions wrt fingerprint...', end='')
+                print(f"{i}: Optimising atomic positions wrt fingerprint...", end="")
             result = structure_optimiser.optimise(
                 descriptor,
                 target=fingerprint,
                 initial=atoms,
                 mask=pos_mask,
-                verbose=(verbose == 'high'),
+                verbose=(verbose == "high"),
             )
             if verbose:
-                print(f'rmsd {result.rmsd}')
+                print(f"rmsd {result.rmsd}")
 
         if result.rmsd < min_rmsd:
             break
@@ -425,7 +454,7 @@ def find_atoms_from_moments(
     moments,
     num_atoms: int,
     *,
-    numbers=1.,
+    numbers=1.0,
     mask=None,
     grid_query=None,
     structure_optimiser=None,
@@ -434,15 +463,24 @@ def find_atoms_from_moments(
 ):
     # Find the peaks and create the corresponding collection of atoms
     if verbose:
-        print('Finding peaks...', end='')
-    peaks = find_peaks(descriptor, moments, num_atoms, query=grid_query, subtract_signal=True, exclude_radius=minsep)
+        print("Finding peaks...", end="")
+    peaks = find_peaks(
+        descriptor,
+        moments,
+        num_atoms,
+        query=grid_query,
+        subtract_signal=True,
+        exclude_radius=minsep,
+    )
     atoms = atomic.AtomsCollection(num_atoms, peaks, numbers=numbers)
     if verbose:
-        print(f'found {atoms.num_atoms}')
+        print(f"found {atoms.num_atoms}")
 
     if structure_optimiser is None:
         structure_optimiser = optimisers.StructureOptimiser()
-        structure_optimiser.separation_force = atomic.SeparationForce(epsilon=1e-2, cutoff=minsep, power=1)
+        structure_optimiser.separation_force = atomic.SeparationForce(
+            epsilon=1e-2, cutoff=minsep, power=1
+        )
     result = structure_optimiser.optimise(
         descriptor,
         target=moments,
@@ -474,12 +512,14 @@ def find_maximum(
 
     res = optimize.shgo(
         lambda pt: adapter(moments, pt),
-        bounds=[(0.0, 1.), (0., np.pi), (0., 2 * np.pi)],
+        bounds=[(0.0, 1.0), (0.0, np.pi), (0.0, 2 * np.pi)],
         n=num_samples,
-        sampling_method='sobol'
+        sampling_method="sobol",
     )
     # Convert coordinates back to cartesian and scale
-    res.update(dict(x=mathutil.sph2cart(res.x) / cutoff, xl=mathutil.sph2cart(res.x) / cutoff))
+    res.update(
+        dict(x=mathutil.sph2cart(res.x) / cutoff, xl=mathutil.sph2cart(res.x) / cutoff)
+    )
     return res
 
 
@@ -491,12 +531,19 @@ def find_peaks(
     query: base_moments.ReconstructionQuery = None,
     grid_size=31,
     exclude_radius=0.51,
-    subtract_signal=True
+    subtract_signal=True,
 ):
-    query = query or moments.create_reconstruction_query(moments.get_grid(grid_size), moments.max_order)
+    query = query or moments.create_reconstruction_query(
+        moments.get_grid(grid_size), moments.max_order
+    )
     current_grid = moments.reconstruct(query, zero_outside_domain=True)
     return find_peaks_from_grid(
-        descriptor, num, current_grid, query, exclude_radius=exclude_radius, subtract_signal=subtract_signal
+        descriptor,
+        num,
+        current_grid,
+        query,
+        exclude_radius=exclude_radius,
+        subtract_signal=subtract_signal,
     )
 
 
@@ -506,10 +553,10 @@ def find_peaks_from_grid(
     grid_values: np.ndarray,
     query: base_moments.ReconstructionQuery,
     exclude_radius=0.51,
-    subtract_signal=True
+    subtract_signal=True,
 ):
     # pylint: disable=too-many-locals
-    scale = 1.0 if descriptor.cutoff is None else 1. / descriptor.cutoff
+    scale = 1.0 if descriptor.cutoff is None else 1.0 / descriptor.cutoff
 
     current_grid = grid_values.copy()
 
@@ -530,7 +577,9 @@ def find_peaks_from_grid(
 
         if subtract_signal:
             # Build an atoms collection with a single atom at that position
-            single_atom = atomic.AtomsCollection(1, positions=[atom_pos / scale], numbers=[1.])
+            single_atom = atomic.AtomsCollection(
+                1, positions=[atom_pos / scale], numbers=[1.0]
+            )
 
             # Get the moments so we can subtract this from the grid
             single_moments = descriptor.get_moments(single_atom, preprocess=False)
@@ -544,6 +593,6 @@ def find_peaks_from_grid(
         # Now mask off the gridpoints associated with this atom
         mask |= get_surrounding_gridpoints(query, atom_pos, exclude)
 
-        current_grid[mask] = 0.
+        current_grid[mask] = 0.0
 
     return np.array(found_positions)

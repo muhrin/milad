@@ -13,23 +13,19 @@ from milad.play import asetools
 def test_structure_optimiser_invariants(complex_invariants):
     """Basic tests of the structure optimiser that is given a set of invariants"""
     radius_factor = 1.25
-    molecule = ase.build.molecule('C3H9N')
+    molecule = ase.build.molecule("C3H9N")
     max_radius = asetools.prepare_molecule(molecule)
     milad_molecule = asetools.ase2milad(molecule)
     cutoff = radius_factor * max_radius
 
     descriptor = milad.descriptor(
-        species={'map': {
-            'numbers': tuple(molecule.numbers),
-            'range': (1., 5.)
-        }},
-        features={
-            'type': functions.WeightedDelta,
-            'map_species_to': 'WEIGHT'
-        },
+        species={"map": {"numbers": tuple(molecule.numbers), "range": (1.0, 5.0)}},
+        features={"type": functions.WeightedDelta, "map_species_to": "WEIGHT"},
         cutoff=cutoff,
         invs=complex_invariants,
-        moments_calculator=zernike.ZernikeMomentsCalculator(complex_invariants.max_order),
+        moments_calculator=zernike.ZernikeMomentsCalculator(
+            complex_invariants.max_order
+        ),
         apply_cutoff=False,
     )
     fingerprint = descriptor(milad_molecule)
@@ -50,23 +46,19 @@ def test_structure_optimiser_invariants(complex_invariants):
 def test_structure_optimiser_moments(complex_invariants):
     """Basic tests of the structure optimiser that is given a set of moments"""
     radius_factor = 1.25
-    molecule = ase.build.molecule('C3H9N')
+    molecule = ase.build.molecule("C3H9N")
     max_radius = asetools.prepare_molecule(molecule)
     milad_molecule = asetools.ase2milad(molecule)
     cutoff = radius_factor * max_radius
 
     descriptor = milad.descriptor(
-        species={'map': {
-            'numbers': tuple(molecule.numbers),
-            'range': (0.5, 5.)
-        }},
-        features={
-            'type': functions.WeightedDelta,
-            'map_species_to': 'WEIGHT'
-        },
+        species={"map": {"numbers": tuple(molecule.numbers), "range": (0.5, 5.0)}},
+        features={"type": functions.WeightedDelta, "map_species_to": "WEIGHT"},
         cutoff=cutoff,
         invs=complex_invariants,
-        moments_calculator=zernike.ZernikeMomentsCalculator(complex_invariants.max_order),
+        moments_calculator=zernike.ZernikeMomentsCalculator(
+            complex_invariants.max_order
+        ),
         apply_cutoff=False,
     )
     target = descriptor.get_moments(milad_molecule)

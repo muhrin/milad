@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-__all__ = ('ReconstructionError',)
+__all__ = ("ReconstructionError",)
 
 
 class ReconstructionError(Exception):

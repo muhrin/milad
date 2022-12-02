@@ -26,14 +26,18 @@ Range = InclusiveRange
 RangeType = Union[Tuple[int, int], Range]
 MaxOrRange = Union[int, Tuple[type(None), type(None)]]
 
-__all__ = 'IndexTraits', 'MaxOrRange', 'Range'
+__all__ = "IndexTraits", "MaxOrRange", "Range"
 
 
 class IndexTraits:
     """Helper class to deal with various possible valid indices for spherical harmonics and a radial function"""
 
     def __init__(
-        self, n_spec: MaxOrRange, l_spec: MaxOrRange = None, l_le_n: bool = False, n_minus_l_even: bool = False
+        self,
+        n_spec: MaxOrRange,
+        l_spec: MaxOrRange = None,
+        l_le_n: bool = False,
+        n_minus_l_even: bool = False,
     ):
         self._n_range = to_range(n_spec)
         self._l_range = to_range(l_spec or self._n_range[1])
@@ -41,7 +45,9 @@ class IndexTraits:
         self._n_minus_l_even = n_minus_l_even
 
         if l_le_n and self._n_range[1] > self._n_range[1]:
-            raise ValueError(f'Cannot have l_max > n_max ({self._n_range[1]} > {self._n_range[1]})')
+            raise ValueError(
+                f"Cannot have l_max > n_max ({self._n_range[1]} > {self._n_range[1]})"
+            )
 
     @property
     def n(self) -> InclusiveRange:
@@ -53,7 +59,7 @@ class IndexTraits:
         return len(self._n_range)
 
     @property
-    def l(self) -> InclusiveRange:
+    def l(self) -> InclusiveRange:  # noqa: E743
         return self._l_range
 
     @property
@@ -67,7 +73,11 @@ class IndexTraits:
 
         # If necessary, shift n_min up to the nearest higher or equal integer such that `even(n - l) is True`
         n_min = n_min + ((n_min - l) % 2) if self._n_minus_l_even else n_min
-        yield from utils.inclusive(max(l, n_min) if self._l_le_n else 0, n_max, 2 if self._n_minus_l_even else 1)
+        yield from utils.inclusive(
+            max(l, n_min) if self._l_le_n else 0,
+            n_max,
+            2 if self._n_minus_l_even else 1,
+        )
 
     def iter_l(self, n: int, l_spec: MaxOrRange = None):
         """Iterate over all valid values of l for a given value of n"""
@@ -75,7 +85,11 @@ class IndexTraits:
 
         # If necessary, shift l_min up to the nearest higher or equal integer such that `even(n - l) is True`
         l_min = l_min + ((n - l_min) % 2) if self._n_minus_l_even else l_min
-        yield from utils.inclusive(l_min, min(l_max, n) if self._l_le_n else l_max, 2 if self._n_minus_l_even else 1)
+        yield from utils.inclusive(
+            l_min,
+            min(l_max, n) if self._l_le_n else l_max,
+            2 if self._n_minus_l_even else 1,
+        )
 
     @staticmethod
     def iter_m(l: int, m_spec: MaxOrRange = None):
@@ -90,7 +104,12 @@ class IndexTraits:
             for l in self.iter_l(n, l_spec):
                 yield n, l
 
-    def iter_nlm(self, n_spec: MaxOrRange = None, l_spec: MaxOrRange = None, m_spec: MaxOrRange = None):
+    def iter_nlm(
+        self,
+        n_spec: MaxOrRange = None,
+        l_spec: MaxOrRange = None,
+        m_spec: MaxOrRange = None,
+    ):
         for n, l in self.iter_nl(n_spec, l_spec):
             for m in self.iter_m(l, m_spec):
                 yield n, l, m
@@ -121,7 +140,9 @@ def to_range(spec: MaxOrRange) -> Range:
     if isinstance(spec, (int, np.integer)):
         return Range(0, spec)
 
-    raise ValueError(f"'{spec}' is not a valid value specification, takes integer (maximum) or 2-tuple (range)")
+    raise ValueError(
+        f"'{spec}' is not a valid value specification, takes integer (maximum) or 2-tuple (range)"
+    )
 
 
 def create_array(indices: IndexTraits, dtype=complex):

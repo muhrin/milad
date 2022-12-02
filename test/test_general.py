@@ -9,7 +9,7 @@ from milad import geometric
 
 def test_general(geometric_invariants):
     # Settings
-    scale = 1.
+    scale = 1.0
     sigma = scale * 0.4
     num_rotations = 0
     num_points = 4
@@ -26,6 +26,8 @@ def test_general(geometric_invariants):
         rotated = rot.apply(pos1)
 
         # Calculate the moment invariants
-        rot_invariants = milad.invariants.calc_moment_invariants(geometric_invariants, rotated, sigma)
+        rot_invariants = milad.invariants.calc_moment_invariants(
+            geometric_invariants, rotated, sigma
+        )
 
         assert numpy.testing.assert_array_almost_equal(invariants, rot_invariants)

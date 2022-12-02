@@ -10,9 +10,11 @@ from scipy import optimize
 from milad import functions
 from . import utils
 
-__all__ = ('RootFinder',)
+__all__ = ("RootFinder",)
 
-OptimiserResult = collections.namedtuple('OptimiserResult', 'success message value rmsd n_func_eval n_jac_eval')
+OptimiserResult = collections.namedtuple(
+    "OptimiserResult", "success message value rmsd n_func_eval n_jac_eval"
+)
 
 BoundsType = Tuple[Optional[functions.StateLike], Optional[functions.StateLike]]
 
@@ -23,7 +25,14 @@ class RootFinder:
     class Data:
         """Data used during an optimisation"""
 
-        def __init__(self, use_jacobian, complex_input: bool, verbose=False, builder=None, callback: Callable = None):
+        def __init__(
+            self,
+            use_jacobian,
+            complex_input: bool,
+            verbose=False,
+            builder=None,
+            callback: Callable = None,
+        ):
             self.use_jacobian = use_jacobian
             self.complex_input = complex_input
             self.verbose = verbose
@@ -31,18 +40,18 @@ class RootFinder:
             self.callback = callback
 
     def optimise(  # pylint: disable=too-many-locals
-            self,
-            func: functions.Function,
-            initial: functions.StateLike,
-            mask: functions.StateLike = None,
-            jacobian='native',
-            bounds: BoundsType = (-np.inf, np.inf),
-            max_func_evals=10000,
-            x_tol=1e-8,
-            cost_tol=1e-6,
-            grad_tol=1e-8,
-            callback: Callable = None,
-            verbose=False,
+        self,
+        func: functions.Function,
+        initial: functions.StateLike,
+        mask: functions.StateLike = None,
+        jacobian="native",
+        bounds: BoundsType = (-np.inf, np.inf),
+        max_func_evals=10000,
+        x_tol=1e-8,
+        cost_tol=1e-6,
+        grad_tol=1e-8,
+        callback: Callable = None,
+        verbose=False,
     ) -> OptimiserResult:
         """
         :param func: the function to optimise
@@ -83,21 +92,23 @@ class RootFinder:
             x0_ = utils.split_state(x0_)
 
         data = utils.Data(
-            use_jacobian=jacobian == 'native',
+            use_jacobian=jacobian == "native",
             complex_input=complex_input,
             verbose=verbose,
             builder=builder,
             callback=callback,
         )
 
-        max_func_evals = max_func_evals if max_func_evals is not None else 100 * len(initial)
+        max_func_evals = (
+            max_func_evals if max_func_evals is not None else 100 * len(initial)
+        )
 
         # Do it!
         res = optimize.root(
             functools.partial(self._jac2, func=fun, opt_data=data),
             x0_,
             jac=True,
-            method='lm',
+            method="lm",
             options=dict(col_deriv=False, xtol=x_tol, maxiter=max_func_evals),
             # bounds=bounds,
         )
@@ -126,7 +137,7 @@ class RootFinder:
         initial: functions.State,
         target: functions.StateLike,
         mask: functions.State = None,
-        jacobian='native',
+        jacobian="native",
         bounds: BoundsType = (-np.inf, np.inf),
         max_func_evals=10000,
         x_tol=1e-8,
@@ -168,8 +179,9 @@ class RootFinder:
         )
 
     @staticmethod
-    def _jac2(state: functions.StateLike, func: functions.Function,
-              opt_data: 'utils.Data') -> Tuple[np.ndarray, np.ndarray]:
+    def _jac2(
+        state: functions.StateLike, func: functions.Function, opt_data: "utils.Data"
+    ) -> Tuple[np.ndarray, np.ndarray]:
         if opt_data.complex_input:
             state = utils.join_state(state)
 
@@ -180,7 +192,7 @@ class RootFinder:
             jac = None
 
         if opt_data.verbose:
-            print('|Max| {}'.format(np.abs(value).max()))
+            print("|Max| {}".format(np.abs(value).max()))
 
         if opt_data.callback is not None:
             if opt_data.builder is None:
@@ -193,7 +205,9 @@ class RootFinder:
         value = utils.split_state(value)
         if jac is not None:
             jac = utils.split_jacobian(
-                jac, complex_inputs=opt_data.complex_input, complex_outputs=np.iscomplexobj(value)
+                jac,
+                complex_inputs=opt_data.complex_input,
+                complex_outputs=np.iscomplexobj(value),
             )
 
         return value, jac

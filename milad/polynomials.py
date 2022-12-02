@@ -9,7 +9,6 @@ import numba
 
 
 class Polynomial(metaclass=abc.ABCMeta):
-
     @abc.abstractmethod
     def evaluate(self, values: np.ndarray):
         """Evaluate the polynomial with given set of values"""
@@ -27,7 +26,7 @@ class HomogenousPolynomial(Polynomial):
         degree: int,
         prefactors: np.ndarray = None,
         terms: np.ndarray = None,
-        constant=0.,
+        constant=0.0,
         conjugate_values=False,
         simplify=True,
     ):
@@ -48,10 +47,10 @@ class HomogenousPolynomial(Polynomial):
             terms = np.empty((0, 0, 0))
 
         if len(terms.shape) != 3:
-            raise ValueError(f'terms must be rank three array, got {len(terms.shape)}')
+            raise ValueError(f"terms must be rank three array, got {len(terms.shape)}")
         if len(prefactors) != len(terms):
             raise ValueError(
-                f'prefactors and terms must have same length, got prefactors={len(prefactors)}, terms={len(terms)}'
+                f"prefactors and terms must have same length, got prefactors={len(prefactors)}, terms={len(terms)}"
             )
 
         if simplify:
@@ -71,50 +70,53 @@ class HomogenousPolynomial(Polynomial):
 
     def __mul__(self, value: numbers.Number):
         if isinstance(value, numbers.Number):
-            if value == 1.:
+            if value == 1.0:
                 return self
 
             return HomogenousPolynomial(
-                self._degree, self._prefactors * value if self._prefactors is not None else None,
-                self._terms if self._terms is not None else None, self._constant * value
+                self._degree,
+                self._prefactors * value if self._prefactors is not None else None,
+                self._terms if self._terms is not None else None,
+                self._constant * value,
             )
 
-        raise TypeError(f'Unexpected type {value.__class__.__name__}')
+        raise TypeError(f"Unexpected type {value.__class__.__name__}")
 
     __rmul__ = __mul__
 
     def __add__(self, other):
-        if other == 0.:
+        if other == 0.0:
             return self
 
         if not isinstance(other, HomogenousPolynomial):
-            raise TypeError(f'Unexpected type {other.__class__.__name__}')
+            raise TypeError(f"Unexpected type {other.__class__.__name__}")
 
         if other._degree != self._degree:
             return ValueError(
-                f'Cannot add two homogenous polynomials of different degree ({self.degree} vs {other.degree})'
+                f"Cannot add two homogenous polynomials of different degree ({self.degree} vs {other.degree})"
             )
 
         return HomogenousPolynomial(
             self.degree,
             prefactors=np.concatenate((self._prefactors, other._prefactors)),
             terms=np.concatenate((self._terms, other._terms)),
-            constant=self._constant + other.constant
+            constant=self._constant + other.constant,
         )
 
     __radd__ = __add__
 
     def __str__(self) -> str:
         if self._prefactors is None:
-            return 'None'
+            return "None"
 
         terms = [
-            f"{prefactor} * x_{','.join(map(str, term))}" for prefactor, term in zip(self._prefactors, self._terms)
+            f"{prefactor} * x_{','.join(map(str, term))}"
+            for prefactor, term in zip(self._prefactors, self._terms)
         ]
         if self._constant:
             terms.append(str(self._constant))
 
-        return ' + '.join(terms)
+        return " + ".join(terms)
 
     @property
     def degree(self) -> int:
@@ -151,7 +153,7 @@ class HomogenousPolynomial(Polynomial):
             self._prefactors.conjugate() if self._prefactors is not None else None,
             self._terms if self._terms is not None else None,
             self._constant.conjugate(),
-            conjugate_values=not self._conjugate
+            conjugate_values=not self._conjugate,
         )
 
     def evaluate(self, values: np.ndarray):
@@ -189,7 +191,7 @@ class HomogenousPolynomial(Polynomial):
 
     __call__ = evaluate
 
-    def get_partial_derivative(self, variable) -> 'HomogenousPolynomial':
+    def get_partial_derivative(self, variable) -> "HomogenousPolynomial":
         variable = tuple(variable)
         try:
             return self._derivatives_cache[variable]
@@ -231,13 +233,18 @@ class HomogenousPolynomial(Polynomial):
                     terms.append(new_product)
 
         new_degree = self.degree - 1 if prefactors else 0
-        deriv = HomogenousPolynomial(new_degree, prefactors, terms, constant, conjugate_values=self._conjugate)
+        deriv = HomogenousPolynomial(
+            new_degree, prefactors, terms, constant, conjugate_values=self._conjugate
+        )
 
         self._derivatives_cache[variable] = deriv
         return deriv
 
-    def get_gradient(self) -> Dict[Tuple, 'HomogenousPolynomial']:
-        return {variable: self.get_partial_derivative(variable) for variable in self.variables}
+    def get_gradient(self) -> Dict[Tuple, "HomogenousPolynomial"]:
+        return {
+            variable: self.get_partial_derivative(variable)
+            for variable in self.variables
+        }
 
     @staticmethod
     def _simplify(prefactors: np.ndarray, terms: np.ndarray):
@@ -259,20 +266,25 @@ class HomogenousPolynomial(Polynomial):
                 new_terms.append(product)
 
         if new_prefactors:
-            new_terms, new_prefactors = tuple(zip(*sorted(zip(new_terms, new_prefactors))))
+            new_terms, new_prefactors = tuple(
+                zip(*sorted(zip(new_terms, new_prefactors)))
+            )
 
         return np.array(new_prefactors), np.array(new_terms)
 
 
 def numpy_evaluate(prefactors, indices: np.array, values: np.ndarray):
     """Fast method to get the polynomial from a numpy array"""
-    return np.dot(prefactors, np.prod(values[indices[:, :, 0], indices[:, :, 1], indices[:, :, 2]], axis=1))
+    return np.dot(
+        prefactors,
+        np.prod(values[indices[:, :, 0], indices[:, :, 1], indices[:, :, 2]], axis=1),
+    )
 
 
 @numba.jit(parallel=False, nopython=True)
 def numba_evaluate(prefactors, indices, moments):
     """Numba version to speed up calculation of larger polynomials"""
-    total = 0.
+    total = 0.0
     for idx in numba.prange(len(prefactors)):  # pylint: disable=not-an-iterable
         factor = prefactors[idx]
         entry = indices[idx]
@@ -295,6 +307,6 @@ class PolyBuilder:
     def __getitem__(self, indices):
         return HomogenousPolynomial(
             1,
-            prefactors=np.array([1.]),
+            prefactors=np.array([1.0]),
             terms=np.array([[list(indices)]]),
         )

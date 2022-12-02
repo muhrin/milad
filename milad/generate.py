@@ -7,7 +7,9 @@ from scipy.spatial import transform
 from . import mathutil
 
 
-def random_points_in_sphere(num: int, radius=1., centre=False, minsep=None) -> np.array:
+def random_points_in_sphere(
+    num: int, radius=1.0, centre=False, minsep=None
+) -> np.array:
     """Generate num points within a sphere of the given radius"""
     points = np.empty((num, 3))
     r_sq = radius * radius
@@ -52,12 +54,12 @@ def chiral_tetrahedra() -> Tuple[np.ndarray, np.ndarray]:
     # First group of points
     b_i = np.zeros((3, 3))
     r = 0.3
-    b_i[0, :] = mathutil.sph2cart([r, a, 0.])
-    b_i[1, :] = mathutil.sph2cart([r, b, 0.])
-    b_i[2, :] = mathutil.sph2cart([r, c, 0.])
+    b_i[0, :] = mathutil.sph2cart([r, a, 0.0])
+    b_i[1, :] = mathutil.sph2cart([r, b, 0.0])
+    b_i[2, :] = mathutil.sph2cart([r, c, 0.0])
 
     # Second group of points
-    rot = transform.Rotation.from_euler('y', 86, degrees=True)
+    rot = transform.Rotation.from_euler("y", 86, degrees=True)
     b_i_prime = rot.apply(b_i)
 
     pts_dist = 0.4
@@ -66,7 +68,7 @@ def chiral_tetrahedra() -> Tuple[np.ndarray, np.ndarray]:
 
     pt_dist = 0.8
 
-    plus = np.concatenate((np.array([[0, 0, 0], [0, +pt_dist, 0.]]), b_i, b_i_prime))
-    minus = np.concatenate((np.array([[0, 0, 0], [0, -pt_dist, 0.]]), b_i, b_i_prime))
+    plus = np.concatenate((np.array([[0, 0, 0], [0, +pt_dist, 0.0]]), b_i, b_i_prime))
+    minus = np.concatenate((np.array([[0, 0, 0], [0, -pt_dist, 0.0]]), b_i, b_i_prime))
 
     return minus, plus

@@ -13,16 +13,28 @@ from milad import functions
 from milad import geometric
 from milad import polynomials
 
-__all__ = ('MomentInvariant', 'read_invariants', 'RES_DIR', 'COMPLEX_INVARIANTS', 'GEOMETRIC_INVARIANTS', \
-           'MomentInvariants', 'read', 'InvariantBuilder')
+__all__ = (
+    "MomentInvariant",
+    "read_invariants",
+    "RES_DIR",
+    "COMPLEX_INVARIANTS",
+    "GEOMETRIC_INVARIANTS",
+    "MomentInvariants",
+    "read",
+    "InvariantBuilder",
+)
 
 # The resources directory
-RES_DIR = pathlib.Path(__file__).parent / 'res'
-GEOMETRIC_INVARIANTS = RES_DIR / 'rot3dinvs8mat.txt'
-COMPLEX_INVARIANTS = RES_DIR / 'cmfs7indep_0.txt'
-COMPLEX_INVARIANTS_ORIG = RES_DIR / 'cmfs7indep_0.orig.txt'
+RES_DIR = pathlib.Path(__file__).parent / "res"
+GEOMETRIC_INVARIANTS = RES_DIR / "rot3dinvs8mat.txt"
+COMPLEX_INVARIANTS = RES_DIR / "cmfs7indep_0.txt"
+COMPLEX_INVARIANTS_ORIG = RES_DIR / "cmfs7indep_0.orig.txt"
 # A convenience map to make it easier to load the default invariants
-INVS_MAP = {'geometric': GEOMETRIC_INVARIANTS, 'complex': COMPLEX_INVARIANTS, 'complex-orig': COMPLEX_INVARIANTS_ORIG}
+INVS_MAP = {
+    "geometric": GEOMETRIC_INVARIANTS,
+    "complex": COMPLEX_INVARIANTS,
+    "complex-orig": COMPLEX_INVARIANTS_ORIG,
+}
 
 
 def prod(iterable):
@@ -38,7 +50,9 @@ class MomentInvariant(polynomials.HomogenousPolynomial):
 
     def __init__(self, weight: int, *term, constant=0, conjugate_values=False):
         factors, arr = zip(*term)
-        super().__init__(weight, factors, arr, constant=constant, conjugate_values=conjugate_values)
+        super().__init__(
+            weight, factors, arr, constant=constant, conjugate_values=conjugate_values
+        )
         self._weight = weight
         self._max_order = -1
         # self._constant = constant
@@ -65,7 +79,7 @@ class MomentInvariant(polynomials.HomogenousPolynomial):
         """Compute this invariant from the given moments optionally normalising"""
         total = self.evaluate(raw_moments)
         if normalise:
-            return total / raw_moments[0, 0, 0]**self._norm_power
+            return total / raw_moments[0, 0, 0] ** self._norm_power
 
         return total
 
@@ -111,7 +125,9 @@ class InvariantBuilder:
             return
 
         if not all(len(entry) == 3 for entry in indices):
-            raise ValueError('There have to be three indices per entry, got: {}'.format(indices))
+            raise ValueError(
+                "There have to be three indices per entry, got: {}".format(indices)
+            )
         self._terms.append((prefactor, tuple(indices)))
 
     def build(self) -> MomentInvariant:
@@ -135,6 +151,7 @@ class InvariantBuilder:
 
 class MomentInvariants(functions.Function):
     """A function that takes moments as input and produces rotation invariants using polynomials thereof"""
+
     input_type = base_moments.Moments
     output_type = np.ndarray
     supports_jacobian = True
@@ -144,7 +161,9 @@ class MomentInvariants(functions.Function):
         super().__init__()
         for entry in invariant:
             if not isinstance(entry, MomentInvariant):
-                raise TypeError(f'Expected MomentInvariant, got {entry.__class__.__name__}')
+                raise TypeError(
+                    f"Expected MomentInvariant, got {entry.__class__.__name__}"
+                )
 
         self._invariants: List[MomentInvariant] = list(invariant)
         self._max_order = -1
@@ -158,7 +177,7 @@ class MomentInvariants(functions.Function):
         """Iterate the invariants"""
         return self._invariants.__iter__()
 
-    def __getitem__(self, item) -> Union['MomentInvariants', MomentInvariant]:
+    def __getitem__(self, item) -> Union["MomentInvariants", MomentInvariant]:
         """Get particular invariant(s)"""
         if isinstance(item, slice):
             return MomentInvariants(*self._invariants[item])
@@ -169,7 +188,7 @@ class MomentInvariants(functions.Function):
 
         return self._invariants[item]
 
-    def filter(self, func: Callable) -> 'MomentInvariants':
+    def filter(self, func: Callable) -> "MomentInvariants":
         """Return moment invariants for which the passed callable returns true"""
         return MomentInvariants(*filter(func, self._invariants), are_real=self._real)
 
@@ -196,20 +215,28 @@ class MomentInvariants(functions.Function):
             indices.update(inv.variables)
         return indices
 
-    def output_length(self, _in_state: functions.State) -> int:  # pylint: disable=unused-argument
+    def output_length(
+        self, _in_state: functions.State
+    ) -> int:  # pylint: disable=unused-argument
         return len(self._invariants)
 
     def apply(self, moms: np.array, normalise=False, results=None) -> list:
         """Calculate the invariants from the given moments"""
-        return apply_invariants(self._invariants, moms, normalise=normalise, results=results)
+        return apply_invariants(
+            self._invariants, moms, normalise=normalise, results=results
+        )
 
     def append(self, invariant: MomentInvariant):
         """Add an invariant"""
         self._invariants.append(invariant)
         self._max_order = max(self._max_order, invariant.max_order)
 
-    def evaluate(self, moments: base_moments.Moments, *, get_jacobian=False) -> np.ndarray:  # pylint: disable=arguments-differ
-        vector = np.empty(len(self._invariants), dtype=np.promote_types(moments.vector.dtype, float))
+    def evaluate(
+        self, moments: base_moments.Moments, *, get_jacobian=False
+    ) -> np.ndarray:  # pylint: disable=arguments-differ
+        vector = np.empty(
+            len(self._invariants), dtype=np.promote_types(moments.vector.dtype, float)
+        )
         jac = None
         if get_jacobian:
             jac = np.zeros((len(self._invariants), len(moments)), dtype=vector.dtype)
@@ -234,7 +261,9 @@ class MomentInvariants(functions.Function):
         return vector
 
 
-def apply_invariants(invariants: List[MomentInvariant], moms: np.array, normalise=False, results=None) -> list:
+def apply_invariants(
+    invariants: List[MomentInvariant], moms: np.array, normalise=False, results=None
+) -> list:
     """Calculate the moment invariants for a given set of moments
 
     :param invariants: a list of invariants to calculate
@@ -246,7 +275,9 @@ def apply_invariants(invariants: List[MomentInvariant], moms: np.array, normalis
         results = [None] * len(invariants)
     else:
         if not len(results) == len(invariants):
-            raise ValueError('Results container must be of the same length as invariants')
+            raise ValueError(
+                "Results container must be of the same length as invariants"
+            )
 
     for idx, invariant in enumerate(invariants):
         results[idx] = invariant.apply(moms, normalise=normalise)
@@ -254,8 +285,9 @@ def apply_invariants(invariants: List[MomentInvariant], moms: np.array, normalis
     return results
 
 
-def read_invariants(filename: str = GEOMETRIC_INVARIANTS, read_max: int = None) -> \
-        List[MomentInvariant]:
+def read_invariants(
+    filename: str = GEOMETRIC_INVARIANTS, read_max: int = None
+) -> List[MomentInvariant]:
     """Read invariants in the format use by Flusser, Suk and Zitová.
 
     :param filename: the filename to read from, default to geometric moments invariants
@@ -268,27 +300,27 @@ def read_invariants(filename: str = GEOMETRIC_INVARIANTS, read_max: int = None) 
         pass
 
     invariants = []
-    with open(filename, 'r') as file:
+    with open(filename, "r") as file:
 
         for line in file:
             line = line.rstrip()
             if line:
                 # New entry
-                header = [int(number) for number in line.split(' ')]
+                header = [int(number) for number in line.split(" ")]
                 degree = header[2]
                 builder = InvariantBuilder(degree)
 
                 # Now read the actual terms
                 line = file.readline().rstrip()
                 while line:
-                    terms = tuple(map(str_to_number, line.split(' ')))
+                    terms = tuple(map(str_to_number, line.split(" ")))
 
                     prefactor = terms[0]
 
                     indices = []
                     # Extract the indices 3 at a time
                     for idx in range(degree):
-                        indices.append(tuple(terms[idx * 3 + 1:(idx + 1) * 3 + 1]))
+                        indices.append(tuple(terms[idx * 3 + 1 : (idx + 1) * 3 + 1]))
                     builder.add_term(prefactor, indices)
 
                     line = file.readline().rstrip()
@@ -317,11 +349,12 @@ def str_to_number(value: str) -> Union[int, float, complex]:
     except ValueError:
         pass
 
-    raise ValueError('{} is not an int, float or complex'.format(value))
+    raise ValueError("{} is not an int, float or complex".format(value))
 
 
-def read(filename: str = GEOMETRIC_INVARIANTS, read_max: int = None, max_order=None) -> \
-        MomentInvariants:
+def read(
+    filename: str = GEOMETRIC_INVARIANTS, read_max: int = None, max_order=None
+) -> MomentInvariants:
     """Read the invariants from file"""
     invariants = MomentInvariants()
     try:
@@ -343,8 +376,8 @@ def calc_moment_invariants(
     invariants: Sequence[MomentInvariant],
     positions: np.array,
     sigma: Union[float, np.array] = 0.4,
-    masses: Union[float, np.array] = 1.,
-    normalise=False
+    masses: Union[float, np.array] = 1.0,
+    normalise=False,
 ) -> Sequence[float]:
     """Calculate the moment invariants for a set of Gaussians at the given positions."""
     max_order = 0

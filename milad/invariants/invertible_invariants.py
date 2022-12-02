@@ -42,8 +42,8 @@ def q_matrix(l: int, direct_indexing=True) -> np.ndarray:
         Q_[m, -m] = 1  # Top left
         Q_[-m, -m] = 1j  # Bottom left
 
-        Q_[-m, m] = -1j * (-1)**m  # Top right
-        Q_[m, m] = (-1)**m  # Bottom right
+        Q_[-m, m] = -1j * (-1) ** m  # Top right
+        Q_[m, m] = (-1) ** m  # Bottom right
 
     if not direct_indexing:
         # Shift the array such that m = m' = 0 is in the middle of the matrix, i.e. at l, l
@@ -56,8 +56,11 @@ class InvertibleInvariants(moment_invariants.MomentInvariants):
     """A set of invertible invariants"""
 
     def __init__(
-        self, degree_1: moment_invariants.MomentInvariants, degree_2: np.ma.masked_array,
-        degree_3: moment_invariants.MomentInvariants, index_traits: sph.IndexTraits
+        self,
+        degree_1: moment_invariants.MomentInvariants,
+        degree_2: np.ma.masked_array,
+        degree_3: moment_invariants.MomentInvariants,
+        index_traits: sph.IndexTraits,
     ):
         super().__init__(*degree_1, *degree_2.compressed(), *degree_3, are_real=False)
         self._degree_1 = degree_1
@@ -69,7 +72,7 @@ class InvertibleInvariants(moment_invariants.MomentInvariants):
         lmax = self._index_traits.l[1]
 
         used_invariants = set()
-        moments_out.array.fill(float('nan'))
+        moments_out.array.fill(float("nan"))
 
         used_invariants.update(self._invert_degree_1(phi, moments_out))
 
@@ -86,7 +89,7 @@ class InvertibleInvariants(moment_invariants.MomentInvariants):
                 try:
                     sign, inv_idx = self._determine_sign(phi, moments_out, l)
                 except RuntimeError:
-                    _LOGGER.warning('Unable to determine sign for I_2, l=%i', l)
+                    _LOGGER.warning("Unable to determine sign for I_2, l=%i", l)
                 else:
                     moments_out.array[:, l, :] = sign * moments_out.array[:, l, :]
                     used_invariants.add(inv_idx)
@@ -100,15 +103,25 @@ class InvertibleInvariants(moment_invariants.MomentInvariants):
         # Now we can continue using I3 only
         used_invariants.update(self._invert_degree_3(phi, l, moments_out))
 
-        _LOGGER.info('Used %i out of %i invariants during inversion', len(used_invariants), len(phi))
+        _LOGGER.info(
+            "Used %i out of %i invariants during inversion",
+            len(used_invariants),
+            len(phi),
+        )
         return moments_out
 
     def gram_indices(self, l: int) -> np.ndarray:
         """Get the indices of the invariants that correspond to the upper-right portion of the Gram matrix"""
         num_deg_1 = len(self._degree_1)
-        indices = np.ma.masked_array(np.empty(self._degree_2.shape, dtype=int), mask=self._degree_2.mask)
-        valid_invs = np.argwhere(self._degree_2 != None)  # pylint: disable=singleton-comparison
-        indices[valid_invs[:, 0], valid_invs[:, 1], valid_invs[:, 2]] = (np.arange(0, len(valid_invs)) + num_deg_1)
+        indices = np.ma.masked_array(
+            np.empty(self._degree_2.shape, dtype=int), mask=self._degree_2.mask
+        )
+        valid_invs = np.argwhere(
+            self._degree_2 != None  # noqa: E711
+        )  # pylint: disable=singleton-comparison
+        indices[valid_invs[:, 0], valid_invs[:, 1], valid_invs[:, 2]] = (
+            np.arange(0, len(valid_invs)) + num_deg_1
+        )
 
         linear_indices = indices[l, :, :].compressed()
         return linear_indices
@@ -185,7 +198,7 @@ class InvertibleInvariants(moment_invariants.MomentInvariants):
         vectors = np.zeros((gram.shape[0], 2 * l + 1), dtype=complex)
 
         u, s, _vh = np.linalg.svd(gram, hermitian=True)
-        rank = int(np.sum(~np.isclose(s, 0.)))
+        rank = int(np.sum(~np.isclose(s, 0.0)))
 
         # Check if we have anything to decompose, if not just save ourselves the trouble and return now
         if rank == 0:
@@ -193,7 +206,7 @@ class InvertibleInvariants(moment_invariants.MomentInvariants):
 
         real_vectors = np.zeros((gram.shape[0], (2 * l + 1)), dtype=complex)
         # real_vectors = u[:, :rank] * s[:rank]**0.5
-        real_vectors[:, :rank] = u[:, :rank] * s[:rank]**0.5
+        real_vectors[:, :rank] = u[:, :rank] * s[:rank] ** 0.5
 
         # bound = int(math.floor(rank / 2))
         # m_values = tuple(m for m in utils.inclusive(-bound, bound, 1) if not (mathutil.even(rank) and m == 0))
@@ -204,7 +217,7 @@ class InvertibleInvariants(moment_invariants.MomentInvariants):
         Q = q_matrix(l, direct_indexing=True)
         # Perform the rotation and multiply by the Clebsch-Gordan coefficient
         # vectors[:, m_values] = (2 * l + 1)**0.25 * real_vectors @ Q
-        vectors = (2 * l + 1)**0.25 * real_vectors @ Q
+        vectors = (2 * l + 1) ** 0.25 * real_vectors @ Q
 
         if rank == 1:
             # alpha, beta, gamma = sympy.symbols("alpha, beta, gamma", real=True)
@@ -238,23 +251,29 @@ class InvertibleInvariants(moment_invariants.MomentInvariants):
 
     def _determine_sign(self, phi: np.ndarray, moments_out, l: int):
         # Find I3 that have l1=l2=l3
-        res = np.array(self.find(lambda inv: inv.weight == 3 and np.all(inv.terms_array[:, :, 1] == l)))
+        res = np.array(
+            self.find(
+                lambda inv: inv.weight == 3 and np.all(inv.terms_array[:, :, 1] == l)
+            )
+        )
         # Get the index of a non-zero invariant that we can use to determine if we should use +Q or -Q
         try:
             # Find one that is non-zero
             i3_nonzero = np.argwhere(~np.isclose(phi[res], 0))[0][0]
         except IndexError:
-            raise RuntimeError(f'Unable to determine sign for I_2, l={l}')
+            raise RuntimeError(f"Unable to determine sign for I_2, l={l}")
         else:
             i3_nonzero = res[i3_nonzero]
             inv_res = self[i3_nonzero](moments_out)
             sign = inv_res / phi[i3_nonzero]
             if np.isclose(sign, 1):
                 return 1, i3_nonzero
-            if np.isclose(sign, -1.):
+            if np.isclose(sign, -1.0):
                 return -1, i3_nonzero
 
-            raise RuntimeError(f'The passed moments do not match I3 invariant (idx={i3_nonzero})')
+            raise RuntimeError(
+                f"The passed moments do not match I3 invariant (idx={i3_nonzero})"
+            )
 
     def _invert_degree_3(self, phi: np.array, l_start: int, moments_out) -> set:
         # pylint: disable=too-many-locals
@@ -278,10 +297,14 @@ class InvertibleInvariants(moment_invariants.MomentInvariants):
 
         for n3_, n3 in enumerate(self._index_traits.iter_n(l3)):
             # Get the correct invariants
-            i3_idx = np.array(self.find(functools.partial(degree_3_with_unknown, n3, l3)))
+            i3_idx = np.array(
+                self.find(functools.partial(degree_3_with_unknown, n3, l3))
+            )
 
             if len(i3_idx) < 2 * l3 + 1:
-                _LOGGER.warning("Don't have enough invariants to solve for n=%i, l=%i", n3, l3)
+                _LOGGER.warning(
+                    "Don't have enough invariants to solve for n=%i, l=%i", n3, l3
+                )
 
             # Create the matrices of the system to be solved
             coeffs = np.zeros((len(i3_idx), 2 * l3 + 1), dtype=complex)
@@ -295,13 +318,21 @@ class InvertibleInvariants(moment_invariants.MomentInvariants):
                         prefactors = invariant.prefactors[mask]
                         indices = invariant.terms_array[:, 0:2, :][mask]
                         # pylint: disable=protected-access
-                        coeffs[i, j] = polynomials.numpy_evaluate(prefactors, indices, moments)
+                        coeffs[i, j] = polynomials.numpy_evaluate(
+                            prefactors, indices, moments
+                        )
 
             # The known invariants
             phis = phi[i3_idx]
             res = np.linalg.lstsq(coeffs, phis, rcond=None)
             if res[2] < (2 * l3 + 1):
-                _LOGGER.warning('Rank deficiency (%i < %i) in n=%i, l=%i', res[2], (2 * l3 + 1), n3, l3)
+                _LOGGER.warning(
+                    "Rank deficiency (%i < %i) in n=%i, l=%i",
+                    res[2],
+                    (2 * l3 + 1),
+                    n3,
+                    l3,
+                )
 
             used_invariants.update(set(i3_idx))
 
@@ -311,11 +342,14 @@ class InvertibleInvariants(moment_invariants.MomentInvariants):
 
 
 def degree_3_with_unknown(n: int, l: int, inv: moment_invariants.MomentInvariant):
-    return inv.weight == 3 and np.all(inv.terms_array[:, 2, 0:2] == [n, l]) and np.all(inv.terms_array[:, 0:2, 1] < l)
+    return (
+        inv.weight == 3
+        and np.all(inv.terms_array[:, 2, 0:2] == [n, l])
+        and np.all(inv.terms_array[:, 0:2, 1] < l)
+    )
 
 
 class InvariantsGenerator:
-
     @staticmethod
     def delta(l1, l2, l3) -> bool:
         """Delta condition.  Returns True if |l2 - l3| <= l1 <= l2 + l3"""
@@ -334,45 +368,56 @@ class InvariantsGenerator:
     @classmethod
     def total_degree_2(cls, index_traits: sph.IndexTraits) -> int:
         l_max = index_traits.l[1]
-        return sum(cls.num_degree_2(index_traits, l) for l in utils.inclusive(1, l_max, 1))
+        return sum(
+            cls.num_degree_2(index_traits, l) for l in utils.inclusive(1, l_max, 1)
+        )
 
     @staticmethod
     def inv_degree_2(n1: int, n2: int, l: int) -> moment_invariants.MomentInvariant:
-        """Generate a degree-2 invariant
-        """
+        """Generate a degree-2 invariant"""
         builder = moment_invariants.InvariantBuilder(2)
         # This comes from the Clebsch-Gordan coefficient: <l,l,m,-m|0,0> = (-1)^(l-m)/sqrt(2l + 1)
-        recip_prefactor = (2 * l + 1)**0.5
+        recip_prefactor = (2 * l + 1) ** 0.5
 
         for m in utils.inclusive(-l, l, 1):
-            builder.add_term((-1)**(l - m) / recip_prefactor, ((n1, l, m), (n2, l, -m)))
+            builder.add_term(
+                (-1) ** (l - m) / recip_prefactor, ((n1, l, m), (n2, l, -m))
+            )
 
         return builder.build()
 
     @classmethod
     def inv_degree_3(cls, n1, l1, n2, l2, n3, l3):
         """Generate degree-3 invariant"""
-        assert l1 <= n1, f'{l1} > {n1}'
-        assert l2 <= n2, f'{l2} > {n2}'
-        assert l3 <= n3, f'{l3} > {n3}'
+        assert l1 <= n1, f"{l1} > {n1}"
+        assert l2 <= n2, f"{l2} > {n2}"
+        assert l3 <= n3, f"{l3} > {n3}"
         assert cls.delta(l1, l2, l3)
 
         builder = moment_invariants.InvariantBuilder(3)
 
-        recip_prefactor = (2 * l1 + 1)**0.5
+        recip_prefactor = (2 * l1 + 1) ** 0.5
         for m1 in utils.inclusive(-l1, l1):
             for m2 in utils.inclusive(-l2, l2):
                 for m3 in utils.inclusive(-l3, l3):
                     if m1 + m2 + m3 != 0:
                         continue
 
-                    prefactor = (-1)**m1 * complex(cg.CG(l2, m2, l3, m3, l1, -m1).doit()) / recip_prefactor
-                    builder.add_term(prefactor, ((n1, l1, m1), (n2, l2, m2), (n3, l3, m3)))
+                    prefactor = (
+                        (-1) ** m1
+                        * complex(cg.CG(l2, m2, l3, m3, l1, -m1).doit())
+                        / recip_prefactor
+                    )
+                    builder.add_term(
+                        prefactor, ((n1, l1, m1), (n2, l2, m2), (n3, l3, m3))
+                    )
 
         return builder.build()
 
     @staticmethod
-    def generate_degree_1(index_traits: sph.IndexTraits) -> moment_invariants.MomentInvariants:
+    def generate_degree_1(
+        index_traits: sph.IndexTraits,
+    ) -> moment_invariants.MomentInvariants:
         """Generate first degree invariants up to the maximum n"""
         invs = moment_invariants.MomentInvariants()
         for n in index_traits.iter_n(0):
@@ -396,7 +441,9 @@ class InvariantsGenerator:
                 for n2 in index_traits.iter_n(l, n_spec=(n1, None)):
                     invs_array[l, n1, n2] = cls.inv_degree_2(n1, n2, l)
 
-        return np.ma.masked_array(invs_array, invs_array == None)  # pylint: disable=singleton-comparison
+        return np.ma.masked_array(
+            invs_array, invs_array == None  # noqa: E711
+        )  # pylint: disable=singleton-comparison
 
     @classmethod
     def generate_degree_3(
@@ -427,7 +474,9 @@ class InvariantsGenerator:
         for pair_c in index_traits.iter_nl(n_spec=(2, None), l_spec=(2, None)):
             for pair_b in index_traits.iter_nl(l_spec=(None, pair_c[1] - 1)):
                 for pair_a in index_traits.iter_nl(l_spec=(None, pair_b[1])):
-                    pairs = tuple(sorted([pair_a, pair_b, pair_c], key=lambda p: (p[1], p[0])))
+                    pairs = tuple(
+                        sorted([pair_a, pair_b, pair_c], key=lambda p: (p[1], p[0]))
+                    )
                     # pairs = pair_a, pair_b, pair_c
                     (n1, l1), (n2, l2), (n3, l3) = pairs
 
@@ -453,18 +502,26 @@ class InvariantsGenerator:
         return invs
 
     @classmethod
-    def generate_all(cls, index_traits: sph.IndexTraits, include_complex=False) -> InvertibleInvariants:
+    def generate_all(
+        cls, index_traits: sph.IndexTraits, include_complex=False
+    ) -> InvertibleInvariants:
         """Generate all moments invariants using this scheme up to the max n and l"""
         invs = InvertibleInvariants(
-            cls.generate_degree_1(index_traits), cls.generate_degree_2(index_traits),
-            cls.generate_degree_3(index_traits, include_complex=include_complex), index_traits
+            cls.generate_degree_1(index_traits),
+            cls.generate_degree_2(index_traits),
+            cls.generate_degree_3(index_traits, include_complex=include_complex),
+            index_traits,
         )
 
         return invs
 
 
-def generate_all(index_traits: sph.IndexTraits, include_complex=False) -> InvertibleInvariants:
-    return InvariantsGenerator.generate_all(index_traits, include_complex=include_complex)
+def generate_all(
+    index_traits: sph.IndexTraits, include_complex=False
+) -> InvertibleInvariants:
+    return InvariantsGenerator.generate_all(
+        index_traits, include_complex=include_complex
+    )
 
 
 def degree_3_is_zero(pair1: Tuple, pair2: Tuple, pair3: Tuple) -> bool:

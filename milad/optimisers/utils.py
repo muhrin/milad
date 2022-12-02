@@ -7,7 +7,14 @@ import numpy as np
 class Data:
     """Data used during an optimisation"""
 
-    def __init__(self, use_jacobian, complex_input: bool, verbose=False, builder=None, callback: Callable = None):
+    def __init__(
+        self,
+        use_jacobian,
+        complex_input: bool,
+        verbose=False,
+        builder=None,
+        callback: Callable = None,
+    ):
         self.use_jacobian = use_jacobian
         self.complex_input = complex_input
         self.verbose = verbose
@@ -33,7 +40,9 @@ def split_state(state: np.ndarray) -> np.ndarray:
     return state
 
 
-def split_jacobian(jacobian: np.ndarray, complex_inputs: bool, complex_outputs: bool) -> np.ndarray:
+def split_jacobian(
+    jacobian: np.ndarray, complex_inputs: bool, complex_outputs: bool
+) -> np.ndarray:
     """Assuming that the function is analytic split the Jacobian into parts corresponding to a combination of
     complex inputs/outputs.  The layout of the return Jacobian is:
 
@@ -66,16 +75,16 @@ def split_jacobian(jacobian: np.ndarray, complex_inputs: bool, complex_outputs: 
 
     jac = np.empty(new_size)
     # Input: Real, Output: Real
-    jac[:orig_size[0], :orig_size[1]] = jacobian.real
+    jac[: orig_size[0], : orig_size[1]] = jacobian.real
     if complex_outputs:
         # Input: Real, Output: Imag
-        jac[orig_size[0]:, :orig_size[1]] = jacobian.imag
+        jac[orig_size[0] :, : orig_size[1]] = jacobian.imag
     if complex_inputs:
         complex_part = jacobian * 1j
         # Input: Imag, Output: Real
-        jac[:orig_size[0], orig_size[1]:] = complex_part.real
+        jac[: orig_size[0], orig_size[1] :] = complex_part.real
         if complex_outputs:
             # Input: Imag, Output: Imag
-            jac[orig_size[0]:, orig_size[1]:] = complex_part.imag
+            jac[orig_size[0] :, orig_size[1] :] = complex_part.imag
 
     return jac

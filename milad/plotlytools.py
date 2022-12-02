@@ -8,7 +8,9 @@ def isosurface(grid: np.ndarray, values: np.ndarray, **kwargs) -> go.Isosurface:
     params = dict(isomax=np.inf)
     params.update(kwargs)
 
-    return go.Isosurface(x=grid[:, 0], y=grid[:, 1], z=grid[:, 2], value=values, **params)
+    return go.Isosurface(
+        x=grid[:, 0], y=grid[:, 1], z=grid[:, 2], value=values, **params
+    )
 
 
 def volume(grid: np.ndarray, values: np.ndarray, **kwargs):
@@ -20,6 +22,6 @@ def volume(grid: np.ndarray, values: np.ndarray, **kwargs):
 
 def scatter3d(points: np.ndarray, **kwargs) -> go.Scatter3d:
     """Helper for creating a plotly 3d scatter plot from an array of points"""
-    params = dict(mode='markers')
+    params = dict(mode="markers")
     params.update(kwargs)
     return go.Scatter3d(x=points[:, 0], y=points[:, 1], z=points[:, 2], **params)

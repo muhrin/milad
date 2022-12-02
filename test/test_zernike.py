@@ -11,13 +11,14 @@ from milad import utils
 from milad import generate
 from milad import transform
 
+
 # pylint: disable=invalid-name
 
 
 def test_zernike_reconstruct_deltas():
     num_points = 4
-    positions = generate.random_points_in_sphere(num_points, radius=.7)
-    weights = 1.
+    positions = generate.random_points_in_sphere(num_points, radius=0.7)
+    weights = 1.0
     max_order = 7
     n_samples = 11
 
@@ -25,10 +26,12 @@ def test_zernike_reconstruct_deltas():
     reconstructed_values = moms.value_at(positions)
 
     # Now reconstruct a voxel grid
-    spacing = np.linspace(-1., 1., n_samples)
+    spacing = np.linspace(-1.0, 1.0, n_samples)
     grid_points = []
-    for pos in np.array(np.meshgrid(spacing, spacing, spacing)).reshape(3, -1).T:  # pylint: disable=not-an-iterable
-        if np.linalg.norm(pos) > 1.:
+    for pos in (
+        np.array(np.meshgrid(spacing, spacing, spacing)).reshape(3, -1).T
+    ):  # pylint: disable=not-an-iterable
+        if np.linalg.norm(pos) > 1.0:
             continue
         grid_points.append(pos)
     grid_points = np.array(grid_points)
@@ -41,8 +44,8 @@ def test_zernike_reconstruct_deltas():
 
 
 def test_zernike_of_deltas(complex_invariants):
-    positions = generate.random_points_in_sphere(4, radius=.7)
-    weights = 1.
+    positions = generate.random_points_in_sphere(4, radius=0.7)
+    weights = 1.0
     max_order = 10
 
     moms = zernike.from_deltas(max_order, positions, weights=weights)
@@ -57,9 +60,9 @@ def test_zernike_of_deltas(complex_invariants):
 
 
 def test_zernike_of_gaussians(complex_invariants):
-    positions = generate.random_points_in_sphere(4, radius=.7)
+    positions = generate.random_points_in_sphere(4, radius=0.7)
     sigma = 0.1
-    mass = 1.
+    mass = 1.0
     max_order = 10
 
     geom_moments = geometric.from_gaussians(max_order, positions, sigma, mass)
@@ -77,12 +80,14 @@ def test_zernike_of_gaussians(complex_invariants):
 
 def test_zernike_properties():
     num_particles = 4
-    positions = generate.random_points_in_sphere(num_particles, radius=.7)
+    positions = generate.random_points_in_sphere(num_particles, radius=0.7)
     sigmas = np.random.rand(num_particles)
     weights = np.random.rand(num_particles)
     max_order = 10
 
-    geom_moments = geometric.from_gaussians(max_order, positions, sigmas=sigmas, weights=weights)
+    geom_moments = geometric.from_gaussians(
+        max_order, positions, sigmas=sigmas, weights=weights
+    )
     assert geom_moments[0, 0, 0] == weights.sum()
 
     moms = zernike.from_geometric_moments(max_order, geom_moments)
@@ -94,12 +99,12 @@ def test_zernike_properties():
                 continue
 
             for m in range(l):
-                assert moms[n, l, -m] == (-1)**m * moms[n, l, m].conjugate()
+                assert moms[n, l, -m] == (-1) ** m * moms[n, l, m].conjugate()
 
 
 def test_zernike_analytic():
     max_order = 6
-    geom = sympy.IndexedBase('m', real=True)  # Geometric moments
+    geom = sympy.IndexedBase("m", real=True)  # Geometric moments
     jacobian = zernike.get_jacobian_wrt_geom_moments(max_order)
 
     # Let's build the Jacobian symbolically
@@ -112,7 +117,9 @@ def test_zernike_analytic():
             gindex = geometric.linear_index(max_order, (p, q, r))
             jacobian_value = jacobian[zindex, gindex]
 
-            assert complex(differentiated) == pytest.approx(jacobian_value), f'Omega{n},{l},{m} m{p},{q},{r}'
+            assert complex(differentiated) == pytest.approx(
+                jacobian_value
+            ), f"Omega{n},{l},{m} m{p},{q},{r}"
 
 
 def test_zernike_indexing():
@@ -137,7 +144,7 @@ def test_zernike_indexing():
 def test_zernike_from_vector():
     """Test converting Zernike moments to a vector and back"""
     num_points = 4
-    positions = generate.random_points_in_sphere(num_points, radius=.7)
+    positions = generate.random_points_in_sphere(num_points, radius=0.7)
     max_order = 7
 
     moms = zernike.from_deltas(max_order, positions)
@@ -147,13 +154,16 @@ def test_zernike_from_vector():
     assert np.allclose(from_vector.vector, as_vector)
 
     # Double check the round-trip
-    assert np.all(zernike.ZernikeMoments.from_vector(max_order, from_vector.vector).vector == from_vector.vector)
+    assert np.all(
+        zernike.ZernikeMoments.from_vector(max_order, from_vector.vector).vector
+        == from_vector.vector
+    )
 
 
 def test_zernike_builder():
     """Test that the Zernike builder can create the moments from a vector and the inverse"""
     num_points = 4
-    positions = generate.random_points_in_sphere(num_points, radius=.7)
+    positions = generate.random_points_in_sphere(num_points, radius=0.7)
     max_order = 7
 
     moms = zernike.from_deltas(max_order, positions)
@@ -168,7 +178,6 @@ def test_zernike_builder():
 
 
 def test_direct_calculation():
-    # pylint: disable=unused-variable
     nmax = 4
     lmax = 4
 
@@ -178,7 +187,7 @@ def test_direct_calculation():
 
     from_deltas_direct = zernike.from_deltas_direct(nmax=nmax, lmax=lmax, positions=pos)
 
-    diff = from_deltas.array - from_deltas_direct.array
+    diff = from_deltas.array - from_deltas_direct.array  # noqa: F841
 
     spherical = mathutil.cart2sph(pos.T)  # Spherical coordinates
     for n in utils.inclusive(nmax):
@@ -186,6 +195,10 @@ def test_direct_calculation():
             if utils.odd(n - l):
                 continue
             for m in utils.inclusive(-l, l):
-                vals = 3 / (4 * np.pi) * zernike.zernike_poly(n, l, m, spherical).conjugate()
-                total = np.sum(vals)
-                from_deltas_val = from_deltas[n, l, m]
+                vals = (
+                    3
+                    / (4 * np.pi)
+                    * zernike.zernike_poly(n, l, m, spherical).conjugate()
+                )
+                total = np.sum(vals)  # noqa: F841
+                from_deltas_val = from_deltas[n, l, m]  # noqa: F841
