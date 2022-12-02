@@ -190,7 +190,7 @@ class MomentInvariants(functions.Function):
 
     @property
     def variables(self) -> Set[Tuple]:
-        """Return a set of all the the indices used by these invariants"""
+        """Return a set of all the indices used by these invariants"""
         indices = set()
         for inv in self._invariants:
             indices.update(inv.variables)

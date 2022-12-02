@@ -134,7 +134,7 @@ class HomogenousPolynomial(Polynomial):
 
     @property
     def variables(self) -> Set[Tuple]:
-        """Return a set of all the the indices used by these invariants"""
+        """Return a set of all the indices used by these invariants"""
         if self._variables is None:
             indices = set()
             for product in self._terms:

@@ -178,7 +178,7 @@ class InvertibleInvariants(moment_invariants.MomentInvariants):
     @staticmethod
     def get_vectors_from_gram(gram: np.array, l: int) -> Tuple[np.array, int]:
         """Given a Gram matrix that that is interpreted as an the SxS (where there are S radial functions) inner product
-         pace of the vectors at a particular angular frequency, l, this will solve for a set of possible vectors up to
+         space of the vectors at a particular angular frequency, l, this will solve for a set of possible vectors up to
          isomorphism.
         The rank of the Gram matrix and an array of the vectors are returned.
         """
@@ -399,9 +399,11 @@ class InvariantsGenerator:
         return np.ma.masked_array(invs_array, invs_array == None)  # pylint: disable=singleton-comparison
 
     @classmethod
-    def generate_degree_3(cls, index_traits: sph.IndexTraits) -> moment_invariants.MomentInvariants:
+    def generate_degree_3(
+        cls, index_traits: sph.IndexTraits, include_complex=False
+    ) -> moment_invariants.MomentInvariants:
         """Generate third degree invariants up to maximum n, and optionally max l"""
-        # pylint: disable=too-many-locals
+        # pylint: disable=too-many-locals, too-many-branches
         lmax = index_traits.l[1]
         done = set()
 
@@ -410,6 +412,9 @@ class InvariantsGenerator:
         # We need one 3rd degree invariant at l1=l2=l3 that includes three radial terms in order to resolve
         # the sign ambiguity on the unitary matrix from Cholesky decomposition
         for l in utils.inclusive(1, lmax):
+            if not include_complex and l % 2 == 1:
+                continue  # Is odd
+
             for n1 in index_traits.iter_n(l):
                 for n2 in index_traits.iter_n(l, n_spec=(n1, None)):
                     for n3 in index_traits.iter_n(l, n_spec=(n2, None)):
@@ -425,6 +430,9 @@ class InvariantsGenerator:
                     pairs = tuple(sorted([pair_a, pair_b, pair_c], key=lambda p: (p[1], p[0])))
                     # pairs = pair_a, pair_b, pair_c
                     (n1, l1), (n2, l2), (n3, l3) = pairs
+
+                    if not include_complex and (l1 + l2 + l3) % 2 == 1:
+                        continue  # Is odd
 
                     # Check delta criterion
                     if not cls.delta(l1, l2, l3):
@@ -445,18 +453,18 @@ class InvariantsGenerator:
         return invs
 
     @classmethod
-    def generate_all(cls, index_traits: sph.IndexTraits) -> InvertibleInvariants:
+    def generate_all(cls, index_traits: sph.IndexTraits, include_complex=False) -> InvertibleInvariants:
         """Generate all moments invariants using this scheme up to the max n and l"""
         invs = InvertibleInvariants(
             cls.generate_degree_1(index_traits), cls.generate_degree_2(index_traits),
-            cls.generate_degree_3(index_traits), index_traits
+            cls.generate_degree_3(index_traits, include_complex=include_complex), index_traits
         )
 
         return invs
 
 
-def generate_all(index_traits: sph.IndexTraits) -> InvertibleInvariants:
-    return InvariantsGenerator.generate_all(index_traits)
+def generate_all(index_traits: sph.IndexTraits, include_complex=False) -> InvertibleInvariants:
+    return InvariantsGenerator.generate_all(index_traits, include_complex=include_complex)
 
 
 def degree_3_is_zero(pair1: Tuple, pair2: Tuple, pair3: Tuple) -> bool:

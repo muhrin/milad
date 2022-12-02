@@ -8,7 +8,7 @@ from milad.invariants import invertible_invariants
 from milad import zernike
 from milad import generate
 
-N_MAX = 5
+N_MAX = 12
 indices = milad.sph.IndexTraits(n_spec=N_MAX, n_minus_l_even=True, l_le_n=True)
 
 # pylint: disable=redefined-outer-name
@@ -34,9 +34,11 @@ def test_invertible_invariants_basics(inv_invariants):
         4. Assert that the two fingerprints match
     """
     # Create some random moments and calculate the fingerprint
-    pts = generate.random_points_in_sphere(11, radius=1., centre=False)
+    pts = generate.random_points_in_sphere(11, radius=0.8, centre=False)
     moments = zernike.from_deltas(indices.n.max, pts)
     phi = inv_invariants(moments)
+    # Check they are all real as here we are only interested in SO(3) (not O(3)) invariants.
+    assert np.allclose(np.abs(phi.imag), 0.)
 
     inverted = zernike.ZernikeMoments(indices.n.max, indices.l.max)
     # Perform inversion
