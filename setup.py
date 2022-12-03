@@ -45,7 +45,7 @@ setup(
         "dev": [
             "ipython",
             "pip",
-            "pytest~=5.4",
+            "pytest~=7.2",
             "pytest-cov",
             "pre-commit~=2.2",
             "twine",

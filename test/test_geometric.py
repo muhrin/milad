@@ -18,33 +18,33 @@ def test_multidim_norm_moments():
     moms = geometric.gaussian_moment[0](np.zeros((3, 1)), sigma)
     expected = np.empty((3, 1))
     expected.fill(1.0)
-    assert pytest.approx((moms - expected).max(), 0)
+    assert np.allclose(moms - expected, 0.0)
 
     # Do the odds first
     for order in (1, 3, 5, 7):
         moms = geometric.gaussian_moment[order](np.zeros((3, 1)))
         expected = np.zeros((3, 1))
-        assert pytest.approx((moms - expected).max(), 0)
+        assert np.allclose(moms - expected, 0.0)
 
     moms = geometric.gaussian_moment[2](np.zeros((3, 1)), sigma)
     expected = np.empty((3, 1))
     expected.fill(sigma**2)
-    assert pytest.approx((moms - expected).max(), 0)
+    assert np.allclose(moms - expected, 0.0)
 
     moms = geometric.gaussian_moment[4](np.zeros((3, 1)), sigma)
     expected = np.empty((3, 1))
     expected.fill(3 * sigma**4)
-    assert pytest.approx((moms - expected).max(), 0)
+    assert np.allclose(moms - expected, 0.0)
 
     moms = geometric.gaussian_moment[6](np.zeros((3, 1)), sigma)
     expected = np.empty((3, 1))
     expected.fill(15 * sigma**6)
-    assert pytest.approx((moms - expected).max(), 0)
+    assert np.allclose(moms - expected, 0.0)
 
     moms = geometric.gaussian_moment[8](np.zeros((3, 1)), sigma)
     expected = np.empty((3, 1))
     expected.fill(105 * sigma**8)
-    assert pytest.approx((moms - expected).max(), 0)
+    assert np.allclose(moms - expected, 0.0)
 
 
 def test_moment_tensor3d():
